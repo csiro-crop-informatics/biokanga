@@ -132,7 +132,7 @@ typedef struct TAG_sQueryAlignNodes {
 const UINT32 cAllocSfxEntries = 500000;		// alloc/realloc for sequence entries in this many increments
 const UINT32 cMaxSfxEntries = 100000000;		// can handle upto this number of sequence entries
 const UINT32 cMaxAllowSeqLen = 0xfff00000;  // maximum length (nearly 4G) of any individual sequence allowed 
-const UINT64 cMaxAllowConcatSeqLen = 120000000000; // max supported concatenation length of all sequences (must fit within 40bits)
+const UINT64 cMaxAllowConcatSeqLen = 1000000000000; // max supported concatenation length of all sequences (must fit within 40bits)
 const UINT32 cReallocBlockEls = cMaxAllowSeqLen/10;  // minimum realloc for sfxblock elements
 const UINT64 cThres8ByteSfxEls = 4000000000;  // if concatenated sequence length >= this threshold then use 5bytes per suffix element instead of 4 when creating suffix index
 
