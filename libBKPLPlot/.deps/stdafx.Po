@@ -1,0 +1,5 @@
+stdafx.o: stdafx.cpp /usr/include/stdc-predef.h stdafx.h
+
+/usr/include/stdc-predef.h:
+
+stdafx.h:

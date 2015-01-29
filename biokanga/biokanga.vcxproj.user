@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LocalDebuggerWorkingDirectory>c:\Experiments\reads</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArguments>ngsqc @testreads.txt</LocalDebuggerCommandArguments>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LocalDebuggerCommandArguments>snpmarkers -FLogs\snpmarkers.log @markers.txt</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerWorkingDirectory>c:\Experiments\DonGardiner</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerAttach>false</LocalDebuggerAttach>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LocalDebuggerCommandArguments>mergeoverlaps -FLogs\merge.log -m3 -iData\Plate6_S1_L001_R1_001.fastq.gz -IData\Plate6_S1_L001_R2_001.fastq.gz -iData\Plate7_S2_L001_R1_001.fastq.gz -IData\Plate7_S2_L001_R2_001.fastq.gz -iData\Plate8_S3_L001_R1_001.fastq.gz -IData\Plate8_S3_L001_R2_001.fastq.gz -iData\Plate9_S4_L001_R1_001.fastq.gz -IData\Plate9_S4_L001_R2_001.fastq.gz -iData\Plate10_S5_L001_R1_001.fastq.gz -IData\Plate10_S5_L001_R2_001.fastq.gz -oAmplicons -s0 -l50</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerWorkingDirectory>c:\Experiments\Amplicons</LocalDebuggerWorkingDirectory>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LocalDebuggerCommandArguments>align -T1 -U1 -d30 -D130 -E  -iData\TAIR10dummyPE1.fa -uData\TAIR10dummyPE2.fa -oaligned.sam -I../Resources/Genomes/araTha10.sfx</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerWorkingDirectory>c:\Experiments\PE_strands</LocalDebuggerWorkingDirectory>
+  </PropertyGroup>
+</Project>

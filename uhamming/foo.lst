@@ -1,0 +1,1484 @@
+GAS LISTING /tmp/ccaf76f8.s 			page 1
+
+
+   1              		.file	"cHamming.cpp"
+   9              	.Ltext0:
+  10              	.globl MapCpl
+  11              		.data
+  14              	MapCpl:
+  15 0000 03       		.byte	3
+  16 0001 02       		.byte	2
+  17 0002 01       		.byte	1
+  18 0003 00       		.byte	0
+  19 0004 04       		.byte	4
+  20 0005 05       		.byte	5
+  21 0006 06       		.byte	6
+  22 0007 07       		.byte	7
+  23 0008 08       		.byte	8
+  24              		.text
+  25              	.globl _Z8GHamDistjiPhS_j
+  27              	_Z8GHamDistjiPhS_j:
+  28              	.LFB61:
+  29              		.file 1 "cHamming.cpp"
+   0:cHamming.cpp  **** #include "stdafx.h"
+   1:cHamming.cpp  **** 
+   2:cHamming.cpp  **** #ifdef HAVE_CONFIG_H
+   3:cHamming.cpp  **** #include <config.h>
+   4:cHamming.cpp  **** #endif
+   5:cHamming.cpp  **** 
+   6:cHamming.cpp  **** #if _WIN32
+   7:cHamming.cpp  **** #include <process.h>
+   8:cHamming.cpp  **** #include "../conservlib/commhdrs.h"
+   9:cHamming.cpp  **** #else
+  10:cHamming.cpp  **** #include <pthread.h>
+  11:cHamming.cpp  **** #include "../../libbiokanga/hdrs/commhdrs.h"
+  12:cHamming.cpp  **** #endif
+  13:cHamming.cpp  **** 
+  14:cHamming.cpp  **** #ifndef WATSONONLYHAMMINGS
+  15:cHamming.cpp  **** // this version of GHamDist generates Hammings taking into account both the watson and crick strand
+  16:cHamming.cpp  **** // currently processes around 2.5x slower than watson strand only version
+  17:cHamming.cpp  **** // when time permits then this function should be coded in assembler so as to take advantage of reg
+  18:cHamming.cpp  **** 
+  19:cHamming.cpp  **** // lookup table for quick base complementation
+  20:cHamming.cpp  **** UINT8 MapCpl[] = { eBaseT,		// MapCpl[etBaseA] --> etBaseT
+  21:cHamming.cpp  **** 					eBaseG,		// MapCpl[etBaseC] --> etBaseG
+  22:cHamming.cpp  **** 					eBaseC,		// MapCpl[etBaseG] --> etBaseC
+  23:cHamming.cpp  **** 					eBaseA,		// MapCpl[etBaseT] --> etBaseA
+  24:cHamming.cpp  **** 					eBaseN,		// MapCpl[etBaseN] --> etBaseN
+  25:cHamming.cpp  **** 					eBaseUndef,	// MapCpl[eBaseUndef] --> eBaseUndef
+  26:cHamming.cpp  **** 					eBaseInDel,	// MapCpl[eBaseInDel] --> eBaseInDel
+  27:cHamming.cpp  **** 					eBaseEOS,	// MapCpl[eBaseEOS] --> eBaseEOS
+  28:cHamming.cpp  **** 					eBaseEOS+1}; // MapCpl[eBaseEOS+1] --> eBaseEOS+1
+  29:cHamming.cpp  **** 
+  30:cHamming.cpp  **** void GHamDist(UINT32 SSofs,		// offset between subsequences for current pass
+  31:cHamming.cpp  **** 			  int SubSeqLen,	// generate Hammings edit distances for subsequences of this length
+  32:cHamming.cpp  **** 			  UINT8 *pHDs,		// where to return Hamming differentials for each subsequence 
+  33:cHamming.cpp  **** 			  UINT8 *pGenomeSeq, // genome sequence (concatenated chrom seqs, separated by eBaseEOSs) with f
+  34:cHamming.cpp  **** 			  UINT32 GenomeLen)	// total genome length including chrom separators and genome terminator eBas
+  35:cHamming.cpp  **** {
+  30              		.loc 1 36 0
+  31              		.cfi_startproc
+GAS LISTING /tmp/ccaf76f8.s 			page 2
+
+
+  32              		.cfi_personality 0x3,__gxx_personality_v0
+  33 0000 55       		pushq	%rbp
+  34              	.LCFI0:
+  35              		.cfi_def_cfa_offset 16
+  36 0001 4889E5   		movq	%rsp, %rbp
+  37              		.cfi_offset 6, -16
+  38              	.LCFI1:
+  39              		.cfi_def_cfa_register 6
+  40 0004 4883EC08 		subq	$8, %rsp
+  41 0008 897D9C   		movl	%edi, -100(%rbp)
+  42 000b 897598   		movl	%esi, -104(%rbp)
+  43 000e 48895590 		movq	%rdx, -112(%rbp)
+  44 0012 48894D88 		movq	%rcx, -120(%rbp)
+  45 0016 44894584 		movl	%r8d, -124(%rbp)
+  46              	.LBB2:
+  36:cHamming.cpp  **** int Idx;
+  37:cHamming.cpp  **** 
+  38:cHamming.cpp  **** UINT8 PPHD;		// current Hamming for +/+ subsequence edit distances
+  39:cHamming.cpp  **** UINT8 PMHD;		// current Hamming for +/- subsequence edit distances
+  40:cHamming.cpp  **** 
+  41:cHamming.cpp  **** UINT8 SS1B;		// subsequence 1 5' first base, plus strand
+  42:cHamming.cpp  **** UINT8 SS2B;		// subsequence 2 5' first base, plus strand
+  43:cHamming.cpp  **** UINT8 SS3B;		// subsequence 3 5' first base, minus strand 
+  44:cHamming.cpp  **** UINT8 SE1B;		// subsequence 1 3' last base, plus strand
+  45:cHamming.cpp  **** UINT8 SE2B;		// subsequence 2 3' last base, plus strand
+  46:cHamming.cpp  **** UINT8 SE3B;		// subsequence 3 3' last base, minus strand 
+  47:cHamming.cpp  **** 
+  48:cHamming.cpp  **** 
+  49:cHamming.cpp  **** UINT8 *pSS1;	// pts to 5' start of current subsequence1 on plus strand
+  50:cHamming.cpp  **** UINT8 *pSS2;	// pts to 5' start of current subsequence2  on plus strand
+  51:cHamming.cpp  **** UINT8 *pSS3;	// pts to 5' start of current subsequence2  on minus strand
+  52:cHamming.cpp  **** 
+  53:cHamming.cpp  **** UINT8 *pSE1;	// pts to 3' end of current subsequence1 on plus strand
+  54:cHamming.cpp  **** UINT8 *pSE2;	// pts to 3' end of current subsequence2  on plus strand
+  55:cHamming.cpp  **** UINT8 *pSE3;	// pts to 3' end of current subsequence2  on minus strand
+  56:cHamming.cpp  **** 
+  57:cHamming.cpp  **** 
+  58:cHamming.cpp  **** UINT8 *pHSS1;  // pts to current minimum Huffman distance for subsequence starting at pSS1
+  59:cHamming.cpp  **** UINT8 *pHSS2;  // pts to current minimum Huffman distance for subsequence starting at pSS2
+  60:cHamming.cpp  **** UINT8 *pHSS3;  // pts to current minimum Huffman distance for subsequence starting at pSS3
+  61:cHamming.cpp  **** 
+  62:cHamming.cpp  **** UINT8 PPEOScnt;  // if > 0 then do not update minimum Hammings on plus strand as current subsequenc
+  63:cHamming.cpp  **** UINT8 PMEOScnt;  // if > 0 then do not update minimum Hammings on minus strand as current subsequen
+  64:cHamming.cpp  **** 
+  65:cHamming.cpp  **** int ESofs = SubSeqLen - 1;	// relative offset from start of current subsequence to last base in tha
+  47              		.loc 1 66 0
+  48 001a 8B4598   		movl	-104(%rbp), %eax
+  49 001d 83E801   		subl	$1, %eax
+  50 0020 8945EC   		movl	%eax, -20(%rbp)
+  66:cHamming.cpp  **** 
+  67:cHamming.cpp  **** pHSS1 = pHDs;
+  51              		.loc 1 68 0
+  52 0023 488B4590 		movq	-112(%rbp), %rax
+  53 0027 488945B0 		movq	%rax, -80(%rbp)
+  68:cHamming.cpp  **** pHSS2 = &pHDs[SSofs];		
+  54              		.loc 1 69 0
+  55 002b 8B459C   		mov	-100(%rbp), %eax
+GAS LISTING /tmp/ccaf76f8.s 			page 3
+
+
+  56 002e 48034590 		addq	-112(%rbp), %rax
+  57 0032 488945A8 		movq	%rax, -88(%rbp)
+  69:cHamming.cpp  **** pHSS3 = &pHDs[GenomeLen-SSofs-(SubSeqLen-1)];		
+  58              		.loc 1 70 0
+  59 0036 8B459C   		movl	-100(%rbp), %eax
+  60 0039 8B5584   		movl	-124(%rbp), %edx
+  61 003c 29C2     		subl	%eax, %edx
+  62 003e 8B4598   		movl	-104(%rbp), %eax
+  63 0041 89D1     		movl	%edx, %ecx
+  64 0043 29C1     		subl	%eax, %ecx
+  65 0045 89C8     		movl	%ecx, %eax
+  66 0047 83C001   		addl	$1, %eax
+  67 004a 89C0     		mov	%eax, %eax
+  68 004c 48034590 		addq	-112(%rbp), %rax
+  69 0050 488945A0 		movq	%rax, -96(%rbp)
+  70:cHamming.cpp  **** 
+  71:cHamming.cpp  **** pSS1 = pGenomeSeq;
+  70              		.loc 1 72 0
+  71 0054 488B4588 		movq	-120(%rbp), %rax
+  72 0058 488945E0 		movq	%rax, -32(%rbp)
+  72:cHamming.cpp  **** pSS2 = &pGenomeSeq[SSofs];	
+  73              		.loc 1 73 0
+  74 005c 8B459C   		mov	-100(%rbp), %eax
+  75 005f 48034588 		addq	-120(%rbp), %rax
+  76 0063 488945D8 		movq	%rax, -40(%rbp)
+  73:cHamming.cpp  **** pSS3 = &pGenomeSeq[GenomeLen-SSofs];
+  77              		.loc 1 74 0
+  78 0067 8B459C   		movl	-100(%rbp), %eax
+  79 006a 8B5584   		movl	-124(%rbp), %edx
+  80 006d 89D1     		movl	%edx, %ecx
+  81 006f 29C1     		subl	%eax, %ecx
+  82 0071 89C8     		movl	%ecx, %eax
+  83 0073 89C0     		mov	%eax, %eax
+  84 0075 48034588 		addq	-120(%rbp), %rax
+  85 0079 488945D0 		movq	%rax, -48(%rbp)
+  74:cHamming.cpp  **** 
+  75:cHamming.cpp  **** // initial Huffman generation for the subsequences
+  76:cHamming.cpp  **** // this generation is only for the 1st SubSeqLen-1 bases as the final base in subsequences is proce
+  77:cHamming.cpp  **** // within the main iteration loop
+  78:cHamming.cpp  **** // if any eBaseEOS marking chromosome boundaries encountered then the appropriate EOS cnt will be i
+  79:cHamming.cpp  **** // until these cnts are decremented back to zero in main iteration loop then minimum Hammings will 
+  80:cHamming.cpp  **** PPHD = 0;
+  86              		.loc 1 81 0
+  87 007d C645FF00 		movb	$0, -1(%rbp)
+  81:cHamming.cpp  **** PMHD = 0;
+  88              		.loc 1 82 0
+  89 0081 C645FE00 		movb	$0, -2(%rbp)
+  82:cHamming.cpp  **** PPEOScnt = 0;
+  90              		.loc 1 83 0
+  91 0085 C645F700 		movb	$0, -9(%rbp)
+  83:cHamming.cpp  **** PMEOScnt = 0;
+  92              		.loc 1 84 0
+  93 0089 C645F600 		movb	$0, -10(%rbp)
+  84:cHamming.cpp  **** pSE1 = pSS1;
+  94              		.loc 1 85 0
+  95 008d 488B45E0 		movq	-32(%rbp), %rax
+  96 0091 488945C8 		movq	%rax, -56(%rbp)
+GAS LISTING /tmp/ccaf76f8.s 			page 4
+
+
+  85:cHamming.cpp  **** pSE2 = pSS2;
+  97              		.loc 1 86 0
+  98 0095 488B45D8 		movq	-40(%rbp), %rax
+  99 0099 488945C0 		movq	%rax, -64(%rbp)
+  86:cHamming.cpp  **** pSE3 = pSS3;
+ 100              		.loc 1 87 0
+ 101 009d 488B45D0 		movq	-48(%rbp), %rax
+ 102 00a1 488945B8 		movq	%rax, -72(%rbp)
+  87:cHamming.cpp  **** for(Idx = 0; Idx < SubSeqLen-1; Idx++)
+ 103              		.loc 1 88 0
+ 104 00a5 C745F000 		movl	$0, -16(%rbp)
+ 104      000000
+ 105 00ac EB76     		jmp	.L2
+ 106              	.L8:
+  88:cHamming.cpp  **** 	{
+  89:cHamming.cpp  **** 	SE1B = *pSE1++;
+ 107              		.loc 1 90 0
+ 108 00ae 488B45C8 		movq	-56(%rbp), %rax
+ 109 00b2 0FB600   		movzbl	(%rax), %eax
+ 110 00b5 8845FA   		movb	%al, -6(%rbp)
+ 111 00b8 488345C8 		addq	$1, -56(%rbp)
+ 111      01
+  90:cHamming.cpp  **** 	SE2B = *pSE2++;
+ 112              		.loc 1 91 0
+ 113 00bd 488B45C0 		movq	-64(%rbp), %rax
+ 114 00c1 0FB600   		movzbl	(%rax), %eax
+ 115 00c4 8845F9   		movb	%al, -7(%rbp)
+ 116 00c7 488345C0 		addq	$1, -64(%rbp)
+ 116      01
+  91:cHamming.cpp  **** 	SE3B = *pSE3--;
+ 117              		.loc 1 92 0
+ 118 00cc 488B45B8 		movq	-72(%rbp), %rax
+ 119 00d0 0FB600   		movzbl	(%rax), %eax
+ 120 00d3 8845F8   		movb	%al, -8(%rbp)
+ 121 00d6 48836DB8 		subq	$1, -72(%rbp)
+ 121      01
+  92:cHamming.cpp  **** 	if(SE1B == eBaseEOS)
+ 122              		.loc 1 93 0
+ 123 00db 807DFA07 		cmpb	$7, -6(%rbp)
+ 124 00df 7508     		jne	.L3
+  93:cHamming.cpp  **** 		{
+  94:cHamming.cpp  **** 		PPEOScnt += 1;
+ 125              		.loc 1 95 0
+ 126 00e1 8045F701 		addb	$1, -9(%rbp)
+  95:cHamming.cpp  **** 		PMEOScnt += 1;
+ 127              		.loc 1 96 0
+ 128 00e5 8045F601 		addb	$1, -10(%rbp)
+ 129              	.L3:
+  96:cHamming.cpp  **** 		}
+  97:cHamming.cpp  **** 	if(SE2B == eBaseEOS)
+ 130              		.loc 1 98 0
+ 131 00e9 807DF907 		cmpb	$7, -7(%rbp)
+ 132 00ed 7504     		jne	.L4
+  98:cHamming.cpp  **** 		PPEOScnt += 1;
+ 133              		.loc 1 99 0
+ 134 00ef 8045F701 		addb	$1, -9(%rbp)
+ 135              	.L4:
+GAS LISTING /tmp/ccaf76f8.s 			page 5
+
+
+  99:cHamming.cpp  **** 	if(SE3B == eBaseEOS)
+ 136              		.loc 1 100 0
+ 137 00f3 807DF807 		cmpb	$7, -8(%rbp)
+ 138 00f7 7504     		jne	.L5
+ 100:cHamming.cpp  **** 		PMEOScnt += 1;
+ 139              		.loc 1 101 0
+ 140 00f9 8045F601 		addb	$1, -10(%rbp)
+ 141              	.L5:
+ 101:cHamming.cpp  **** 	if(SE1B != SE2B)	
+ 142              		.loc 1 102 0
+ 143 00fd 0FB645FA 		movzbl	-6(%rbp), %eax
+ 144 0101 3A45F9   		cmpb	-7(%rbp), %al
+ 145 0104 7404     		je	.L6
+ 102:cHamming.cpp  **** 		PPHD += 1;
+ 146              		.loc 1 103 0
+ 147 0106 8045FF01 		addb	$1, -1(%rbp)
+ 148              	.L6:
+ 103:cHamming.cpp  **** 	if(SE1B != MapCpl[SE3B])	
+ 149              		.loc 1 104 0
+ 150 010a 0FB645F8 		movzbl	-8(%rbp), %eax
+ 151 010e 4898     		cltq
+ 152 0110 0FB68000 		movzbl	MapCpl(%rax), %eax
+ 152      000000
+ 153 0117 3A45FA   		cmpb	-6(%rbp), %al
+ 154 011a 7404     		je	.L7
+ 104:cHamming.cpp  **** 		PMHD += 1;
+ 155              		.loc 1 105 0
+ 156 011c 8045FE01 		addb	$1, -2(%rbp)
+ 157              	.L7:
+  88:cHamming.cpp  **** for(Idx = 0; Idx < SubSeqLen-1; Idx++)
+ 158              		.loc 1 88 0
+ 159 0120 8345F001 		addl	$1, -16(%rbp)
+ 160              	.L2:
+ 161 0124 8B4598   		movl	-104(%rbp), %eax
+ 162 0127 83E801   		subl	$1, %eax
+ 163 012a 3B45F0   		cmpl	-16(%rbp), %eax
+ 164 012d 0F9FC0   		setg	%al
+ 165 0130 84C0     		testb	%al, %al
+ 166 0132 0F8576FF 		jne	.L8
+ 166      FFFF
+ 105:cHamming.cpp  **** 	}
+ 106:cHamming.cpp  **** 
+ 107:cHamming.cpp  **** // main iteration loop
+ 108:cHamming.cpp  **** // iterate over genome until 3' end of subsequence2 reaches the end of genome marker (eBaseEOS+1)
+ 109:cHamming.cpp  **** // end of chromosomes are marked by a eBaseEOS with next chromosome immediately following
+ 110:cHamming.cpp  **** // Note: last chrom is terminated by the end of genome marker (eBaseEOS+1) and NOT by eBaseEOS
+ 111:cHamming.cpp  **** // 
+ 112:cHamming.cpp  **** // Uses the following byte pointers
+ 113:cHamming.cpp  **** // pSS1,pSS2,pSS3,pSE1,pSE2,pSE3,pHSS1,pHSS2,pHSS3
+ 114:cHamming.cpp  **** // pSS1,pSES1 and pSS2,pSES2 and pSS3,pSES3 could be reduced down to 3 pointers with offset (SubSeq
+ 115:cHamming.cpp  **** // and pSS1, pSS2 could be reduced down to 1 pointer with offset (SSofs)
+ 116:cHamming.cpp  **** // and pHSS1 and pHSS2 could be reduced down to 1 pointer with offset (SSofs)
+ 117:cHamming.cpp  **** // Thus total pointers could be reduced from 9 down to 4, e.g.
+ 118:cHamming.cpp  **** // pSS1, pSS1[SSofs], pSS3, pSS1[SubSeqLen-1],pSS1[SSofs+SubSeqLen-1],pSS3[SubSeqLen-1],pHSS1,pHSS1
+ 119:cHamming.cpp  **** //
+ 120:cHamming.cpp  **** // Uses the following byte vars
+ 121:cHamming.cpp  **** // SS1B,SS2B,SS3B,SE1B,SE2B,SE3B,PPEOScnt,PMEOScnt,PPHD,PMHD
+GAS LISTING /tmp/ccaf76f8.s 			page 6
+
+
+ 122:cHamming.cpp  **** while((SE2B = *pSE2++) < (eBaseEOS+1))
+ 167              		.loc 1 123 0
+ 168 0138 E9480100 		jmp	.L9
+ 168      00
+ 169              	.L23:
+ 123:cHamming.cpp  **** 	{
+ 124:cHamming.cpp  **** 	SE3B = *pSE3--;
+ 170              		.loc 1 125 0
+ 171 013d 488B45B8 		movq	-72(%rbp), %rax
+ 172 0141 0FB600   		movzbl	(%rax), %eax
+ 173 0144 8845F8   		movb	%al, -8(%rbp)
+ 174 0147 48836DB8 		subq	$1, -72(%rbp)
+ 174      01
+ 125:cHamming.cpp  **** 	SE1B = *pSE1++;
+ 175              		.loc 1 126 0
+ 176 014c 488B45C8 		movq	-56(%rbp), %rax
+ 177 0150 0FB600   		movzbl	(%rax), %eax
+ 178 0153 8845FA   		movb	%al, -6(%rbp)
+ 179 0156 488345C8 		addq	$1, -56(%rbp)
+ 179      01
+ 126:cHamming.cpp  **** 	SS1B = *pSS1++;
+ 180              		.loc 1 127 0
+ 181 015b 488B45E0 		movq	-32(%rbp), %rax
+ 182 015f 0FB600   		movzbl	(%rax), %eax
+ 183 0162 8845FD   		movb	%al, -3(%rbp)
+ 184 0165 488345E0 		addq	$1, -32(%rbp)
+ 184      01
+ 127:cHamming.cpp  **** 	SS2B = *pSS2++;
+ 185              		.loc 1 128 0
+ 186 016a 488B45D8 		movq	-40(%rbp), %rax
+ 187 016e 0FB600   		movzbl	(%rax), %eax
+ 188 0171 8845FC   		movb	%al, -4(%rbp)
+ 189 0174 488345D8 		addq	$1, -40(%rbp)
+ 189      01
+ 128:cHamming.cpp  **** 	SS3B = *pSS3--;
+ 190              		.loc 1 129 0
+ 191 0179 488B45D0 		movq	-48(%rbp), %rax
+ 192 017d 0FB600   		movzbl	(%rax), %eax
+ 193 0180 8845FB   		movb	%al, -5(%rbp)
+ 194 0183 48836DD0 		subq	$1, -48(%rbp)
+ 194      01
+ 129:cHamming.cpp  **** 
+ 130:cHamming.cpp  **** 	// objective: if eBaseEOS anywhere within the current subsequences being compared then continue Ha
+ 131:cHamming.cpp  **** 	// do not update the minimum Hamming at pHSS1/pHHS2 or pHHS1/pHSS3 as appropriate dependend on whi
+ 132:cHamming.cpp  **** 	// the eBaseEOS.
+ 133:cHamming.cpp  **** 	// how: increment EOS cnts if the 3' end is currently eBaseEOS, at end of this iteration EOS cnts 
+ 134:cHamming.cpp  **** 	// be decremented when that eBaseEOS is detected at the 5' end
+ 135:cHamming.cpp  **** 	if(SE2B == eBaseEOS)
+ 195              		.loc 1 136 0
+ 196 0188 807DF907 		cmpb	$7, -7(%rbp)
+ 197 018c 7504     		jne	.L10
+ 136:cHamming.cpp  **** 		PPEOScnt += 1;
+ 198              		.loc 1 137 0
+ 199 018e 8045F701 		addb	$1, -9(%rbp)
+ 200              	.L10:
+ 137:cHamming.cpp  **** 	if(SE3B == eBaseEOS)
+ 201              		.loc 1 138 0
+GAS LISTING /tmp/ccaf76f8.s 			page 7
+
+
+ 202 0192 807DF807 		cmpb	$7, -8(%rbp)
+ 203 0196 7504     		jne	.L11
+ 138:cHamming.cpp  **** 		PMEOScnt += 1;
+ 204              		.loc 1 139 0
+ 205 0198 8045F601 		addb	$1, -10(%rbp)
+ 206              	.L11:
+ 139:cHamming.cpp  **** 	if(SE1B == eBaseEOS)
+ 207              		.loc 1 140 0
+ 208 019c 807DFA07 		cmpb	$7, -6(%rbp)
+ 209 01a0 7508     		jne	.L12
+ 140:cHamming.cpp  **** 		{
+ 141:cHamming.cpp  **** 		PPEOScnt += 1;
+ 210              		.loc 1 142 0
+ 211 01a2 8045F701 		addb	$1, -9(%rbp)
+ 142:cHamming.cpp  **** 		PMEOScnt += 1;
+ 212              		.loc 1 143 0
+ 213 01a6 8045F601 		addb	$1, -10(%rbp)
+ 214              	.L12:
+ 143:cHamming.cpp  **** 		}
+ 144:cHamming.cpp  **** 
+ 145:cHamming.cpp  **** 	// if a difference at 5' of subsequences then Hamming += 1
+ 146:cHamming.cpp  **** 	// note that Hammings are decremented if difference at 5' subsequences just before end of this ite
+ 147:cHamming.cpp  **** 	if(SE1B != SE2B)		
+ 215              		.loc 1 148 0
+ 216 01aa 0FB645FA 		movzbl	-6(%rbp), %eax
+ 217 01ae 3A45F9   		cmpb	-7(%rbp), %al
+ 218 01b1 7404     		je	.L13
+ 148:cHamming.cpp  **** 		PPHD += 1;
+ 219              		.loc 1 149 0
+ 220 01b3 8045FF01 		addb	$1, -1(%rbp)
+ 221              	.L13:
+ 149:cHamming.cpp  **** 	if(SE1B != MapCpl[SE3B]) 
+ 222              		.loc 1 150 0
+ 223 01b7 0FB645F8 		movzbl	-8(%rbp), %eax
+ 224 01bb 4898     		cltq
+ 225 01bd 0FB68000 		movzbl	MapCpl(%rax), %eax
+ 225      000000
+ 226 01c4 3A45FA   		cmpb	-6(%rbp), %al
+ 227 01c7 7404     		je	.L14
+ 150:cHamming.cpp  **** 		PMHD += 1;
+ 228              		.loc 1 151 0
+ 229 01c9 8045FE01 		addb	$1, -2(%rbp)
+ 230              	.L14:
+ 151:cHamming.cpp  **** 
+ 152:cHamming.cpp  **** 	// if subsequences currently do not contain any eBaseEOS then the respective EOS cnt will be zero
+ 153:cHamming.cpp  **** 	// if EOS cnt is zero then update the minimum Hammings
+ 154:cHamming.cpp  **** 	if(!PPEOScnt)
+ 231              		.loc 1 155 0
+ 232 01cd 807DF700 		cmpb	$0, -9(%rbp)
+ 233 01d1 752C     		jne	.L15
+ 155:cHamming.cpp  **** 		{
+ 156:cHamming.cpp  **** 		if(*pHSS1 > PPHD)		
+ 234              		.loc 1 157 0
+ 235 01d3 488B45B0 		movq	-80(%rbp), %rax
+ 236 01d7 0FB600   		movzbl	(%rax), %eax
+ 237 01da 3A45FF   		cmpb	-1(%rbp), %al
+ 238 01dd 760A     		jbe	.L16
+GAS LISTING /tmp/ccaf76f8.s 			page 8
+
+
+ 157:cHamming.cpp  **** 			*pHSS1 = PPHD;
+ 239              		.loc 1 158 0
+ 240 01df 488B45B0 		movq	-80(%rbp), %rax
+ 241 01e3 0FB655FF 		movzbl	-1(%rbp), %edx
+ 242 01e7 8810     		movb	%dl, (%rax)
+ 243              	.L16:
+ 158:cHamming.cpp  **** 		if(*pHSS2 > PPHD)		
+ 244              		.loc 1 159 0
+ 245 01e9 488B45A8 		movq	-88(%rbp), %rax
+ 246 01ed 0FB600   		movzbl	(%rax), %eax
+ 247 01f0 3A45FF   		cmpb	-1(%rbp), %al
+ 248 01f3 760A     		jbe	.L15
+ 159:cHamming.cpp  **** 			*pHSS2 = PPHD;
+ 249              		.loc 1 160 0
+ 250 01f5 488B45A8 		movq	-88(%rbp), %rax
+ 251 01f9 0FB655FF 		movzbl	-1(%rbp), %edx
+ 252 01fd 8810     		movb	%dl, (%rax)
+ 253              	.L15:
+ 160:cHamming.cpp  **** 		}
+ 161:cHamming.cpp  **** 	if(!PMEOScnt)
+ 254              		.loc 1 162 0
+ 255 01ff 807DF600 		cmpb	$0, -10(%rbp)
+ 256 0203 752C     		jne	.L17
+ 162:cHamming.cpp  **** 		{
+ 163:cHamming.cpp  **** 		if(*pHSS1 > PMHD)		
+ 257              		.loc 1 164 0
+ 258 0205 488B45B0 		movq	-80(%rbp), %rax
+ 259 0209 0FB600   		movzbl	(%rax), %eax
+ 260 020c 3A45FE   		cmpb	-2(%rbp), %al
+ 261 020f 760A     		jbe	.L18
+ 164:cHamming.cpp  **** 			*pHSS1 = PMHD;
+ 262              		.loc 1 165 0
+ 263 0211 488B45B0 		movq	-80(%rbp), %rax
+ 264 0215 0FB655FE 		movzbl	-2(%rbp), %edx
+ 265 0219 8810     		movb	%dl, (%rax)
+ 266              	.L18:
+ 165:cHamming.cpp  **** 		if(*pHSS3 > PMHD)		
+ 267              		.loc 1 166 0
+ 268 021b 488B45A0 		movq	-96(%rbp), %rax
+ 269 021f 0FB600   		movzbl	(%rax), %eax
+ 270 0222 3A45FE   		cmpb	-2(%rbp), %al
+ 271 0225 760A     		jbe	.L17
+ 166:cHamming.cpp  **** 			*pHSS3 = PMHD;
+ 272              		.loc 1 167 0
+ 273 0227 488B45A0 		movq	-96(%rbp), %rax
+ 274 022b 0FB655FE 		movzbl	-2(%rbp), %edx
+ 275 022f 8810     		movb	%dl, (%rax)
+ 276              	.L17:
+ 167:cHamming.cpp  **** 		}
+ 168:cHamming.cpp  **** 	pHSS1 += 1;
+ 277              		.loc 1 169 0
+ 278 0231 488345B0 		addq	$1, -80(%rbp)
+ 278      01
+ 169:cHamming.cpp  **** 	pHSS2 += 1;
+ 279              		.loc 1 170 0
+ 280 0236 488345A8 		addq	$1, -88(%rbp)
+ 280      01
+GAS LISTING /tmp/ccaf76f8.s 			page 9
+
+
+ 170:cHamming.cpp  **** 	pHSS3 -= 1;
+ 281              		.loc 1 171 0
+ 282 023b 48836DA0 		subq	$1, -96(%rbp)
+ 282      01
+ 171:cHamming.cpp  **** 
+ 172:cHamming.cpp  **** 	// if a difference at 5' start of subsequences then decr Hammings ready for next iteration
+ 173:cHamming.cpp  **** 	if(SS1B != SS2B)	
+ 283              		.loc 1 174 0
+ 284 0240 0FB645FD 		movzbl	-3(%rbp), %eax
+ 285 0244 3A45FC   		cmpb	-4(%rbp), %al
+ 286 0247 7404     		je	.L19
+ 174:cHamming.cpp  **** 		PPHD -= 1;
+ 287              		.loc 1 175 0
+ 288 0249 806DFF01 		subb	$1, -1(%rbp)
+ 289              	.L19:
+ 175:cHamming.cpp  **** 	if(SS1B != MapCpl[SS3B])
+ 290              		.loc 1 176 0
+ 291 024d 0FB645FB 		movzbl	-5(%rbp), %eax
+ 292 0251 4898     		cltq
+ 293 0253 0FB68000 		movzbl	MapCpl(%rax), %eax
+ 293      000000
+ 294 025a 3A45FD   		cmpb	-3(%rbp), %al
+ 295 025d 7404     		je	.L20
+ 176:cHamming.cpp  **** 		PMHD -= 1;
+ 296              		.loc 1 177 0
+ 297 025f 806DFE01 		subb	$1, -2(%rbp)
+ 298              	.L20:
+ 177:cHamming.cpp  **** 
+ 178:cHamming.cpp  **** 	// end of current iteration so if about to lose a eBaseEOS from 5' end then can decrement appropri
+ 179:cHamming.cpp  **** 	if(SS1B == eBaseEOS)
+ 299              		.loc 1 180 0
+ 300 0263 807DFD07 		cmpb	$7, -3(%rbp)
+ 301 0267 7508     		jne	.L21
+ 180:cHamming.cpp  **** 		{
+ 181:cHamming.cpp  **** 		PPEOScnt -= 1;
+ 302              		.loc 1 182 0
+ 303 0269 806DF701 		subb	$1, -9(%rbp)
+ 182:cHamming.cpp  **** 		PMEOScnt -= 1;
+ 304              		.loc 1 183 0
+ 305 026d 806DF601 		subb	$1, -10(%rbp)
+ 306              	.L21:
+ 183:cHamming.cpp  **** 		}
+ 184:cHamming.cpp  **** 	if(SS2B == eBaseEOS)
+ 307              		.loc 1 185 0
+ 308 0271 807DFC07 		cmpb	$7, -4(%rbp)
+ 309 0275 7504     		jne	.L22
+ 185:cHamming.cpp  **** 		PPEOScnt -= 1;
+ 310              		.loc 1 186 0
+ 311 0277 806DF701 		subb	$1, -9(%rbp)
+ 312              	.L22:
+ 186:cHamming.cpp  **** 	if(SS3B == eBaseEOS)
+ 313              		.loc 1 187 0
+ 314 027b 807DFB07 		cmpb	$7, -5(%rbp)
+ 315 027f 7504     		jne	.L9
+ 187:cHamming.cpp  **** 		PMEOScnt -= 1;
+ 316              		.loc 1 188 0
+ 317 0281 806DF601 		subb	$1, -10(%rbp)
+GAS LISTING /tmp/ccaf76f8.s 			page 10
+
+
+ 318              	.L9:
+ 123:cHamming.cpp  **** while((SE2B = *pSE2++) < (eBaseEOS+1))
+ 319              		.loc 1 123 0
+ 320 0285 488B45C0 		movq	-64(%rbp), %rax
+ 321 0289 0FB600   		movzbl	(%rax), %eax
+ 322 028c 8845F9   		movb	%al, -7(%rbp)
+ 323 028f 807DF907 		cmpb	$7, -7(%rbp)
+ 324 0293 0F96C0   		setbe	%al
+ 325 0296 488345C0 		addq	$1, -64(%rbp)
+ 325      01
+ 326 029b 84C0     		testb	%al, %al
+ 327 029d 0F859AFE 		jne	.L23
+ 327      FFFF
+ 328              	.LBE2:
+ 188:cHamming.cpp  **** 	}
+ 189:cHamming.cpp  **** }
+ 329              		.loc 1 190 0
+ 330 02a3 C9       		leave
+ 331 02a4 C3       		ret
+ 332              		.cfi_endproc
+ 333              	.LFE61:
+ 335              		.section	.rodata
+ 336              		.align 4
+ 339              	_ZL11cBSFTypeAny:
+ 340 0000 00000000 		.zero	4
+ 341              		.align 4
+ 344              	_ZL11cBSFTypeSeq:
+ 345 0004 01000000 		.long	1
+ 346              		.align 4
+ 349              	_ZL18cBSFTypeMultiAlign:
+ 350 0008 02000000 		.long	2
+ 351              		.align 4
+ 354              	_ZL11cBSFTypeSfx:
+ 355 000c 03000000 		.long	3
+ 356              		.align 4
+ 359              	_ZL12cBSFTypeRlst:
+ 360 0010 04000000 		.long	4
+ 361              		.align 4
+ 364              	_ZL12cBSFTypeHash:
+ 365 0014 05000000 		.long	5
+ 366              		.align 4
+ 369              	_ZL15cBSFTypeDataPts:
+ 370 0018 06000000 		.long	6
+ 371              		.align 4
+ 374              	_ZL12cBSFTypeFeat:
+ 375 001c 07000000 		.long	7
+ 376              		.align 4
+ 379              	_ZL15cBSFTypeGOAssoc:
+ 380 0020 08000000 		.long	8
+ 381              		.align 4
+ 384              	_ZL15cBSFTypeGOTerms:
+ 385 0024 09000000 		.long	9
+ 386              		.align 4
+ 389              	_ZL17cBSFTypeFMIndexes:
+ 390 0028 0A000000 		.long	10
+ 391              		.align 4
+ 394              	_ZL13cBSFTypeError:
+GAS LISTING /tmp/ccaf76f8.s 			page 11
+
+
+ 395 002c 80000000 		.long	128
+ 396              		.align 4
+ 399              	_ZL17cMBSFFileDescrLen:
+ 400 0030 00040000 		.long	1024
+ 401              		.align 4
+ 404              	_ZL22cMBSFShortFileDescrLen:
+ 405 0034 40000000 		.long	64
+ 408              	_ZL10cRptMskFlg:
+ 409 0038 08       		.byte	8
+ 410 0039 000000   		.align 4
+ 413              	_ZL17cMaxAutoSeq2Ascii:
+ 414 003c FF7F0000 		.long	32767
+ 415              		.align 4
+ 418              	_ZL15cMaxGeneNameLen:
+ 419 0040 34000000 		.long	52
+ 420              		.align 4
+ 423              	_ZL23cMaxDatasetSpeciesChrom:
+ 424 0044 24000000 		.long	36
+ 425              		.align 4
+ 428              	_ZL14cBSFMaxErrMsgs:
+ 429 0048 0A000000 		.long	10
+ 430              		.align 4
+ 433              	_ZL16cBSFMaxErrMsgLen:
+ 434 004c 00020000 		.long	512
+ 435              		.align 4
+ 438              	_ZL16cBSFMaxErrMsgSrc:
+ 439 0050 19000000 		.long	25
+ 440              		.align 4
+ 443              	_ZL17cBSFMaxErrMsgTime:
+ 444 0054 32000000 		.long	50
+ 445              		.align 4
+ 448              	_ZL17cNumParamOctamers:
+ 449 0058 00000100 		.long	65536
+ 450              		.align 4
+ 453              	_ZL21cStructParamAllocSize:
+ 454 005c 28002800 		.long	2621480
+ 455              		.align 4
+ 458              	_ZL20cDfltScreenDiagLevel:
+ 459 0060 03000000 		.long	3
+ 460              		.align 4
+ 463              	_ZL18cDfltFileDiagLevel:
+ 464 0064 03000000 		.long	3
+ 465              		.align 4
+ 468              	_ZL11cMaxDiagLen:
+ 469 0068 00080000 		.long	2048
+ 470 006c 00000000 		.align 8
+ 473              	_ZL18cDfltStageBuffSize:
+ 474 0070 00000200 		.quad	131072
+ 474      00000000 
+ 475              		.align 8
+ 478              	_ZL17cMaxStageBuffSize:
+ 479 0078 00001000 		.quad	1048576
+ 479      00000000 
+ 480              		.align 8
+ 483              	_ZL17cMinStageBuffSize:
+ 484 0080 00400000 		.quad	16384
+ 484      00000000 
+GAS LISTING /tmp/ccaf76f8.s 			page 12
+
+
+ 485              		.align 4
+ 488              	_ZL19cMaxGenFastaLineLen:
+ 489 0088 4B000000 		.long	75
+ 490              		.align 4
+ 493              	_ZL17cMaxFastaDescrLen:
+ 494 008c 00200000 		.long	8192
+ 495              		.align 4
+ 498              	_ZL15cMaxFastQSeqLen:
+ 499 0090 00080000 		.long	2048
+ 500              		.align 4
+ 503              	_ZL14cBSFeatVersion:
+ 504 0094 0A000000 		.long	10
+ 505              		.align 4
+ 508              	_ZL19cBSFFeatVersionBack:
+ 509 0098 0A000000 		.long	10
+ 510              		.align 4
+ 513              	_ZL13cMaxNumChroms:
+ 514 009c 00D00700 		.long	512000
+ 515              		.align 4
+ 518              	_ZL15cMaxFeatNameLen:
+ 519 00a0 32000000 		.long	50
+ 520              		.align 4
+ 523              	_ZL12cMaxNumFeats:
+ 524 00a4 002D3101 		.long	20000000
+ 525              		.align 4
+ 528              	_ZL12cMaxNumExons:
+ 529 00a8 401F0000 		.long	8000
+ 530              		.align 4
+ 533              	_ZL12cLineBuffLen:
+ 534 00ac 80FA0000 		.long	64128
+ 535              		.align 4
+ 538              	_ZL14cAllocFeatIncr:
+ 539 00b0 FFFF3F00 		.long	4194303
+ 540              		.align 4
+ 543              	_ZL23cAllocBEDChromNamesIncr:
+ 544 00b4 FF0F0000 		.long	4095
+ 545              		.align 4
+ 548              	_ZL10cMinRegLen:
+ 549 00b8 00000000 		.zero	4
+ 550              		.align 4
+ 553              	_ZL11cDfltRegLen:
+ 554 00bc D0070000 		.long	2000
+ 555              		.align 4
+ 558              	_ZL10cMaxRegLen:
+ 559 00c0 40420F00 		.long	1000000
+ 560              		.align 4
+ 563              	_ZL17cMinSpliceOverlap:
+ 564 00c4 02000000 		.long	2
+ 565              		.align 4
+ 568              	_ZL21cBFSessionSyncTimeout:
+ 569 00c8 10270000 		.long	10000
+ 570              		.align 4
+ 573              	_ZL17cMinNumBFSessions:
+ 574 00cc 32000000 		.long	50
+ 575              		.align 4
+ 578              	_ZL17cMaxNumBFSessions:
+ 579 00d0 88130000 		.long	5000
+GAS LISTING /tmp/ccaf76f8.s 			page 13
+
+
+ 580              		.align 4
+ 583              	_ZL11cFeatBitCDS:
+ 584 00d4 01000000 		.long	1
+ 585              		.align 4
+ 588              	_ZL12cFeatBit5UTR:
+ 589 00d8 02000000 		.long	2
+ 590              		.align 4
+ 593              	_ZL12cFeatBit3UTR:
+ 594 00dc 04000000 		.long	4
+ 595              		.align 4
+ 598              	_ZL15cFeatBitIntrons:
+ 599 00e0 08000000 		.long	8
+ 600              		.align 4
+ 603              	_ZL16cFeatBitUpstream:
+ 604 00e4 10000000 		.long	16
+ 605              		.align 4
+ 608              	_ZL16cFeatBitDnstream:
+ 609 00e8 20000000 		.long	32
+ 610              		.align 4
+ 613              	_ZL21cIntronExonSpliceSite:
+ 614 00ec 40000000 		.long	64
+ 615              		.align 4
+ 618              	_ZL21cExonIntronSpliceSite:
+ 619 00f0 80000000 		.long	128
+ 620              		.align 4
+ 623              	_ZL10cFeatBitIG:
+ 624 00f4 00010000 		.long	256
+ 625              		.align 4
+ 628              	_ZL12cNumCharRegs:
+ 629 00f8 09000000 		.long	9
+ 630              		.align 4
+ 633              	_ZL15cFeatBitFeature:
+ 634 00fc 00010000 		.long	256
+ 635              		.align 4
+ 638              	_ZL13cFeatBitExons:
+ 639 0100 00020000 		.long	512
+ 640              		.align 4
+ 643              	_ZL12cAnyFeatBits:
+ 644 0104 3F010000 		.long	319
+ 645              		.align 4
+ 648              	_ZL15cRegionFeatBits:
+ 649 0108 3F000000 		.long	63
+ 650              		.align 4
+ 653              	_ZL20cOverlaysSpliceSites:
+ 654 010c C0000000 		.long	192
+ 655              		.align 4
+ 658              	_ZL11cFeatFiltIn:
+ 659 0110 01000000 		.long	1
+ 660              		.align 4
+ 663              	_ZL12cFeatFiltOut:
+ 664 0114 02000000 		.long	2
+ 665              		.align 4
+ 668              	_ZL11cBSFVersion:
+ 669 0118 0A000000 		.long	10
+ 670              		.align 4
+ 673              	_ZL15cBSFVersionBack:
+ 674 011c 0A000000 		.long	10
+GAS LISTING /tmp/ccaf76f8.s 			page 14
+
+
+ 675              		.align 4
+ 678              	_ZL17cBSFMaxDirEntries:
+ 679 0120 002D3101 		.long	20000000
+ 680              		.align 4
+ 683              	_ZL16cBSFDataBuffSize:
+ 684 0124 FFFF0700 		.long	524287
+ 685              		.align 4
+ 688              	_ZL17cAllocEntriesIncr:
+ 689 0128 FFFF0F00 		.long	1048575
+ 690              		.align 4
+ 693              	_ZL14cBSFSourceSize:
+ 694 012c FF000000 		.long	255
+ 695              		.align 4
+ 698              	_ZL19cBSFDescriptionSize:
+ 699 0130 FF0F0000 		.long	4095
+ 700              		.align 4
+ 703              	_ZL17cMaxFileReadChunk:
+ 704 0134 00943577 		.long	2000000000
+ 705              		.align 4
+ 708              	_ZL15cDfltHFBuffSize:
+ 709 0138 FFFF0300 		.long	262143
+ 710              		.align 4
+ 713              	_ZL14cMaxHFBuffSize:
+ 714 013c FFFF0700 		.long	524287
+ 715              		.align 4
+ 718              	_ZL15cMaxHashWinSize:
+ 719 0140 C8000000 		.long	200
+ 720              		.align 4
+ 723              	_ZL15cMinHashWinSize:
+ 724 0144 0A000000 		.long	10
+ 725              		.align 4
+ 728              	_ZL13cMaxHashRange:
+ 729 0148 1A000000 		.long	26
+ 730              		.align 4
+ 733              	_ZL15cHashesPerBlock:
+ 734 014c FFFF0000 		.long	65535
+ 735              		.align 4
+ 738              	_ZL15cMaxExtdMatches:
+ 739 0150 FFFF0F00 		.long	1048575
+ 740              		.align 4
+ 743              	_ZL17cBlockExtdMatches:
+ 744 0154 FFFF0000 		.long	65535
+ 745              		.align 4
+ 748              	_ZL15cMaxMatchSeqSeq:
+ 749 0158 204E0000 		.long	20000
+ 750              		.align 4
+ 753              	_ZL11cDSFVersion:
+ 754 015c 04000000 		.long	4
+ 755              		.align 4
+ 758              	_ZL15cDSFVersionBack:
+ 759 0160 04000000 		.long	4
+ 760              		.align 4
+ 763              	_ZL11cDSFAvgSegs:
+ 764 0164 00D00700 		.long	512000
+ 765              		.align 4
+ 768              	_ZL15cDSFMaxDatasets:
+ 769 0168 32000000 		.long	50
+GAS LISTING /tmp/ccaf76f8.s 			page 15
+
+
+ 770              		.align 4
+ 773              	_ZL20cDSFMaxChromsDataset:
+ 774 016c 00D00700 		.long	512000
+ 775              		.align 4
+ 778              	_ZL18cDSFMaxTotalChroms:
+ 779 0170 00401F00 		.long	2048000
+ 780              		.align 4
+ 783              	_ZL13cDSFMaxDirEls:
+ 784 0174 00A08601 		.long	25600000
+ 785              		.align 4
+ 788              	_ZL14cDSFMaxDataPts:
+ 789 0178 00D00700 		.long	512000
+ 790              		.align 4
+ 793              	_ZL13cMALGNVersion:
+ 794 017c 0B000000 		.long	11
+ 795              		.align 4
+ 798              	_ZL17cMALGNVersionBack:
+ 799 0180 0A000000 		.long	10
+ 800              		.align 4
+ 803              	_ZL18cMaxAlignedSpecies:
+ 804 0184 32000000 		.long	50
+ 805              		.align 4
+ 808              	_ZL17cMaxAlignedChroms:
+ 809 0188 FFFF7F00 		.long	8388607
+ 810              		.align 4
+ 813              	_ZL12cMaxSrcFiles:
+ 814 018c 64000000 		.long	100
+ 815              		.align 4
+ 818              	_ZL15cMaxAlignBlocks:
+ 819 0190 FFFFFF03 		.long	67108863
+ 820              		.align 4
+ 823              	_ZL15cMaxAlignSeqLen:
+ 824 0194 FFFF3F00 		.long	4194303
+ 825              		.align 4
+ 828              	_ZL15cMaxMetaDataLen:
+ 829 0198 00040000 		.long	1024
+ 830              		.align 4
+ 833              	_ZL12cMaxParamLen:
+ 834 019c 00100000 		.long	4096
+ 835              		.align 4
+ 838              	_ZL16cChromIDHashSize:
+ 839 01a0 00800000 		.long	32768
+ 842              	_ZL16cMASeqOverlayFlg:
+ 843 01a4 01       		.byte	1
+ 844 01a5 000000   		.align 4
+ 847              	_ZL12cAlloc4Block:
+ 848 01a8 BA008002 		.long	41943226
+ 849              		.align 4
+ 852              	_ZL12cNumHistBins:
+ 853 01ac C8000000 		.long	200
+ 854              		.align 4
+ 857              	_ZL15cMaxNumDPsInSeg:
+ 858 01b0 00D00700 		.long	512000
+ 859              		.align 4
+ 862              	_ZL14cAllocPutCores:
+ 863 01b4 A0860100 		.long	100000
+ 864              		.align 4
+GAS LISTING /tmp/ccaf76f8.s 			page 16
+
+
+ 867              	_ZL11cSFXVersion:
+ 868 01b8 01000000 		.long	1
+ 869              		.align 4
+ 872              	_ZL15cSFXVersionBack:
+ 873 01bc 01000000 		.long	1
+ 874              		.align 4
+ 877              	_ZL12cSigWaitSecs:
+ 878 01c0 05000000 		.long	5
+ 879              		.align 4
+ 882              	_ZL15cSigMaxWaitSecs:
+ 883 01c4 58020000 		.long	600
+ 884              		.align 4
+ 887              	_ZL16cSigTermWaitSecs:
+ 888 01c8 02000000 		.long	2
+ 889              		.align 4
+ 892              	_ZL14cMaxSfxEntries:
+ 893 01cc 10270000 		.long	10000
+ 894              		.align 4
+ 897              	_ZL13cMaxSfxSeqLen:
+ 898 01d0 86010000 		.long	390
+ 899              		.align 4
+ 902              	_ZL13cMinSfxSeqLen:
+ 903 01d4 64000000 		.long	100
+ 904              		.align 4
+ 907              	_ZL14cDfltSfxSeqLen:
+ 908 01d8 FA000000 		.long	250
+ 909              		.align 4
+ 912              	_ZL13cMaxSfxBlocks:
+ 913 01dc 64000000 		.long	100
+ 914              		.align 2
+ 917              	_ZL15cDfltMatchScore:
+ 919              		.align 2
+ 922              	_ZL18cDfltMismatchScore:
+ 924              		.align 2
+ 927              	_ZL17cDfltGapOpenScore:
+ 929              		.align 2
+ 932              	_ZL16cDfltGapExtScore:
+ 934              		.align 4
+ 937              	_ZL9cScoreMsk:
+ 938 01e8 FF1F0000 		.long	8191
+ 939              		.align 4
+ 942              	_ZL15cTrcBckMatchFlg:
+ 943 01ec 00100000 		.long	4096
+ 944              		.align 4
+ 947              	_ZL10cTrcBckMsk:
+ 948 01f0 00600000 		.long	24576
+ 949              		.align 4
+ 952              	_ZL11cTrcBckDiag:
+ 953 01f4 00200000 		.long	8192
+ 954              		.align 4
+ 957              	_ZL9cTrcBckUp:
+ 958 01f8 00400000 		.long	16384
+ 959              		.align 4
+ 962              	_ZL11cTrcBckLeft:
+ 963 01fc 00600000 		.long	24576
+ 964              		.align 4
+ 967              	_ZL10cGapOpnFlg:
+GAS LISTING /tmp/ccaf76f8.s 			page 17
+
+
+ 968 0200 00800000 		.long	32768
+ 969              		.align 4
+ 972              	_ZL19cDlftSparsePoolSize:
+ 973 0204 FFFF0F00 		.long	1048575
+ 974              		.align 4
+ 977              	_ZL15cMaxSparseScore:
+ 978 0208 FFFF0000 		.long	65535
+ 979              		.align 4
+ 982              	_ZL18cDfltMinSumMatches:
+ 983 020c 05000000 		.long	5
+ 986              	_ZL16cSparseGapOpnFlg:
+ 987 0210 01       		.byte	1
+ 990              	_ZL17cSparseTrcBckDiag:
+ 991 0211 02       		.byte	2
+ 994              	_ZL15cSparseTrcBckUp:
+ 995 0212 04       		.byte	4
+ 998              	_ZL17cSparseTrcBckLeft:
+ 999 0213 08       		.byte	8
+ 1002              	_ZL18cSparseTrcBckMatch:
+ 1003 0214 10       		.byte	16
+ 1006              	_ZL17cSparseCellLocked:
+ 1007 0215 20       		.byte	32
+ 1008 0216 0000     		.align 4
+ 1011              	_ZL18cAllocAlignSeqIncr:
+ 1012 0218 005A6202 		.long	40000000
+ 1013              		.align 4
+ 1016              	_ZL20cAllocChromNamesIncr:
+ 1017 021c 10270000 		.long	10000
+ 1018              		.align 4
+ 1021              	_ZL22cAllocSpeciesNamesIncr:
+ 1022 0220 32000000 		.long	50
+ 1023              		.align 4
+ 1026              	_ZL15cMaxSeqLenStats:
+ 1027 0224 204E0000 		.long	20000
+ 1028              		.align 4
+ 1031              	_ZL14cMaxChiSqrRows:
+ 1032 0228 0A000000 		.long	10
+ 1033              		.align 4
+ 1036              	_ZL14cMaxChiSqrCols:
+ 1037 022c FA000000 		.long	250
+ 1038              		.align 4
+ 1041              	_ZL14cAllocLogFacts:
+ 1042 0230 20A10700 		.long	500000
+ 1043              		.align 4
+ 1046              	_ZL16cMaxTotSampleCnt:
+ 1047 0234 80D1F008 		.long	150000000
+ 1048              		.align 4
+ 1051              	_ZL17cBSGOAssocVersion:
+ 1052 0238 0A000000 		.long	10
+ 1053              		.align 4
+ 1056              	_ZL21cBSGOAssocVersionBack:
+ 1057 023c 0A000000 		.long	10
+ 1058              		.align 4
+ 1061              	_ZL14cAllocNumGenes:
+ 1062 0240 50C30000 		.long	50000
+ 1063              		.align 4
+ 1066              	_ZL14cAllocNumAssoc:
+GAS LISTING /tmp/ccaf76f8.s 			page 18
+
+
+ 1067 0244 90D00300 		.long	250000
+ 1068              		.align 4
+ 1071              	_ZL12cAllocIdents:
+ 1072 0248 404B4C00 		.long	5000000
+ 1073              		.align 4
+ 1076              	_ZL16cMaxGOIDsPerGene:
+ 1077 024c D0070000 		.long	2000
+ 1078              		.align 4
+ 1081              	_ZL12cMaxLenGO_DB:
+ 1082 0250 14000000 		.long	20
+ 1083              		.align 4
+ 1086              	_ZL14cMaxGOFieldLen:
+ 1087 0254 00010000 		.long	256
+ 1088              		.align 4
+ 1091              	_ZL12cMaxMapFroms:
+ 1092 0258 E8030000 		.long	1000
+ 1093              		.align 4
+ 1096              	_ZL17cBSGOTermsVersion:
+ 1097 025c 0A000000 		.long	10
+ 1098              		.align 4
+ 1101              	_ZL21cBSGOTermsVersionBack:
+ 1102 0260 0A000000 		.long	10
+ 1103              		.align 4
+ 1106              	_ZL14cMaxOBOLineLen:
+ 1107 0264 00080000 		.long	2048
+ 1108              		.align 4
+ 1111              	_ZL20cMaxOBOJoinedLineLen:
+ 1112 0268 00A00000 		.long	40960
+ 1113              		.align 4
+ 1116              	_ZL13cMaxOBOTagLen:
+ 1117 026c 40000000 		.long	64
+ 1118              		.align 4
+ 1121              	_ZL11cMaxOBOGOID:
+ 1122 0270 20000000 		.long	32
+ 1123              		.align 4
+ 1126              	_ZL13cMaxOBOGOname:
+ 1127 0274 80000000 		.long	128
+ 1128              		.align 4
+ 1131              	_ZL18cMaxOBOGOnamespace:
+ 1132 0278 40000000 		.long	64
+ 1133              		.align 4
+ 1136              	_ZL12cMaxOBOGOdef:
+ 1137 027c 00080000 		.long	2048
+ 1138              		.align 4
+ 1141              	_ZL16cMaxOBOGOcomment:
+ 1142 0280 00080000 		.long	2048
+ 1143              		.align 4
+ 1146              	_ZL16cMaxOBOGOdDbxref:
+ 1147 0284 80000000 		.long	128
+ 1148              		.align 4
+ 1151              	_ZL18cMaxOBOParentGOIDs:
+ 1152 0288 64000000 		.long	100
+ 1153              		.align 4
+ 1156              	_ZL15cMaxOBOAltGOIDs:
+ 1157 028c 64000000 		.long	100
+ 1158              		.align 4
+ 1161              	_ZL18cMaxOBOPartOfGOIDs:
+GAS LISTING /tmp/ccaf76f8.s 			page 19
+
+
+ 1162 0290 64000000 		.long	100
+ 1163              		.align 4
+ 1166              	_ZL11cAllocTerms:
+ 1167 0294 983A0000 		.long	15000
+ 1168              		.align 4
+ 1171              	_ZL15cAllocGOIDlists:
+ 1172 0298 204E0000 		.long	20000
+ 1173              		.align 4
+ 1176              	_ZL11cAllocGOIDs:
+ 1177 029c FFFF0F00 		.long	1048575
+ 1178              		.align 4
+ 1181              	_ZL15cAllocGOTagVals:
+ 1182 02a0 FFFF3F00 		.long	4194303
+ 1183              		.align 4
+ 1186              	_ZL14cClampCountVal:
+ 1187 02a4 FFFFFF7F 		.long	2147483647
+ 1188              		.align 4
+ 1191              	_ZL13cConfScoreMsk:
+ 1192 02a8 FFFFFF00 		.long	16777215
+ 1193              		.align 4
+ 1196              	_ZL19cConfTrcBckMatchFlg:
+ 1197 02ac 00000001 		.long	16777216
+ 1198              		.align 4
+ 1201              	_ZL14cConfTrcBckMsk:
+ 1202 02b0 00000006 		.long	100663296
+ 1203              		.align 4
+ 1206              	_ZL15cConfTrcBckDiag:
+ 1207 02b4 00000002 		.long	33554432
+ 1208              		.align 4
+ 1211              	_ZL13cConfTrcBckUp:
+ 1212 02b8 00000004 		.long	67108864
+ 1213              		.align 4
+ 1216              	_ZL15cConfTrcBckLeft:
+ 1217 02bc 00000006 		.long	100663296
+ 1218              		.align 4
+ 1221              	_ZL14cConfGapOpnFlg:
+ 1222 02c0 00000008 		.long	134217728
+ 1223              		.align 4
+ 1226              	_ZL14cMaxProb100Int:
+ 1227 02c4 10270000 		.long	10000
+ 1228              		.align 4
+ 1231              	_ZL20cMaxStatTransPeriods:
+ 1232 02c8 E8030000 		.long	1000
+ 1233              		.align 4
+ 1236              	_ZL18cNumCentroidParams:
+ 1237 02cc 00400000 		.long	16384
+ 1238              		.align 4
+ 1241              	_ZL23cCentroidParamAllocSize:
+ 1242 02d0 00000A00 		.long	655360
+ 1243              		.align 4
+ 1246              	_ZL20cTransMatixAllocSize:
+ 1247 02d4 0000E000 		.long	14680064
+ 1250              	_ZL17cDfltFieldSepChar:
+ 1251 02d8 2C       		.byte	44
+ 1254              	_ZL16cDfltCommentChar:
+ 1255 02d9 23       		.byte	35
+ 1258              	_ZL13cDfltTextChar:
+GAS LISTING /tmp/ccaf76f8.s 			page 20
+
+
+ 1259 02da 22       		.byte	34
+ 1260 02db 00       		.align 4
+ 1263              	_ZL13cCSVMaxFields:
+ 1264 02dc 00040000 		.long	1024
+ 1265              		.align 4
+ 1268              	_ZL14cCSVDfltFields:
+ 1269 02e0 64000000 		.long	100
+ 1270              		.align 4
+ 1273              	_ZL13cCSVMinFields:
+ 1274 02e4 0A000000 		.long	10
+ 1275              		.align 4
+ 1278              	_ZL15cCSVMaxFieldLen:
+ 1279 02e8 FF3F0000 		.long	16383
+ 1280              		.align 4
+ 1283              	_ZL16cCSVDfltFieldLen:
+ 1284 02ec C8000000 		.long	200
+ 1285              		.align 4
+ 1288              	_ZL15cCSVMinFieldLen:
+ 1289 02f0 0A000000 		.long	10
+ 1290              		.align 4
+ 1293              	_ZL14cCSVMaxLineLen:
+ 1294 02f4 00240001 		.long	16786432
+ 1295              		.align 4
+ 1298              	_ZL15cCSVDfltLineLen:
+ 1299 02f8 08520000 		.long	21000
+ 1300              		.align 4
+ 1303              	_ZL14cCSVMinLineLen:
+ 1304 02fc C8000000 		.long	200
+ 1305              		.align 4
+ 1308              	_ZL16cAllocBuffFactor:
+ 1309 0300 0A000000 		.long	10
+ 1310              		.align 4
+ 1313              	_ZL15cMaxComparedLCP:
+ 1314 0304 E0930400 		.long	300000
+ 1315              		.align 4
+ 1318              	_ZL12cDSSFREESIZE:
+ 1319 0308 88130000 		.long	5000
+ 1320              		.align 4
+ 1323              	_ZL14cDSSMax_thresh:
+ 1324 030c 1E000000 		.long	30
+ 1325              		.align 4
+ 1328              	_ZL15cMinL2BlockSize:
+ 1329 0310 01000000 		.long	1
+ 1330              		.align 4
+ 1333              	_ZL16cDfltL2BlockSize:
+ 1334 0314 01000000 		.long	1
+ 1335              		.align 4
+ 1338              	_ZL15cMaxL2BlockSize:
+ 1339 0318 04000000 		.long	4
+ 1340              		.align 4
+ 1343              	_ZL15cMinL1BlockSize:
+ 1344 031c 04000000 		.long	4
+ 1345              		.align 4
+ 1348              	_ZL16cDfltL1BlockSize:
+ 1349 0320 10000000 		.long	16
+ 1350              		.align 4
+ 1353              	_ZL15cMaxL1BlockSize:
+GAS LISTING /tmp/ccaf76f8.s 			page 21
+
+
+ 1354 0324 FF7F0000 		.long	32767
+ 1355              		.align 8
+ 1358              	_ZL15cDfltMarkerFreq:
+ 1359 0328 7B14AE47 		.long	1202590843
+ 1360 032c E17A943F 		.long	1066695393
+ 1361              		.align 4
+ 1364              	_ZL11BZ_N_GROUPS:
+ 1365 0330 06000000 		.long	6
+ 1366              		.align 4
+ 1369              	_ZL15BZ_MAX_CODE_LEN:
+ 1370 0334 17000000 		.long	23
+ 1371              		.align 4
+ 1374              	_ZL17BZ_MAX_ALPHA_SIZE:
+ 1375 0338 02010000 		.long	258
+ 1376              		.align 4
+ 1379              	_ZL9ALPHASIZE:
+ 1380 033c 00010000 		.long	256
+ 1381              		.align 4
+ 1384              	_ZL17cElInitalAllocNum:
+ 1385 0340 80969800 		.long	10000000
+ 1386              		.align 4
+ 1389              	_ZL15cElGrowAllocNum:
+ 1390 0344 20A10700 		.long	500000
+ 1391              		.align 4
+ 1394              	_ZL21cChromsInitalAllocNum:
+ 1395 0348 10270000 		.long	10000
+ 1396              		.align 4
+ 1399              	_ZL19cChromsGrowAllocNum:
+ 1400 034c E8030000 		.long	1000
+ 1401              		.align 4
+ 1404              	_ZL11cMaxElTypes:
+ 1405 0350 32000000 		.long	50
+ 1406              		.align 4
+ 1409              	_ZL11cMaxSpecies:
+ 1410 0354 C8000000 		.long	200
+ 1411              		.align 4
+ 1414              	_ZL21cFiltRefIDsAllocChunk:
+ 1415 0358 10270000 		.long	10000
+ 1416              		.align 4
+ 1419              	_ZL19cFiltLociAllocChunk:
+ 1420 035c 10270000 		.long	10000
+ 1421              		.text
+ 1422              	.Letext0:
+GAS LISTING /tmp/ccaf76f8.s 			page 22
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 cHamming.cpp
+     /tmp/ccaf76f8.s:14     .data:0000000000000000 MapCpl
+     /tmp/ccaf76f8.s:27     .text:0000000000000000 _Z8GHamDistjiPhS_j
+     /tmp/ccaf76f8.s:339    .rodata:0000000000000000 _ZL11cBSFTypeAny
+     /tmp/ccaf76f8.s:344    .rodata:0000000000000004 _ZL11cBSFTypeSeq
+     /tmp/ccaf76f8.s:349    .rodata:0000000000000008 _ZL18cBSFTypeMultiAlign
+     /tmp/ccaf76f8.s:354    .rodata:000000000000000c _ZL11cBSFTypeSfx
+     /tmp/ccaf76f8.s:359    .rodata:0000000000000010 _ZL12cBSFTypeRlst
+     /tmp/ccaf76f8.s:364    .rodata:0000000000000014 _ZL12cBSFTypeHash
+     /tmp/ccaf76f8.s:369    .rodata:0000000000000018 _ZL15cBSFTypeDataPts
+     /tmp/ccaf76f8.s:374    .rodata:000000000000001c _ZL12cBSFTypeFeat
+     /tmp/ccaf76f8.s:379    .rodata:0000000000000020 _ZL15cBSFTypeGOAssoc
+     /tmp/ccaf76f8.s:384    .rodata:0000000000000024 _ZL15cBSFTypeGOTerms
+     /tmp/ccaf76f8.s:389    .rodata:0000000000000028 _ZL17cBSFTypeFMIndexes
+     /tmp/ccaf76f8.s:394    .rodata:000000000000002c _ZL13cBSFTypeError
+     /tmp/ccaf76f8.s:399    .rodata:0000000000000030 _ZL17cMBSFFileDescrLen
+     /tmp/ccaf76f8.s:404    .rodata:0000000000000034 _ZL22cMBSFShortFileDescrLen
+     /tmp/ccaf76f8.s:408    .rodata:0000000000000038 _ZL10cRptMskFlg
+     /tmp/ccaf76f8.s:413    .rodata:000000000000003c _ZL17cMaxAutoSeq2Ascii
+     /tmp/ccaf76f8.s:418    .rodata:0000000000000040 _ZL15cMaxGeneNameLen
+     /tmp/ccaf76f8.s:423    .rodata:0000000000000044 _ZL23cMaxDatasetSpeciesChrom
+     /tmp/ccaf76f8.s:428    .rodata:0000000000000048 _ZL14cBSFMaxErrMsgs
+     /tmp/ccaf76f8.s:433    .rodata:000000000000004c _ZL16cBSFMaxErrMsgLen
+     /tmp/ccaf76f8.s:438    .rodata:0000000000000050 _ZL16cBSFMaxErrMsgSrc
+     /tmp/ccaf76f8.s:443    .rodata:0000000000000054 _ZL17cBSFMaxErrMsgTime
+     /tmp/ccaf76f8.s:448    .rodata:0000000000000058 _ZL17cNumParamOctamers
+     /tmp/ccaf76f8.s:453    .rodata:000000000000005c _ZL21cStructParamAllocSize
+     /tmp/ccaf76f8.s:458    .rodata:0000000000000060 _ZL20cDfltScreenDiagLevel
+     /tmp/ccaf76f8.s:463    .rodata:0000000000000064 _ZL18cDfltFileDiagLevel
+     /tmp/ccaf76f8.s:468    .rodata:0000000000000068 _ZL11cMaxDiagLen
+     /tmp/ccaf76f8.s:473    .rodata:0000000000000070 _ZL18cDfltStageBuffSize
+     /tmp/ccaf76f8.s:478    .rodata:0000000000000078 _ZL17cMaxStageBuffSize
+     /tmp/ccaf76f8.s:483    .rodata:0000000000000080 _ZL17cMinStageBuffSize
+     /tmp/ccaf76f8.s:488    .rodata:0000000000000088 _ZL19cMaxGenFastaLineLen
+     /tmp/ccaf76f8.s:493    .rodata:000000000000008c _ZL17cMaxFastaDescrLen
+     /tmp/ccaf76f8.s:498    .rodata:0000000000000090 _ZL15cMaxFastQSeqLen
+     /tmp/ccaf76f8.s:503    .rodata:0000000000000094 _ZL14cBSFeatVersion
+     /tmp/ccaf76f8.s:508    .rodata:0000000000000098 _ZL19cBSFFeatVersionBack
+     /tmp/ccaf76f8.s:513    .rodata:000000000000009c _ZL13cMaxNumChroms
+     /tmp/ccaf76f8.s:518    .rodata:00000000000000a0 _ZL15cMaxFeatNameLen
+     /tmp/ccaf76f8.s:523    .rodata:00000000000000a4 _ZL12cMaxNumFeats
+     /tmp/ccaf76f8.s:528    .rodata:00000000000000a8 _ZL12cMaxNumExons
+     /tmp/ccaf76f8.s:533    .rodata:00000000000000ac _ZL12cLineBuffLen
+     /tmp/ccaf76f8.s:538    .rodata:00000000000000b0 _ZL14cAllocFeatIncr
+     /tmp/ccaf76f8.s:543    .rodata:00000000000000b4 _ZL23cAllocBEDChromNamesIncr
+     /tmp/ccaf76f8.s:548    .rodata:00000000000000b8 _ZL10cMinRegLen
+     /tmp/ccaf76f8.s:553    .rodata:00000000000000bc _ZL11cDfltRegLen
+     /tmp/ccaf76f8.s:558    .rodata:00000000000000c0 _ZL10cMaxRegLen
+     /tmp/ccaf76f8.s:563    .rodata:00000000000000c4 _ZL17cMinSpliceOverlap
+     /tmp/ccaf76f8.s:568    .rodata:00000000000000c8 _ZL21cBFSessionSyncTimeout
+     /tmp/ccaf76f8.s:573    .rodata:00000000000000cc _ZL17cMinNumBFSessions
+     /tmp/ccaf76f8.s:578    .rodata:00000000000000d0 _ZL17cMaxNumBFSessions
+     /tmp/ccaf76f8.s:583    .rodata:00000000000000d4 _ZL11cFeatBitCDS
+     /tmp/ccaf76f8.s:588    .rodata:00000000000000d8 _ZL12cFeatBit5UTR
+     /tmp/ccaf76f8.s:593    .rodata:00000000000000dc _ZL12cFeatBit3UTR
+     /tmp/ccaf76f8.s:598    .rodata:00000000000000e0 _ZL15cFeatBitIntrons
+GAS LISTING /tmp/ccaf76f8.s 			page 23
+
+
+     /tmp/ccaf76f8.s:603    .rodata:00000000000000e4 _ZL16cFeatBitUpstream
+     /tmp/ccaf76f8.s:608    .rodata:00000000000000e8 _ZL16cFeatBitDnstream
+     /tmp/ccaf76f8.s:613    .rodata:00000000000000ec _ZL21cIntronExonSpliceSite
+     /tmp/ccaf76f8.s:618    .rodata:00000000000000f0 _ZL21cExonIntronSpliceSite
+     /tmp/ccaf76f8.s:623    .rodata:00000000000000f4 _ZL10cFeatBitIG
+     /tmp/ccaf76f8.s:628    .rodata:00000000000000f8 _ZL12cNumCharRegs
+     /tmp/ccaf76f8.s:633    .rodata:00000000000000fc _ZL15cFeatBitFeature
+     /tmp/ccaf76f8.s:638    .rodata:0000000000000100 _ZL13cFeatBitExons
+     /tmp/ccaf76f8.s:643    .rodata:0000000000000104 _ZL12cAnyFeatBits
+     /tmp/ccaf76f8.s:648    .rodata:0000000000000108 _ZL15cRegionFeatBits
+     /tmp/ccaf76f8.s:653    .rodata:000000000000010c _ZL20cOverlaysSpliceSites
+     /tmp/ccaf76f8.s:658    .rodata:0000000000000110 _ZL11cFeatFiltIn
+     /tmp/ccaf76f8.s:663    .rodata:0000000000000114 _ZL12cFeatFiltOut
+     /tmp/ccaf76f8.s:668    .rodata:0000000000000118 _ZL11cBSFVersion
+     /tmp/ccaf76f8.s:673    .rodata:000000000000011c _ZL15cBSFVersionBack
+     /tmp/ccaf76f8.s:678    .rodata:0000000000000120 _ZL17cBSFMaxDirEntries
+     /tmp/ccaf76f8.s:683    .rodata:0000000000000124 _ZL16cBSFDataBuffSize
+     /tmp/ccaf76f8.s:688    .rodata:0000000000000128 _ZL17cAllocEntriesIncr
+     /tmp/ccaf76f8.s:693    .rodata:000000000000012c _ZL14cBSFSourceSize
+     /tmp/ccaf76f8.s:698    .rodata:0000000000000130 _ZL19cBSFDescriptionSize
+     /tmp/ccaf76f8.s:703    .rodata:0000000000000134 _ZL17cMaxFileReadChunk
+     /tmp/ccaf76f8.s:708    .rodata:0000000000000138 _ZL15cDfltHFBuffSize
+     /tmp/ccaf76f8.s:713    .rodata:000000000000013c _ZL14cMaxHFBuffSize
+     /tmp/ccaf76f8.s:718    .rodata:0000000000000140 _ZL15cMaxHashWinSize
+     /tmp/ccaf76f8.s:723    .rodata:0000000000000144 _ZL15cMinHashWinSize
+     /tmp/ccaf76f8.s:728    .rodata:0000000000000148 _ZL13cMaxHashRange
+     /tmp/ccaf76f8.s:733    .rodata:000000000000014c _ZL15cHashesPerBlock
+     /tmp/ccaf76f8.s:738    .rodata:0000000000000150 _ZL15cMaxExtdMatches
+     /tmp/ccaf76f8.s:743    .rodata:0000000000000154 _ZL17cBlockExtdMatches
+     /tmp/ccaf76f8.s:748    .rodata:0000000000000158 _ZL15cMaxMatchSeqSeq
+     /tmp/ccaf76f8.s:753    .rodata:000000000000015c _ZL11cDSFVersion
+     /tmp/ccaf76f8.s:758    .rodata:0000000000000160 _ZL15cDSFVersionBack
+     /tmp/ccaf76f8.s:763    .rodata:0000000000000164 _ZL11cDSFAvgSegs
+     /tmp/ccaf76f8.s:768    .rodata:0000000000000168 _ZL15cDSFMaxDatasets
+     /tmp/ccaf76f8.s:773    .rodata:000000000000016c _ZL20cDSFMaxChromsDataset
+     /tmp/ccaf76f8.s:778    .rodata:0000000000000170 _ZL18cDSFMaxTotalChroms
+     /tmp/ccaf76f8.s:783    .rodata:0000000000000174 _ZL13cDSFMaxDirEls
+     /tmp/ccaf76f8.s:788    .rodata:0000000000000178 _ZL14cDSFMaxDataPts
+     /tmp/ccaf76f8.s:793    .rodata:000000000000017c _ZL13cMALGNVersion
+     /tmp/ccaf76f8.s:798    .rodata:0000000000000180 _ZL17cMALGNVersionBack
+     /tmp/ccaf76f8.s:803    .rodata:0000000000000184 _ZL18cMaxAlignedSpecies
+     /tmp/ccaf76f8.s:808    .rodata:0000000000000188 _ZL17cMaxAlignedChroms
+     /tmp/ccaf76f8.s:813    .rodata:000000000000018c _ZL12cMaxSrcFiles
+     /tmp/ccaf76f8.s:818    .rodata:0000000000000190 _ZL15cMaxAlignBlocks
+     /tmp/ccaf76f8.s:823    .rodata:0000000000000194 _ZL15cMaxAlignSeqLen
+     /tmp/ccaf76f8.s:828    .rodata:0000000000000198 _ZL15cMaxMetaDataLen
+     /tmp/ccaf76f8.s:833    .rodata:000000000000019c _ZL12cMaxParamLen
+     /tmp/ccaf76f8.s:838    .rodata:00000000000001a0 _ZL16cChromIDHashSize
+     /tmp/ccaf76f8.s:842    .rodata:00000000000001a4 _ZL16cMASeqOverlayFlg
+     /tmp/ccaf76f8.s:847    .rodata:00000000000001a8 _ZL12cAlloc4Block
+     /tmp/ccaf76f8.s:852    .rodata:00000000000001ac _ZL12cNumHistBins
+     /tmp/ccaf76f8.s:857    .rodata:00000000000001b0 _ZL15cMaxNumDPsInSeg
+     /tmp/ccaf76f8.s:862    .rodata:00000000000001b4 _ZL14cAllocPutCores
+     /tmp/ccaf76f8.s:867    .rodata:00000000000001b8 _ZL11cSFXVersion
+     /tmp/ccaf76f8.s:872    .rodata:00000000000001bc _ZL15cSFXVersionBack
+     /tmp/ccaf76f8.s:877    .rodata:00000000000001c0 _ZL12cSigWaitSecs
+     /tmp/ccaf76f8.s:882    .rodata:00000000000001c4 _ZL15cSigMaxWaitSecs
+GAS LISTING /tmp/ccaf76f8.s 			page 24
+
+
+     /tmp/ccaf76f8.s:887    .rodata:00000000000001c8 _ZL16cSigTermWaitSecs
+     /tmp/ccaf76f8.s:892    .rodata:00000000000001cc _ZL14cMaxSfxEntries
+     /tmp/ccaf76f8.s:897    .rodata:00000000000001d0 _ZL13cMaxSfxSeqLen
+     /tmp/ccaf76f8.s:902    .rodata:00000000000001d4 _ZL13cMinSfxSeqLen
+     /tmp/ccaf76f8.s:907    .rodata:00000000000001d8 _ZL14cDfltSfxSeqLen
+     /tmp/ccaf76f8.s:912    .rodata:00000000000001dc _ZL13cMaxSfxBlocks
+     /tmp/ccaf76f8.s:917    .rodata:00000000000001e0 _ZL15cDfltMatchScore
+     /tmp/ccaf76f8.s:922    .rodata:00000000000001e2 _ZL18cDfltMismatchScore
+     /tmp/ccaf76f8.s:927    .rodata:00000000000001e4 _ZL17cDfltGapOpenScore
+     /tmp/ccaf76f8.s:932    .rodata:00000000000001e6 _ZL16cDfltGapExtScore
+     /tmp/ccaf76f8.s:937    .rodata:00000000000001e8 _ZL9cScoreMsk
+     /tmp/ccaf76f8.s:942    .rodata:00000000000001ec _ZL15cTrcBckMatchFlg
+     /tmp/ccaf76f8.s:947    .rodata:00000000000001f0 _ZL10cTrcBckMsk
+     /tmp/ccaf76f8.s:952    .rodata:00000000000001f4 _ZL11cTrcBckDiag
+     /tmp/ccaf76f8.s:957    .rodata:00000000000001f8 _ZL9cTrcBckUp
+     /tmp/ccaf76f8.s:962    .rodata:00000000000001fc _ZL11cTrcBckLeft
+     /tmp/ccaf76f8.s:967    .rodata:0000000000000200 _ZL10cGapOpnFlg
+     /tmp/ccaf76f8.s:972    .rodata:0000000000000204 _ZL19cDlftSparsePoolSize
+     /tmp/ccaf76f8.s:977    .rodata:0000000000000208 _ZL15cMaxSparseScore
+     /tmp/ccaf76f8.s:982    .rodata:000000000000020c _ZL18cDfltMinSumMatches
+     /tmp/ccaf76f8.s:986    .rodata:0000000000000210 _ZL16cSparseGapOpnFlg
+     /tmp/ccaf76f8.s:990    .rodata:0000000000000211 _ZL17cSparseTrcBckDiag
+     /tmp/ccaf76f8.s:994    .rodata:0000000000000212 _ZL15cSparseTrcBckUp
+     /tmp/ccaf76f8.s:998    .rodata:0000000000000213 _ZL17cSparseTrcBckLeft
+     /tmp/ccaf76f8.s:1002   .rodata:0000000000000214 _ZL18cSparseTrcBckMatch
+     /tmp/ccaf76f8.s:1006   .rodata:0000000000000215 _ZL17cSparseCellLocked
+     /tmp/ccaf76f8.s:1011   .rodata:0000000000000218 _ZL18cAllocAlignSeqIncr
+     /tmp/ccaf76f8.s:1016   .rodata:000000000000021c _ZL20cAllocChromNamesIncr
+     /tmp/ccaf76f8.s:1021   .rodata:0000000000000220 _ZL22cAllocSpeciesNamesIncr
+     /tmp/ccaf76f8.s:1026   .rodata:0000000000000224 _ZL15cMaxSeqLenStats
+     /tmp/ccaf76f8.s:1031   .rodata:0000000000000228 _ZL14cMaxChiSqrRows
+     /tmp/ccaf76f8.s:1036   .rodata:000000000000022c _ZL14cMaxChiSqrCols
+     /tmp/ccaf76f8.s:1041   .rodata:0000000000000230 _ZL14cAllocLogFacts
+     /tmp/ccaf76f8.s:1046   .rodata:0000000000000234 _ZL16cMaxTotSampleCnt
+     /tmp/ccaf76f8.s:1051   .rodata:0000000000000238 _ZL17cBSGOAssocVersion
+     /tmp/ccaf76f8.s:1056   .rodata:000000000000023c _ZL21cBSGOAssocVersionBack
+     /tmp/ccaf76f8.s:1061   .rodata:0000000000000240 _ZL14cAllocNumGenes
+     /tmp/ccaf76f8.s:1066   .rodata:0000000000000244 _ZL14cAllocNumAssoc
+     /tmp/ccaf76f8.s:1071   .rodata:0000000000000248 _ZL12cAllocIdents
+     /tmp/ccaf76f8.s:1076   .rodata:000000000000024c _ZL16cMaxGOIDsPerGene
+     /tmp/ccaf76f8.s:1081   .rodata:0000000000000250 _ZL12cMaxLenGO_DB
+     /tmp/ccaf76f8.s:1086   .rodata:0000000000000254 _ZL14cMaxGOFieldLen
+     /tmp/ccaf76f8.s:1091   .rodata:0000000000000258 _ZL12cMaxMapFroms
+     /tmp/ccaf76f8.s:1096   .rodata:000000000000025c _ZL17cBSGOTermsVersion
+     /tmp/ccaf76f8.s:1101   .rodata:0000000000000260 _ZL21cBSGOTermsVersionBack
+     /tmp/ccaf76f8.s:1106   .rodata:0000000000000264 _ZL14cMaxOBOLineLen
+     /tmp/ccaf76f8.s:1111   .rodata:0000000000000268 _ZL20cMaxOBOJoinedLineLen
+     /tmp/ccaf76f8.s:1116   .rodata:000000000000026c _ZL13cMaxOBOTagLen
+     /tmp/ccaf76f8.s:1121   .rodata:0000000000000270 _ZL11cMaxOBOGOID
+     /tmp/ccaf76f8.s:1126   .rodata:0000000000000274 _ZL13cMaxOBOGOname
+     /tmp/ccaf76f8.s:1131   .rodata:0000000000000278 _ZL18cMaxOBOGOnamespace
+     /tmp/ccaf76f8.s:1136   .rodata:000000000000027c _ZL12cMaxOBOGOdef
+     /tmp/ccaf76f8.s:1141   .rodata:0000000000000280 _ZL16cMaxOBOGOcomment
+     /tmp/ccaf76f8.s:1146   .rodata:0000000000000284 _ZL16cMaxOBOGOdDbxref
+     /tmp/ccaf76f8.s:1151   .rodata:0000000000000288 _ZL18cMaxOBOParentGOIDs
+     /tmp/ccaf76f8.s:1156   .rodata:000000000000028c _ZL15cMaxOBOAltGOIDs
+     /tmp/ccaf76f8.s:1161   .rodata:0000000000000290 _ZL18cMaxOBOPartOfGOIDs
+GAS LISTING /tmp/ccaf76f8.s 			page 25
+
+
+     /tmp/ccaf76f8.s:1166   .rodata:0000000000000294 _ZL11cAllocTerms
+     /tmp/ccaf76f8.s:1171   .rodata:0000000000000298 _ZL15cAllocGOIDlists
+     /tmp/ccaf76f8.s:1176   .rodata:000000000000029c _ZL11cAllocGOIDs
+     /tmp/ccaf76f8.s:1181   .rodata:00000000000002a0 _ZL15cAllocGOTagVals
+     /tmp/ccaf76f8.s:1186   .rodata:00000000000002a4 _ZL14cClampCountVal
+     /tmp/ccaf76f8.s:1191   .rodata:00000000000002a8 _ZL13cConfScoreMsk
+     /tmp/ccaf76f8.s:1196   .rodata:00000000000002ac _ZL19cConfTrcBckMatchFlg
+     /tmp/ccaf76f8.s:1201   .rodata:00000000000002b0 _ZL14cConfTrcBckMsk
+     /tmp/ccaf76f8.s:1206   .rodata:00000000000002b4 _ZL15cConfTrcBckDiag
+     /tmp/ccaf76f8.s:1211   .rodata:00000000000002b8 _ZL13cConfTrcBckUp
+     /tmp/ccaf76f8.s:1216   .rodata:00000000000002bc _ZL15cConfTrcBckLeft
+     /tmp/ccaf76f8.s:1221   .rodata:00000000000002c0 _ZL14cConfGapOpnFlg
+     /tmp/ccaf76f8.s:1226   .rodata:00000000000002c4 _ZL14cMaxProb100Int
+     /tmp/ccaf76f8.s:1231   .rodata:00000000000002c8 _ZL20cMaxStatTransPeriods
+     /tmp/ccaf76f8.s:1236   .rodata:00000000000002cc _ZL18cNumCentroidParams
+     /tmp/ccaf76f8.s:1241   .rodata:00000000000002d0 _ZL23cCentroidParamAllocSize
+     /tmp/ccaf76f8.s:1246   .rodata:00000000000002d4 _ZL20cTransMatixAllocSize
+     /tmp/ccaf76f8.s:1250   .rodata:00000000000002d8 _ZL17cDfltFieldSepChar
+     /tmp/ccaf76f8.s:1254   .rodata:00000000000002d9 _ZL16cDfltCommentChar
+     /tmp/ccaf76f8.s:1258   .rodata:00000000000002da _ZL13cDfltTextChar
+     /tmp/ccaf76f8.s:1263   .rodata:00000000000002dc _ZL13cCSVMaxFields
+     /tmp/ccaf76f8.s:1268   .rodata:00000000000002e0 _ZL14cCSVDfltFields
+     /tmp/ccaf76f8.s:1273   .rodata:00000000000002e4 _ZL13cCSVMinFields
+     /tmp/ccaf76f8.s:1278   .rodata:00000000000002e8 _ZL15cCSVMaxFieldLen
+     /tmp/ccaf76f8.s:1283   .rodata:00000000000002ec _ZL16cCSVDfltFieldLen
+     /tmp/ccaf76f8.s:1288   .rodata:00000000000002f0 _ZL15cCSVMinFieldLen
+     /tmp/ccaf76f8.s:1293   .rodata:00000000000002f4 _ZL14cCSVMaxLineLen
+     /tmp/ccaf76f8.s:1298   .rodata:00000000000002f8 _ZL15cCSVDfltLineLen
+     /tmp/ccaf76f8.s:1303   .rodata:00000000000002fc _ZL14cCSVMinLineLen
+     /tmp/ccaf76f8.s:1308   .rodata:0000000000000300 _ZL16cAllocBuffFactor
+     /tmp/ccaf76f8.s:1313   .rodata:0000000000000304 _ZL15cMaxComparedLCP
+     /tmp/ccaf76f8.s:1318   .rodata:0000000000000308 _ZL12cDSSFREESIZE
+     /tmp/ccaf76f8.s:1323   .rodata:000000000000030c _ZL14cDSSMax_thresh
+     /tmp/ccaf76f8.s:1328   .rodata:0000000000000310 _ZL15cMinL2BlockSize
+     /tmp/ccaf76f8.s:1333   .rodata:0000000000000314 _ZL16cDfltL2BlockSize
+     /tmp/ccaf76f8.s:1338   .rodata:0000000000000318 _ZL15cMaxL2BlockSize
+     /tmp/ccaf76f8.s:1343   .rodata:000000000000031c _ZL15cMinL1BlockSize
+     /tmp/ccaf76f8.s:1348   .rodata:0000000000000320 _ZL16cDfltL1BlockSize
+     /tmp/ccaf76f8.s:1353   .rodata:0000000000000324 _ZL15cMaxL1BlockSize
+     /tmp/ccaf76f8.s:1358   .rodata:0000000000000328 _ZL15cDfltMarkerFreq
+     /tmp/ccaf76f8.s:1364   .rodata:0000000000000330 _ZL11BZ_N_GROUPS
+     /tmp/ccaf76f8.s:1369   .rodata:0000000000000334 _ZL15BZ_MAX_CODE_LEN
+     /tmp/ccaf76f8.s:1374   .rodata:0000000000000338 _ZL17BZ_MAX_ALPHA_SIZE
+     /tmp/ccaf76f8.s:1379   .rodata:000000000000033c _ZL9ALPHASIZE
+     /tmp/ccaf76f8.s:1384   .rodata:0000000000000340 _ZL17cElInitalAllocNum
+     /tmp/ccaf76f8.s:1389   .rodata:0000000000000344 _ZL15cElGrowAllocNum
+     /tmp/ccaf76f8.s:1394   .rodata:0000000000000348 _ZL21cChromsInitalAllocNum
+     /tmp/ccaf76f8.s:1399   .rodata:000000000000034c _ZL19cChromsGrowAllocNum
+     /tmp/ccaf76f8.s:1404   .rodata:0000000000000350 _ZL11cMaxElTypes
+     /tmp/ccaf76f8.s:1409   .rodata:0000000000000354 _ZL11cMaxSpecies
+     /tmp/ccaf76f8.s:1414   .rodata:0000000000000358 _ZL21cFiltRefIDsAllocChunk
+     /tmp/ccaf76f8.s:1419   .rodata:000000000000035c _ZL19cFiltLociAllocChunk
+
+UNDEFINED SYMBOLS
+__gxx_personality_v0

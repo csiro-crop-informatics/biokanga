@@ -1,0 +1,7 @@
+dspline.o: dspline.cpp /usr/include/stdc-predef.h stdafx.h dspline.h
+
+/usr/include/stdc-predef.h:
+
+stdafx.h:
+
+dspline.h:
