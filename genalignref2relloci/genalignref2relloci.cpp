@@ -1010,7 +1010,7 @@ return(Rslt);
 int
 OutputLoci(tsProcParams *pProcParams)
 {
-char szBuff[2048];
+char szBuff[cMaxReadLen+1];
 int BuffLen;
 tsSpeciesAlign *pRelSpecies;
 int SpeciesIdx;

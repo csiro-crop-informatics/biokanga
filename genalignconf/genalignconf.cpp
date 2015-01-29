@@ -143,7 +143,7 @@ struct arg_lit  *MultipleFeatBits  = arg_lit0("q","multiplefeatbits",	"single fe
 struct arg_lit  *ChromPer = arg_lit0("c","chromper",		"generate stats for each chromosome -= default is for complete genome");
 struct arg_int  *Mode = arg_int0("m","procmode","<int>",	"processing mode 0:default, 1:extended, 2:summary");
 
-struct arg_str  *Chrom = arg_str0("C","chrom","<string>",	"only process blocks with ref chromsome");
+struct arg_str  *Chrom = arg_str0("C","chrom","<string>",	"only process blocks with ref chromosome");
 struct arg_int  *Region = arg_int0("k","region","<int>",	"only process blocks completely contained in this region (0:IG..6:3'DS)");
 struct arg_int  *MinNumSpecies = arg_int0("z","minspecies", "<int>",	"minimum number of species in aligned block (default 2)");
 struct arg_int  *MaxNumSpecies = arg_int0("Z","maxspecies","<int>",	"maximum number of species in aligned block (default 50)");
@@ -404,7 +404,7 @@ if (!argerrors)
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Regulatory region size: %d",iRegLen);
 	if(iMode == 1)
 		{
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"reference species chromsome : %s",szChrom);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"reference species chromosome : %s",szChrom);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"minimum number of species in aligned block : %d",iMinNumSpecies);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"maximum number of species in aligned block : %d",iMaxNumSpecies);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"minimum block length : %d",iMinBlockLen);

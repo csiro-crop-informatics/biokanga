@@ -992,7 +992,7 @@ if(pthread_mutex_init (&m_hMtxIterReads,NULL)!=0)
 	return(eBSFerrInternal);
 	}
 
-// load single SfxBlock, expected to contain all chromsomes, and process all reads against that block
+// load single SfxBlock, expected to contain all chromosomes, and process all reads against that block
 CurChromID = 0;
 CurBlockID = 1;
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading genome assembly suffix array...");
@@ -1069,7 +1069,7 @@ PrevReadsProc = 0;
 for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 	{
 #ifdef _WIN32
-	while(WAIT_TIMEOUT == WaitForSingleObject( WorkerThreads[ThreadIdx].threadHandle, 30000))
+	while(WAIT_TIMEOUT == WaitForSingleObject( WorkerThreads[ThreadIdx].threadHandle, 60000 * 10))
 		{
 		CurReadsProc =	ApproxNumSubseqsProc();
 		if(CurReadsProc > PrevReadsProc)

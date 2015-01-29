@@ -139,7 +139,7 @@ struct arg_int *MaxIdentity = arg_int0("k", "maxident","<int>",	"mode 3 maximum 
 
 struct arg_str *descr = arg_str0("D","descr","<string>",		"description");
 struct arg_str *track = arg_str0("t","track","<string>",		"track name");
-struct arg_str *chrom = arg_str0("c","chromsome","<string>",	"chromosome");
+struct arg_str *chrom = arg_str0("c","chromosome","<string>",	"chromosome");
 struct arg_str *name = arg_str0("n","name","<string>",			"entry name");
 struct arg_int *nbins = arg_int0("N", "numbins","<int>",		"number of bins (default 10)");
 struct arg_int *windowsize = arg_int0("w", "windowsize","<int>","windowsize to smooth over (default 5)");

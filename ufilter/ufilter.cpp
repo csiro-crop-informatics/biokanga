@@ -1177,7 +1177,7 @@ if(PMode == ePMFiltNucConf)
 		if(pElement->EndLoci >= m_ChromSeqLen)
 			{
 			if(NumFilterEnds++ < 10)
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Sequence starting at loci %s %d and finishing %d extends past chromsome length of %d - sloughing'",m_szCurChrom,pElement->StartLoci,SeqLen);
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Sequence starting at loci %s %d and finishing %d extends past chromosome length of %d - sloughing'",m_szCurChrom,pElement->StartLoci,SeqLen);
 			continue;
 			}
 		SeqLen = 1 + pElement->EndLoci - pElement->StartLoci;

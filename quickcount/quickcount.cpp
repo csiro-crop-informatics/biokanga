@@ -66,7 +66,7 @@ typedef struct TAG_sProcParams
 	int AllocdSeqLen;				// how many bytes of memory were alloc'd to pSeq
 	int *pCntStepCnts;				// array of stats counters organised in [Step][Region] order
 
-	int NumSeqs;					// number of sequences or chromsomes processed
+	int NumSeqs;					// number of sequences or chromosomes processed
 	int NumNormCnts;				// number of normalised stats counters
 	tsNormDensity *pNormCnts;			// array of normalised stats counters
 
@@ -1306,7 +1306,7 @@ return(Rslt);
 int
 OutputResults(tsProcParams *pProcParams)
 {
-char szLineBuff[2048];
+char szLineBuff[cMaxReadLen+1];
 int *pCnt;
 int *pTmp;
 int Tot;

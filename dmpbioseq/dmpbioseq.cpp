@@ -200,7 +200,7 @@ char *pszSpeciesName;
 UINT8 *pSeq;
 
 int Len;
-char szBuff[cMaxReadLen+ 1];
+char *pszBuff;
 
 int Rslt;
 
@@ -209,6 +209,7 @@ char szDescription[cBSFDescriptionSize];
 int SeqLen;
 tBSFEntryID CurEntryID;
 
+pszBuff = NULL;
 m_pSeq = NULL;
 m_AllocSeqLen = 0;
 
@@ -225,11 +226,11 @@ if((Rslt=pBioSeqFile->Open(pszBioSeqFile,cBSFTypeAny,false))!=eBSFSuccess)
 m_FMode = FMode;
 if(!OpenDumpFile(pszDumpFile))
 	return(eBSFerrOpnFile);
-
+pszBuff = new char [cMaxReadLen+ 1];
 if(m_FMode == eFMbed)
 	{
-	Len = sprintf(szBuff,"track type=bed name=\"Contigs\" description=\"Contigs dump\"\n");
-	CUtility::SafeWrite(hDumpFile,szBuff,Len);
+	Len = sprintf(pszBuff,"track type=bed name=\"Contigs\" description=\"Contigs dump\"\n");
+	CUtility::SafeWrite(hDumpFile,pszBuff,Len);
 	}
 
 
@@ -248,6 +249,7 @@ if(pBioSeqFile->GetType() == cBSFTypeMultiAlign)
 
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to open %s",pszBioSeqFile);
 		delete pAlignFile;
+		delete pszBuff;
 		return(Rslt);
 		}
 
@@ -280,6 +282,7 @@ else
 				if((m_pSeq = new UINT8 [m_AllocSeqLen])==NULL)
 					{
 					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate %d memory",m_AllocSeqLen);
+					delete pszBuff;
 					return(eBSFerrMem);
 					}
 				}
@@ -298,6 +301,8 @@ if(pAlignFile != NULL)
 	delete pAlignFile;
 if(m_pSeq != NULL)
 	delete m_pSeq;
+if(pszBuff != NULL)
+	delete pszBuff;
 return(Rslt);
 }
 

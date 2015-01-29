@@ -21,7 +21,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.3.0";			// increment with each release
+const char *cpszProgVer = "1.3.2";			// increment with each release
 
 const int cMaxNumAssocFiles = 20;			// alllow for at most this many feature association files 
 
@@ -1378,7 +1378,14 @@ while((LineLen = BAMfile.GetNxtSAMline(szLine)) > 0)
 
 	// expecting to parse as "%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t", szDescriptor, Flags, m_szSAMTargChromName, StartLoci+1,MAPQ,szCigar,pszRNext,PNext,TLen);
 	// interest is in the chromname, startloci, and length
-	sscanf(szLine,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t",szDescriptor, &Flags, szChrom, &StartLoci,&MAPQ,szCigar,szRNext,&PNext,&TLen);
+	if((Rslt = sscanf(szLine,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t",szDescriptor, &Flags, szChrom, &StartLoci,&MAPQ,szCigar,szRNext,&PNext,&TLen)) != 9)
+		{
+		continue;
+		}
+
+	if(Flags & 0x04 || szCigar[0] == '*')	// unmapped?
+		continue;
+
 	Strand = Flags & 0x010 ? '-' : '+';
 	if(ROIStrand != '*')
 		{
@@ -1389,10 +1396,31 @@ while((LineLen = BAMfile.GetNxtSAMline(szLine)) > 0)
 			}
 		}
 
+	if(szRNext[0] != '*' && szRNext[0] != '=')
+		{
+		if(!stricmp(szRNext,szChrom)) // if read ends aligning onto separate chroms or contigs then treat as if SE
+			szRNext[0] = '=';
+		else
+			szRNext[0] = '*';
+		}
+	
+	if(szRNext[0] == '*')		// SE alignment
+		{
+		TLen = BAMfile.CigarAlignLen(szCigar);
+		}
+	else                        // else was a PE alignment with both ends on the same chrom or contig   
+		{
+		// treating the TLen as the length but only wanting to count it once, not twice for each end...
+		if(PNext < StartLoci)   // counting the forward TLen only for coverage
+			{
+			m_NumAcceptedReads += 1;
+			continue;
+			}
+		}
+
 	Rslt=BuildReadCoverage(szChrom,StartLoci-1,StartLoci + TLen - 2,1);
 	if(Rslt >= eBSFSuccess)
 		m_NumAcceptedReads += 1;
-	m_NumAcceptedReads++;
 	}
 BAMfile.Close();
 if(Rslt == eBSFSuccess)

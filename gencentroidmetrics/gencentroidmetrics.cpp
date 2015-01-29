@@ -47,7 +47,7 @@ char gszProcName[_MAX_FNAME];			// process name
 
 
 typedef struct TAG_sProcParams 	{
-	char szOnlyChrom[cMaxDatasetSpeciesChrom]; // a single chromsome only processing - saves waiting for all!
+	char szOnlyChrom[cMaxDatasetSpeciesChrom]; // a single chromosome only processing - saves waiting for all!
 	int OnlyChromID;				// chrom identifier for szOnlyChrom
 	int	OnlyStart;					// if OnlyChromID and >= 0 then start offset along chromosome
 	int	OnlyEnd;					// if OnlyChromID and >= 0 then end offset along chromosome
@@ -2099,7 +2099,7 @@ if(pProcParams->szOnlyChrom[0]!='\0')
 		delete pAlignments;
 		return(eBSFerrChrom);
 		}
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing chromsome '%s'...",pProcParams->szOnlyChrom);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing chromosome '%s'...",pProcParams->szOnlyChrom);
 	RefChromID = pProcParams->OnlyChromID;
 	strcpy(pProcParams->szRefChrom,pProcParams->szOnlyChrom);
 	if(pProcParams->pBiobed != NULL)
