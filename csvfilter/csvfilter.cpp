@@ -2167,7 +2167,7 @@ for(Idx = 0; Idx < pParams->NumElLocs; Idx++,pEl++)
 	{
 	if(pParams->hStatsFile != -1)
 		{
-		BuffLen = sprintf(szLineBuff,"%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+		BuffLen = sprintf(szLineBuff,"%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
 			pEl->RefID,pEl->Filter.bFiltOut ? 1 : 0,pEl->Filter.fOverLen,pEl->Filter.fUnderLen,
 			pEl->Filter.fDeltaIdentity,
 			pEl->Filter.fExcludeLoci,pEl->Filter.fIncludeLoci,

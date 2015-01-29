@@ -2954,7 +2954,7 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 					}
 				CSeqTrans::MapSeq2Ascii(pReadSeq,Pair1ReadLen,&PEreads[0].szLineBuff[PEreads[0].LineLen]);
 				PEreads[0].LineLen += Pair1ReadLen;
-				PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"\"",pReadSeq);
+				PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"\"%s\"",pReadSeq);
 				}
 			if(bReadHamDist)
 				{

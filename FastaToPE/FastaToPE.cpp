@@ -171,16 +171,16 @@ if (!argerrors)
 	char *pszMode;
 	switch(iMode) {
 		case ePMdefault:		// retain split reads in original orientation
-			pszMode = "retain split reads in original orientation";
+			pszMode = (char *)"retain split reads in original orientation";
 			break;
 		case ePMReverseR2:		// reverse R2
-			pszMode = "reverse R2";
+			pszMode = (char *)"reverse R2";
 			break;
 		case ePMComplementR2:	// complement R2
-			pszMode = "complement R2";
+			pszMode = (char *)"complement R2";
 			break;
 		case ePMRevCplR2:		// reverse complement R2
-			pszMode = "reverse complement R2";
+			pszMode = (char *)"reverse complement R2";
 			break;
 		}
 

@@ -1941,7 +1941,7 @@ int
 LocateStartALignment(char Strand,UINT32 ChromID,UINT32 StartLoci,UINT32 EndLoci)
 {
 if(m_pAlignHits == NULL|| m_NumAlignHits == 0)
-	return(NULL);
+	return(0);
 
 tsAlignHit *pEl2;
 

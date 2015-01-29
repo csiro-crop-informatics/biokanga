@@ -321,7 +321,7 @@ if (!argerrors)
 	iMaxMismatches = MaxMismatches->count ? MaxMismatches->ival[0] : 0;			// no mismatches allowed is the default
 	if(iMaxMismatches < 0 || iMaxMismatches > cMaxMismatches)
 		{
-		printf("\nError: Requested max mismatches '-y%d' is invalid, must be %d..%d",iMaxMismatches,cMaxMismatches);
+		printf("\nError: Requested max mismatches '-y%d' is invalid, must be 0..%d",iMaxMismatches,cMaxMismatches);
 		exit(1);
 		}
 

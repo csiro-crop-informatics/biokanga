@@ -1271,7 +1271,7 @@ ChromSeqLen = 0;
 
 CurFeatID = 0;
 szPrevFeatChrom[0] = '\0';
-printf("\nfeat 0\r",CurFeatID);
+printf("\nfeat %d\r",CurFeatID);
 while((CurFeatID = m_pBEDElFile->GetNextFeatureID(CurFeatID)) > 0)
 	{
 	if(!(CurFeatID % 1000))

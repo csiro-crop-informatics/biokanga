@@ -920,7 +920,7 @@ for(ElID = 1; ElID <= m_NumEls; ElID++)
 		}
 
 	if(m_hRsltFile != -1)
-		BuffIdx += sprintf(&szLineBuff[BuffIdx],"%d,\"%s\",\"%s\",\"%s\",%d,%d,%d,\"%c\",%d\n",
+		BuffIdx += sprintf(&szLineBuff[BuffIdx],"%d,\"%s\",\"%s\",\"%s\",%d,%d,%d,\"%c\",%d,%d\n",
 					SrcID,pszElType,pszRefSpecies,pszChrom,StartLoci,EndLoci,Len,Strand,AccumFeatures,RelScale);
 	
 	if(m_bOneCntRead)

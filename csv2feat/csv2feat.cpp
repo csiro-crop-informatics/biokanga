@@ -176,7 +176,7 @@ if (!argerrors)
 	iMinOverlap = MinOverlap->count ? MinOverlap->ival[0] : 1;
 	if(iMinOverlap < 1 || iMinOverlap > iMinLength)
 		{
-		printf("Error: Minimum feature overlap length '-M%d' is not in range 1..%d",iMinOverlap,1,iMinLength);
+		printf("Error: Minimum feature overlap length '-M%d' is not in range 1..%d",iMinOverlap,iMinLength);
 		exit(1);
 		}
 

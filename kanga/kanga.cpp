@@ -5334,7 +5334,7 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 		pReadHit = pPE2ReadHit;
 	}
 
-m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"\0");
+m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"%c",0);
 if(m_szLineBuffIdx)
 	CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,m_szLineBuffIdx);
 
@@ -7464,7 +7464,7 @@ if(m_pAllocsMultiHitBuff != NULL)
 	}
 
 if((m_FMode == eFMsam || m_FMode == eFMsamAll) && m_MLMode == eMLall)
-	m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"\0");
+	m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"%c",0);
 
 if(m_szLineBuffIdx > 0)
 	{

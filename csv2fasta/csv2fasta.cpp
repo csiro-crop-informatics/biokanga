@@ -630,7 +630,7 @@ if(CSVFormat != eCSVFSeq && CSVFormat != eCSVFQuickCount)
 		strcpy(szBioseqFile,pszInSeqFile);
 		strcat(szBioseqFile,".bsb");
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to open BSB file, creating %s from input assumed fasta file %s",szBioseqFile,pszInSeqFile);
-		if((Rslt = CreateBioseqFastaFile(false,pszInSeqFile,szBioseqFile,"test","test","test",false))>0)
+		if((Rslt = CreateBioseqFastaFile(false,pszInSeqFile,szBioseqFile,(char *)"test",(char *)"test",(char *)"test",(char *)false))>0)
 			Rslt = pBioseq->Open(szBioseqFile);
 		}
 

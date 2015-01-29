@@ -254,7 +254,7 @@ while((Rslt = SeqLen = pFasta->ReadSequence(NULL,0)) > eBSFSuccess)
 		continue;
 		}
 	LineLen = sprintf(szBEDFeature,"%s\t0\t%d\t%s\t0\t+\t0\t%d\t0\t1\t%d,\t0\n",szFeature,SeqLen,szFeature,SeqLen,SeqLen);
-	write(hOutputBED,szBEDFeature,LineLen);
+	Rslt=write(hOutputBED,szBEDFeature,LineLen);
 	NumProcessed += 1;
 
 	bInSeq = true;
