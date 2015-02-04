@@ -2960,6 +2960,8 @@ UINT32 *pPackedSeqs;
 UINT32 SeqHash;									// sequence hash
 UINT32 RevCplSeqHash;
 UINT32 HashSeqsOfs;
+UINT32 TermRevCplNxtSeq;
+UINT32 TermNxtSeq;
 tsSampledSeq *pSampledSeq;
 tsSampledSeq *pNewSampledSeq;
 int Idx;
@@ -3128,9 +3130,12 @@ if (!m_bStrand)
 
 // check if this packed sequence has been previously accepted as a sample
 pSampledSeq = NULL;
+TermNxtSeq = 0;
+TermRevCplNxtSeq = 0;
 AcquireSerialise();
 if (m_ActMaxDupSeeds && (HashSeqsOfs = m_pSeqHashes[SeqHash]) != 0)		// seen at least one sequence previously with same hash?
 	{
+	TermNxtSeq = HashSeqsOfs;
 	pSampledSeq = (tsSampledSeq *)&m_pSampledSeqs[HashSeqsOfs-1];
 	do {
 		if(pSampledSeq->PE1ReadLen == PE1ReadLen && (!m_bPEProc || (pSampledSeq->PE2ReadLen == PE2ReadLen)))
@@ -3146,17 +3151,20 @@ if (m_ActMaxDupSeeds && (HashSeqsOfs = m_pSeqHashes[SeqHash]) != 0)		// seen at 
 					}
 				}
 			}
+		if(pSampledSeq->NxtSeq != 0)
+			TermNxtSeq = pSampledSeq->NxtSeq;
 		}
 	while (pSampledSeq->NxtSeq != 0 && (pSampledSeq = (tsSampledSeq *)&m_pSampledSeqs[pSampledSeq->NxtSeq - 1]));
 	}
 
-// if not strand dependent then try with read(s) reverse complemented
+// if no success with finding existing sense natch and not strand dependent then try with sequence reverse complemented
 if (!m_bStrand && m_ActMaxDupSeeds)
 	{
 	// check if this packed sequence has been previously accepted as a sample
 	pRevCplSampledSeq = NULL;
 	if ((RevCplHashSeqsOfs = m_pSeqHashes[RevCplSeqHash]) != 0)		// seen at least one sequence previously with same hash?
 		{
+		TermRevCplNxtSeq = RevCplHashSeqsOfs;
 		pRevCplSampledSeq = (tsSampledSeq *)&m_pSampledSeqs[RevCplHashSeqsOfs - 1];
 		do
 			{
@@ -3174,6 +3182,8 @@ if (!m_bStrand && m_ActMaxDupSeeds)
 						}
 					}
 				}
+			if(pRevCplSampledSeq->NxtSeq != 0)
+				TermRevCplNxtSeq = pRevCplSampledSeq->NxtSeq;
 			}
 		while (pRevCplSampledSeq->NxtSeq != 0 && (pRevCplSampledSeq = (tsSampledSeq *)&m_pSampledSeqs[pRevCplSampledSeq->NxtSeq - 1]));
 		}
@@ -3190,7 +3200,6 @@ if((m_AllocdSampledSeqWrds - m_UsedSampledSeqWrds) < ((cMaxRSSeqLen+3)/4)*10)
 	{
 	UINT32 *pAllocd;
 	size_t memreq = m_AllocdSampledSeqMem + (cReallocPackedWrds * sizeof(UINT32));
-	gDiagnostics.DiagOut(eDLInfo, gszProcName, "AddReadInst: B Memory re-allocation to %d bytes", memreq);
 #ifdef _WIN32
 	pAllocd = (UINT32 *)realloc(m_pSampledSeqs, memreq);
 #else
@@ -3218,13 +3227,13 @@ pNewSampledSeq->PE1ReadLen = PE1ReadLen;
 pNewSampledSeq->PE2ReadLen = m_bPEProc ? PE2ReadLen : 0;
 pNewSampledSeq->NumPackedWrds = NumPackedWrds;
 memcpy(pNewSampledSeq->PackedSeqs,PackedSeqs,NumPackedWrds * sizeof(UINT32));
-if (pSampledSeq == NULL)
+if (TermNxtSeq == 0)
 	{
 	 m_pSeqHashes[SeqHash] = m_UsedSampledSeqWrds + 1;
 	 m_NumSeqHashes += 1;
 	}
 else
-	pSampledSeq->NxtSeq = m_UsedSampledSeqWrds + 1;
+	((tsSampledSeq *)&m_pSampledSeqs[TermNxtSeq - 1])->NxtSeq = m_UsedSampledSeqWrds + 1;
 m_UsedSampledSeqWrds += NumPackedWrds + (((sizeof(tsSampledSeq)-sizeof(UINT32)) + 3)/4);
 m_ActMaxDupSeeds += 1;
 ReleaseSerialise();

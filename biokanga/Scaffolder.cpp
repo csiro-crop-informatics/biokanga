@@ -947,7 +947,7 @@ m_NumSeqEdges = 0;
 UpdateAllSeqHeaderFlags(0,~(cFlgSeqPE2 | cFlgSeqPE | cFlgNonOverlap),false);
 
 		// generate array of sequence starts plus array of flags from sequence headers
-if((Rslt=GenSeqStarts(true)) < eBSFSuccess)
+if((Rslt=GenSeqStarts(true,false)) < eBSFSuccess)
 	return((teBSFrsltCodes)Rslt);
 
 		// index all sequences but not the PEs
@@ -997,7 +997,7 @@ m_NumSeqEdges = 0;
 UpdateAllSeqHeaderFlags(0,~(cFlgSeqPE2 | cFlgSeqPE | cFlgNonOverlap),false);
 
 				// generate array of sequence starts plus array of flags from sequence headers
-if((Rslt=GenSeqStarts(true)) < eBSFSuccess)
+if((Rslt=GenSeqStarts(true,false)) < eBSFSuccess)
 	return((teBSFrsltCodes)Rslt);
 
 	// index all sequences
@@ -1273,7 +1273,7 @@ while((pCurSeq = IterSeqHeaders(pCurSeq,	// iterate to next sequence following t
 			&SeqID,				// returned sequence identifier
 			NULL,				// returned 8 bit source file identifier
 			&SeqFlgs,			// returned 16 bit sequence flags
-			&SeqLen))!=NULL)			// returned 30 bit sequence length
+			&SeqLen,false))!=NULL)			// returned 30 bit sequence length
 	{
 	if(SeqFlgs & cFlgSeqPE)
 		continue;

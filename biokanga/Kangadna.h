@@ -730,7 +730,8 @@ friend class CPacBio;					// CPacBio requires access to all members of this clas
 			tSeqID *pSeqID = NULL,			// returned 32bit sequence identifier
 			UINT32 *pSrcFileID = NULL,		// returned 8 bit source file identifier
 			UINT32 *pFlgs = NULL,			// returned 16 bit sequence flags
-			UINT32 *pSeqLen = NULL);		// returned 30 bit sequence length
+			UINT32 *pSeqLen = NULL,		    // returned 30 bit sequence length
+			bool bSerialise = false);		// true if access to headers are to be serialised, false if access is not serialised
 
 	tSeqWrd4 *							// returned ptr to 1st word of actual packed sequence
 		GetSeqHeader(tSeqWrd4 *pSeqWrd,	// pts to a SeqWrd within the sequence

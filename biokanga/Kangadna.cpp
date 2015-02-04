@@ -578,14 +578,14 @@ pthread_mutex_unlock(&m_hMtxIterNxtProcRead);
 void
 CKangadna::AcquireSerialiseSeqHdr(void)
 {
-int SpinCnt = 1000;
+int SpinCnt = 10000;
 #ifdef _WIN32
 while(!TryEnterCriticalSection(&m_hSCritSectSeqHdrs))
 	{
 	if(SpinCnt -= 1)
 		continue;
 	SwitchToThread();
-	SpinCnt = 100;
+	SpinCnt = 1000;
 	}
 #else
 while(pthread_spin_trylock(&m_hSpinLockSeqHdrs)==EBUSY)
@@ -593,7 +593,7 @@ while(pthread_spin_trylock(&m_hSpinLockSeqHdrs)==EBUSY)
 	if(SpinCnt -= 1)
 		continue;
 	pthread_yield();
-	SpinCnt = 100;
+	SpinCnt = 1000;
 	}
 #endif
 }
@@ -611,14 +611,14 @@ pthread_spin_unlock(&m_hSpinLockSeqHdrs);
 void
 CKangadna::AcquireSerialiseSeqFlags(void)
 {
-int SpinCnt = 1000;
+int SpinCnt = 10000;
 #ifdef _WIN32
 while(!TryEnterCriticalSection(&m_hSCritSectSeqFlags))
 	{
 	if(SpinCnt -= 1)
 		continue;
 	SwitchToThread();
-	SpinCnt = 100;
+	SpinCnt = 1000;
 	}
 #else
 while(pthread_spin_trylock(&m_hSpinLockSeqFlags)==EBUSY)
@@ -626,7 +626,7 @@ while(pthread_spin_trylock(&m_hSpinLockSeqFlags)==EBUSY)
 	if(SpinCnt -= 1)
 		continue;
 	pthread_yield();
-	SpinCnt = 100;
+	SpinCnt = 1000;
 	}
 #endif
 }
@@ -4423,7 +4423,7 @@ UpdateAllSeqHeaderFlags(0,~(cFlgNonOverlap),false);			// any PEs are now single 
 if((Rslt=GenRdsSfx()) < eBSFSuccess)	// generate index over all 15base words
 	return((teBSFrsltCodes)Rslt);
 	
-if((Rslt=GenSeqStarts(true)) < eBSFSuccess)	// generate array of sequence starts plus array of flags from sequence headers
+if((Rslt=GenSeqStarts(true,false)) < eBSFSuccess)	// generate array of sequence starts plus array of flags from sequence headers
 	return((teBSFrsltCodes)Rslt);
 return(Rslt);
 }
@@ -4858,7 +4858,7 @@ if(m_Sequences.pTmpRevCplSeqs == NULL)
 
 // firstly locate and exchange PE1 and PE2 sequences
 pSeqToRev = NULL;
-while((pSeqToRev = (tSeqWrd4 *)IterSeqHeaders(pSeqToRev,&SeqID,NULL,&PE1Flags,&PE1SeqLen)) != NULL)
+while((pSeqToRev = (tSeqWrd4 *)IterSeqHeaders(pSeqToRev,&SeqID,NULL,&PE1Flags,&PE1SeqLen,false)) != NULL)
 	{
 	if(!(PE1Flags & cFlgSeqPE))			// skip onto next sequence until a PE
 		continue;
@@ -4866,7 +4866,7 @@ while((pSeqToRev = (tSeqWrd4 *)IterSeqHeaders(pSeqToRev,&SeqID,NULL,&PE1Flags,&P
 	pSeqPE1 = pSeqToRev - 3;			// pt to initial header word
 
 	// have a PE1, advance onto PE2 which is expected to immediately follow the PE1
-	pSeqToRev = (tSeqWrd4 *)IterSeqHeaders(pSeqToRev,&SeqID,NULL,&PE2Flags,&PE2SeqLen);
+	pSeqToRev = (tSeqWrd4 *)IterSeqHeaders(pSeqToRev,&SeqID,NULL,&PE2Flags,&PE2SeqLen,false);
 
 	pSeqPE2 = pSeqToRev - 3;			// pt to initial header word
 
@@ -4907,7 +4907,7 @@ tSeqWrd4 *pSeqToRev;
 UINT32 HdrSeqLen;
 
 pSeqToRev = NULL;
-while((pSeqToRev = IterSeqHeaders(pSeqToRev,NULL,NULL,&Flags,&HdrSeqLen)) != NULL)
+while((pSeqToRev = IterSeqHeaders(pSeqToRev,NULL,NULL,&Flags,&HdrSeqLen,false)) != NULL)
 	{
 	if(bPE2Only && !(Flags & cFlgSeqPE2))
 		continue;
@@ -5704,7 +5704,7 @@ while((pCurSeq = IterSeqHeaders(pCurSeq, // iterate to next sequence following (
 							&SeqID,		// returned sequence identifier
 							&SrcFileID,	// returned 8 bit source file identifier
 							&SeqFlags,		// returned 16 bit sequence flags
-							&SeqLen))!=NULL)		// returned 30 bit sequence length
+							&SeqLen,false))!=NULL)		// returned 30 bit sequence length
 	{
 	if(!(SeqFlags & cFlgSeqPE))	// if not a PE2 sequence then must be a SE
 		{
@@ -5969,7 +5969,7 @@ while((pCurSeq = IterSeqHeaders(pCurSeq, // iterate to next sequence following (
 							&SeqID,		// returned sequence identifier
 							&SrcFileID,	// returned 5 bit source file identifier in bits 4..0
 							&SeqFlags,		// returned 16 bit sequence flags in bits 15..0
-							&SeqLen))!=NULL)		// returned 30 bit sequence length
+							&SeqLen, false))!=NULL)		// returned 30 bit sequence length
 	{
 	if((FastaLenSE + 1000) >= 10*cMaxCmpOverlapBases)
 		{
@@ -6720,7 +6720,8 @@ CKangadna::IterSeqHeaders(tSeqWrd4 *pCurSeq, // iterate to next sequence followi
 			tSeqID *pSeqID,			// returned sequence identifier
 			UINT32 *pSrcFileID,		// returned 8 bit source file identifier
 			UINT32 *pFlgs,			// returned 16 bit sequence flags
-			UINT32 *pSeqLen)		// returned 30 bit sequence length
+			UINT32 *pSeqLen,		// returned 30 bit sequence length
+    		bool bSerialise)		// true if access to headers are to be serialised
 {
 bool bNoHdr;
 if(m_Sequences.NumSeqs2Assemb == 0)
@@ -6754,7 +6755,7 @@ if(bNoHdr)
 	}
 pCurSeq = pSeqHdrWrd;
 
-return(GetSeqHeader(pCurSeq,pSeqID,pSrcFileID,pFlgs,pSeqLen));
+return(GetSeqHeader(pCurSeq,pSeqID,pSrcFileID,pFlgs,pSeqLen,bSerialise));
 }
 
 
@@ -8160,16 +8161,14 @@ tSeqWrd4 *pSeqHdr;
 
 Rslt = 0;
 pSeqHdr = NULL;
-if(bSerialise)
-	AcquireSerialiseSeqHdr();
-while((pSeqHdr = IterSeqHeaders(pSeqHdr,&SeqID,NULL,&Flags,NULL))!=NULL)
+
+while((pSeqHdr = IterSeqHeaders(pSeqHdr,&SeqID,NULL,&Flags,NULL,bSerialise))!=NULL)
 	{
 	if((Flags & ResetFlags) || ((Flags & SetFlags) != SetFlags))
-		if((Rslt = UpdateSeqHeaderFlags(pSeqHdr,SetFlags,ResetFlags,false)) < 0)
+		if((Rslt = UpdateSeqHeaderFlags(pSeqHdr,SetFlags,ResetFlags,bSerialise)) < 0)
 			break;
 	}
-if(bSerialise)
-	ReleaseSerialiseSeqHdr();
+
 return(Rslt);
 }
 
@@ -8897,7 +8896,7 @@ while((pCurSeq = IterSeqHeaders(pCurSeq, // iterate to next sequence following (
 							&SeqID,		// returned sequence identifier
 							&SrcFileID,	// returned 8 bit source file identifier
 							&SeqFlags,		// returned 16 bit sequence flags
-							&SeqLen))!=NULL)		// returned 30 bit sequence length
+							&SeqLen,false))!=NULL)		// returned 30 bit sequence length
 	{
 	if(!(SeqFlags & cFlgSeqPE2))	// if not a PE2 sequence
 		{		
@@ -9089,7 +9088,7 @@ while(Max2Dump-- && (pCurSeq = IterSeqHeaders(pCurSeq, // iterate to next sequen
 							&SeqID,		// returned sequence identifier
 							&SrcFileID,		// returned 8 bit source file identifier
 							&Flgs,			// returned 16 bit sequence flags
-							&SeqLen))!=NULL)		// returned 30 bit sequence length
+							&SeqLen,false))!=NULL)		// returned 30 bit sequence length
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"SeqID: %u FileID: %u Flags: 0x%x SeqLen: %u\n%s\n",SeqID,SrcFileID,Flgs,SeqLen,AsciifySequence(pCurSeq,200));
 
 }

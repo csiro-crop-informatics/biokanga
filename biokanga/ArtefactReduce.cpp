@@ -1211,7 +1211,7 @@ else
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Process: Mean sequence length was %d, using minimum required overlap length of %d and non-overlap flank length of %d",MeanSeqLen,MinOverlap,MinFlankLen);
 
-GenSeqStarts(true);
+GenSeqStarts(true,false);
 GenRdsSfx(1);			// first SeqWrd only requires indexing
 
 if(!bNoDedupe)
@@ -1239,7 +1239,7 @@ if(!bNoDedupe)
 			gSQLiteSummaries.AddLog(gProcessingID,"Unable to continue, after deduping insufficent remaining sequences %d, require at least %d",NumPE1Reads,cMinSeqs2Assemb);
 		Reset(true);
 		}
-	GenSeqStarts(true);
+	GenSeqStarts(true,false);
 	GenRdsSfx(1);	// first SeqWrd only requires indexing
 	}
 
@@ -1352,11 +1352,11 @@ for(Iteration = 1; Iteration <= NumIterations; Iteration++)
 	if(Iteration > 1)
 		{
 		UpdateAllSeqHeaderFlags(0,~(cFlgSeqPE | cFlgSeqPE2),false);
-		GenSeqStarts(true);
+		GenSeqStarts(true,false);
 		GenRdsSfx(1);	// first SeqWrd only requires indexing
 		}
 	else
-		GenSeqStarts(true);
+		GenSeqStarts(true,false);
 
 	// start with phase eOvlpSenseToSense
 	if((Rslt = IdentifyOverlaps(eOvlpSenseToSense,MinOverlap,MinFlankLen,false))!=0)	

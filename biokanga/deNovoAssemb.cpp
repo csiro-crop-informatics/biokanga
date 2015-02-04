@@ -105,7 +105,7 @@ if((Rslt=GenRdsSfx(1, 2)) < eBSFSuccess)
 	return((teBSFrsltCodes)Rslt);
 
 	// generate array of sequence starts plus array of flags from sequence headers
-if((Rslt=GenSeqStarts(true)) < eBSFSuccess)
+if((Rslt=GenSeqStarts(true,false)) < eBSFSuccess)
 	return((teBSFrsltCodes)Rslt);
 return(eBSFSuccess);
 }
@@ -212,7 +212,7 @@ if(MaxPasses < 0)	// caller just wanted the sequences loaded?
 		return((teBSFrsltCodes)Rslt);
 
 	// generate array of sequence starts plus array of flags from sequence headers
-	if((Rslt=GenSeqStarts(true)) < eBSFSuccess)
+	if((Rslt=GenSeqStarts(true,false)) < eBSFSuccess)
 		return((teBSFrsltCodes)Rslt);
 	return(eBSFSuccess);
 	}
@@ -268,7 +268,7 @@ while(m_Sequences.NumSeqs2Assemb) {
 		return((teBSFrsltCodes)Rslt);
 
 	// generate array of sequence starts plus array of flags from sequence headers
-	if((Rslt=GenSeqStarts(true)) < eBSFSuccess)
+	if((Rslt=GenSeqStarts(true,false)) < eBSFSuccess)
 		return((teBSFrsltCodes)Rslt);
 
 #ifdef _DEBUG
@@ -411,7 +411,7 @@ while(m_Sequences.NumSeqs2Assemb) {
 			return((teBSFrsltCodes)Rslt);
 
 		// generate array of sequence starts but do not overwrite existing array of existing flags as these will have been updated during the overlap onto sense processing
-		if((Rslt=GenSeqStarts(false)) < eBSFSuccess)
+		if((Rslt=GenSeqStarts(false,false)) < eBSFSuccess)
 			return((teBSFrsltCodes)Rslt);
 
 		// do some real work - locate overlaps and extend sequences with current overlap thresholds
@@ -425,7 +425,7 @@ while(m_Sequences.NumSeqs2Assemb) {
 		// reverse complement all sequences including PE's back to their original sense
 		PackedRevCplAllIncPEs();
 		// generate array of sequence starts but do not overwrite existing array of existing flags
-		if((Rslt=GenSeqStarts(false)) < eBSFSuccess)
+		if((Rslt=GenSeqStarts(false,false)) < eBSFSuccess)
 			return((teBSFrsltCodes)Rslt);
 
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"AssembReads: Generated %d partial merges ...",m_NumPartialSeqs2Assemb);	// report number of newly merged sequences
