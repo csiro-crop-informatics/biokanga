@@ -28,6 +28,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
+#define _DISNPS_ 1    // experimental, exploring the utility of generating DiSNPs
 
 #include "biokanga.h"
 #include "Aligner.h"
@@ -753,6 +754,8 @@ m_hSitePrefsFile = -1;
 m_hNoneAlignFile = -1;
 m_hMultiAlignFile = -1;
 m_hSNPfile = -1;
+m_hDiSNPfile = -1;
+m_hTriSNPfile = -1;
 m_hMarkerFile = -1;	
 m_hSNPCentsfile = -1;
 
@@ -829,6 +832,7 @@ m_NumLociPValues = 0;
 m_QValue = 0.0;
 m_MinSNPreads = 0;
 m_SNPNonRefPcnt = 0.0; 
+m_MaxDiSNPSep = cDfltMaxDiSNPSep;
 m_MarkerID = 0;	
 m_Marker5Len = 0;
 m_Marker3Len = 0;
@@ -850,6 +854,7 @@ m_SitePrefsOfs = cDfltRelSiteStartOfs;
 m_pszOutFile = NULL;
 m_szIndRsltsFile[0] = '\0';
 m_szJctRsltsFile[0] = '\0';
+m_szDiSNPFile[0] = '\0';
 m_pszSNPRsltsFile = NULL;
 m_pszSNPCentroidFile = NULL;
 m_pszSitePrefsFile = NULL;
@@ -998,6 +1003,29 @@ if(m_hSNPfile != -1)
 #endif
 	close(m_hSNPfile);
 	m_hSNPfile = -1;
+	}
+
+if(m_hDiSNPfile != -1)
+	{
+	if(bSync)
+#ifdef _WIN32
+		_commit(m_hDiSNPfile);
+#else
+		fsync(m_hDiSNPfile);
+#endif
+	close(m_hDiSNPfile);
+	m_hDiSNPfile = -1;
+	}
+if(m_hTriSNPfile != -1)
+	{
+	if(bSync)
+#ifdef _WIN32
+		_commit(m_hTriSNPfile);
+#else
+		fsync(m_hTriSNPfile);
+#endif
+	close(m_hTriSNPfile);
+	m_hTriSNPfile = -1;
 	}
 
 if(m_hMarkerFile != -1)
@@ -1409,6 +1437,59 @@ if(m_FileHdr.Version < cBSFRdsVersionBack || m_FileHdr.Version > cBSFRdsVersion)
 return(eBSFSuccess);
 }
 
+// NOTE: will only return SNP bases, e.g. aligned read sequence must not contain microInDel or span splice junctions
+inline eSeqBase
+CAligner::AdjAlignSNPBase(tsReadHit *pReadHit,	// aligned read
+		   UINT32 ChromID,			// read expected to have aligned to this chromosome
+			UINT32 Loci)            // base to be returned is at this alignment loci, base will be complemented if antisense alignment
+{
+UINT32 AdjStartLoc;
+UINT32 AdjEndLoc;
+etSeqBase Base;
+UINT8 *pBases;
+tsSegLoci *pSeg;
+tsHitLoci *pHit;
+
+pHit = &pReadHit->HitLoci.Hit;
+if(pHit->FlgInDel || pHit->FlgSplice)
+	return(eBaseEOS);
+
+pSeg = &pReadHit->HitLoci.Hit.Seg[0];
+if(pSeg->ChromID != ChromID)
+	return(eBaseEOS);
+
+if(pSeg->Strand == '+')
+	{
+	AdjStartLoc=((UINT32)pSeg->MatchLoci + pSeg->TrimLeft);
+	AdjEndLoc=((UINT32)pSeg->MatchLoci + (pSeg->MatchLen - pSeg->TrimRight - 1));
+	}
+else
+	{
+	AdjStartLoc=((UINT32)pSeg->MatchLoci + pSeg->TrimRight);
+	AdjEndLoc=((UINT32)pSeg->MatchLoci + (pSeg->MatchLen - pSeg->TrimLeft - 1));
+	}
+
+if(AdjStartLoc > Loci || AdjEndLoc < Loci)
+	return(eBaseEOS);
+
+pBases = &pReadHit->Read[pReadHit->DescrLen+1];
+
+if(pSeg->Strand == '+')
+	Base = pBases[Loci - pSeg->MatchLoci]  & 0x07;
+else
+	{
+	Base = pBases[pSeg->MatchLoci + pSeg->MatchLen - Loci - 1] & 0x07;
+	switch(Base) {
+		case eBaseA: Base = eBaseT; break;
+		case eBaseC: Base = eBaseG; break;
+		case eBaseG: Base = eBaseC; break;
+		case eBaseT: Base = eBaseA; break;
+		default:
+			break;
+		}
+	}
+return((eSeqBase)Base);
+}
 
 inline UINT32
 CAligner::AdjStartLoci(tsSegLoci *pSeg)
@@ -4029,6 +4110,56 @@ if(m_pszSNPRsltsFile != NULL && m_pszSNPRsltsFile[0] != '\0' && m_MinSNPreads > 
 	else
 		m_hSNPCentsfile = -1;
 
+#ifdef _DISNPS_
+	strcpy(m_szDiSNPFile,m_pszSNPRsltsFile);	// the DiSNP file name should be parameterised!!!
+	strcat(m_szDiSNPFile,(char *)".disnp.csv");
+	strcpy(m_szTriSNPFile,m_pszSNPRsltsFile);	// the DiSNP file name should be parameterised!!!
+	strcat(m_szTriSNPFile,(char *)".trisnp.csv");
+
+
+	if(m_szDiSNPFile[0] != '\0')
+		{
+#ifdef _WIN32
+		m_hDiSNPfile = open(m_szDiSNPFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE) );
+#else
+		if((m_hDiSNPfile = open(m_szDiSNPFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+			if(ftruncate(m_hDiSNPfile,0)!=0)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate DiSNP file  %s - %s",m_szDiSNPFile,strerror(errno));
+				return(eBSFerrCreateFile);
+				}
+#endif
+		if(m_hDiSNPfile < 0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate DiSNP output file '%s'",m_szDiSNPFile);
+			return(eBSFerrCreateFile);
+			}
+		}
+	else
+		m_hDiSNPfile = -1;
+
+	if(m_szTriSNPFile[0] != '\0')
+		{
+#ifdef _WIN32
+		m_hTriSNPfile = open(m_szTriSNPFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE) );
+#else
+		if((m_hTriSNPfile = open(m_szTriSNPFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+			if(ftruncate(m_hTriSNPfile,0)!=0)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate TriSNP file  %s - %s",m_szTriSNPFile,strerror(errno));
+				return(eBSFerrCreateFile);
+				}
+#endif
+		if(m_hTriSNPfile < 0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate TriSNP output file '%s'",m_szTriSNPFile);
+			return(eBSFerrCreateFile);
+			}
+		}
+	else
+		m_hTriSNPfile = -1;
+#endif
+
 	if(m_pszMarkerFile != NULL && m_pszMarkerFile[0] != '\0')
 		{
 #ifdef _WIN32
@@ -4055,6 +4186,8 @@ else
 	m_hSNPfile = -1;
 	m_hSNPCentsfile = -1;
 	m_hMarkerFile = -1;
+	m_hDiSNPfile = -1;
+	m_hTriSNPfile = -1;
 	};
 
 // none-aligned fasta reads file to be also generated?
@@ -6101,6 +6234,17 @@ UINT32 LocTMM;
 UINT32 LocTM;
 CStats Stats;
 
+int CurDiSNPLoci;
+int PrevDiSNPLoci;
+int DiSNPBuffIdx;
+char szDiSNPs[4000];
+
+int CurTriSNPLoci;
+int PrevTriSNPLoci;
+int FirstTriSNPLoci;
+int TriSNPBuffIdx;
+char szTriSNPs[4000];
+
 UINT8 SNPFlanks[9];
 UINT8 *pSNPFlank;
 int SNPFlankIdx;
@@ -6153,6 +6297,14 @@ m_NumLociPValues = 0;
 pSNP = &m_pChromSNPs->Cnts[0];
 pSNPWinL = pSNP;
 LineLen = 0;
+DiSNPBuffIdx = 0;
+TriSNPBuffIdx = 0;
+CurDiSNPLoci = 0;
+PrevDiSNPLoci = -1;
+CurTriSNPLoci = 0;
+PrevTriSNPLoci = -1;
+FirstTriSNPLoci = -1;
+m_MaxDiSNPSep = m_pChromSNPs->MeanReadLen;
 for(Loci = 0; Loci < m_pChromSNPs->ChromLen;Loci++, pSNP++)
 	{
 	// determine background expected error rate from window surrounding the current loci
@@ -6256,7 +6408,120 @@ for(Loci = 0; Loci < m_pChromSNPs->ChromLen;Loci++, pSNP++)
 		continue;
 
 	// accepting as being a SNP
-	// if outputing as marker sequence then get SNP up/dnstream sequence and report
+
+#ifdef _DISNPS_
+	if(!m_bIsSOLiD && m_hDiSNPfile != -1)
+		{
+		// try to find all reads which are overlapping this SNP plus the prev within 300bp SNP
+		tsReadHit *pCurOverlappingRead;
+		UINT8 PrevDiSNPBase;
+		UINT8 CurDiSNPBase;
+		UINT8 FirstTriSNPBase;
+		UINT8 PrevTriSNPBase;
+		UINT8 CurTriSNPBase;
+
+		int NumHaplotypes;
+		int HaplotypeCntThres;
+		int NumReadsOverlapping;
+		int NumReadsAntisense;
+		int DiSNPIdx;
+		int DiSNPCnts[64];
+
+		CurDiSNPLoci = Loci;
+		if(PrevDiSNPLoci != -1 && CurDiSNPLoci > 0 && ((CurDiSNPLoci - PrevDiSNPLoci) <= m_MaxDiSNPSep))
+			{
+			NumReadsOverlapping = 0;
+			NumReadsAntisense = 0;
+			memset(DiSNPCnts,0,sizeof(DiSNPCnts));
+			while((pCurOverlappingRead = IterateReadsOverlapping(false,m_pChromSNPs,PrevDiSNPLoci, CurDiSNPLoci)) != NULL)
+				{
+				// get bases at both SNP loci
+				PrevDiSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,PrevDiSNPLoci);
+				if(PrevDiSNPBase > eBaseT)
+					continue;
+				CurDiSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,CurDiSNPLoci);
+				if(CurDiSNPBase > eBaseT)
+					continue;
+				NumReadsOverlapping += 1;
+				if(pCurOverlappingRead->HitLoci.Hit.Seg[0].Strand == '-')
+					NumReadsAntisense += 1;
+				DiSNPIdx = ((PrevDiSNPBase & 0x03) << 2) | (CurDiSNPBase & 0x03);
+				DiSNPCnts[DiSNPIdx] += 1;
+				}
+			if(NumReadsOverlapping >= m_MinSNPreads)
+				{
+				NumHaplotypes = 0;       // very simplistic - calling haplotype if at least 3 for any putative DiSNP and more than 5% of read depth
+				HaplotypeCntThres = max(3,NumReadsOverlapping / 20);
+				for(DiSNPIdx = 0; DiSNPIdx < 16; DiSNPIdx++) 
+					if(DiSNPCnts[DiSNPIdx] >= HaplotypeCntThres)
+						NumHaplotypes += 1;
+
+				DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx],"\"%s\",%d,%d,%d,%d,%d",szChromName,PrevDiSNPLoci,CurDiSNPLoci,NumReadsOverlapping,NumReadsAntisense,NumHaplotypes);
+
+				for(DiSNPIdx = 0; DiSNPIdx < 16; DiSNPIdx++)
+					DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx],",%d",DiSNPCnts[DiSNPIdx]);	
+				DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx],"\n");
+
+				if((DiSNPBuffIdx + 200) > sizeof(szDiSNPs))
+					{
+					CUtility::SafeWrite(m_hDiSNPfile,szDiSNPs,DiSNPBuffIdx);
+					DiSNPBuffIdx  = 0;
+					}
+				}
+			}
+		
+		CurTriSNPLoci = Loci;
+		if(FirstTriSNPLoci != -1 && PrevTriSNPLoci > 0 && CurTriSNPLoci > 0 && ((CurTriSNPLoci - FirstTriSNPLoci) <= m_MaxDiSNPSep))
+			{
+			NumReadsOverlapping = 0;
+			NumReadsAntisense = 0;
+			memset(DiSNPCnts,0,sizeof(DiSNPCnts));
+			while((pCurOverlappingRead = IterateReadsOverlapping(true,m_pChromSNPs,FirstTriSNPLoci, CurTriSNPLoci)) != NULL)
+				{
+				// get bases at all three SNP loci
+				FirstTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,FirstTriSNPLoci);
+				if(FirstTriSNPBase > eBaseT)
+					continue;
+				PrevTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,PrevTriSNPLoci);
+				if(PrevTriSNPBase > eBaseT)
+					continue;
+				CurTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,CurTriSNPLoci);
+				if(CurTriSNPBase > eBaseT)
+					continue;
+				NumReadsOverlapping += 1;
+				if(pCurOverlappingRead->HitLoci.Hit.Seg[0].Strand == '-')
+					NumReadsAntisense += 1;
+				DiSNPIdx = ((FirstTriSNPBase & 0x03) << 4) | ((PrevTriSNPBase & 0x03) << 2) | (CurTriSNPBase & 0x03);
+				DiSNPCnts[DiSNPIdx] += 1;
+				}
+			if(NumReadsOverlapping >= m_MinSNPreads)
+				{
+				NumHaplotypes = 0;       // very simplistic - calling haplotype if at least 3 for any putative DiSNP and more than 5% of read depth
+				HaplotypeCntThres = max(3,NumReadsOverlapping / 20);
+				for(DiSNPIdx = 0; DiSNPIdx < 64; DiSNPIdx++) 
+					if(DiSNPCnts[DiSNPIdx] >= HaplotypeCntThres)
+						NumHaplotypes += 1;
+
+				TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx],"\"%s\",%d,%d,%d,%d,%d,%d",szChromName,FirstTriSNPLoci,PrevTriSNPLoci,CurTriSNPLoci,NumReadsOverlapping,NumReadsAntisense,NumHaplotypes);
+
+				for(DiSNPIdx = 0; DiSNPIdx < 64; DiSNPIdx++)
+					TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx],",%d",DiSNPCnts[DiSNPIdx]);	
+				TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx],"\n");
+
+				if((TriSNPBuffIdx + 500) > sizeof(szTriSNPs))
+					{
+					CUtility::SafeWrite(m_hTriSNPfile,szTriSNPs,TriSNPBuffIdx);
+					TriSNPBuffIdx  = 0;
+					}
+				}
+			}
+		PrevDiSNPLoci = CurDiSNPLoci;
+		FirstTriSNPLoci = PrevTriSNPLoci;
+		PrevTriSNPLoci = CurTriSNPLoci;
+		}
+#endif
+
+	// if outputting as marker sequence then get SNP up/dnstream sequence and report
 	int MarkerStartLoci;
 	int MarkerSeqIdx;
 	int AllelicIdx;
@@ -6358,6 +6623,17 @@ if(m_hMarkerFile != -1 && LineLen)
 	{
 	CUtility::SafeWrite(m_hMarkerFile,m_pszLineBuff,LineLen);
 	LineLen = 0;
+	}
+
+if(m_hDiSNPfile != -1 && DiSNPBuffIdx > 0)
+	{
+	CUtility::SafeWrite(m_hDiSNPfile,szDiSNPs,DiSNPBuffIdx);
+	DiSNPBuffIdx  = 0;
+	}
+if(m_hTriSNPfile != -1 && TriSNPBuffIdx > 0)
+	{
+	CUtility::SafeWrite(m_hTriSNPfile,szTriSNPs,TriSNPBuffIdx);
+	DiSNPBuffIdx  = 0;
 	}
 
 if(m_NumLociPValues == 0)
@@ -6534,6 +6810,66 @@ else			// else must be either CSV or VCF
 	LineLen = 0;
 	}
 
+if(m_hDiSNPfile != -1)
+	{
+	int Idx;
+	char szDiSNPs[3];
+	LineLen = sprintf(m_pszLineBuff,"\"Chrom\",\"SNP1Loci\",\"SNP2Loci\",\"Depth\",\"Antisense\",\"Haplotypes\"");
+	for(Idx = 0; Idx < 16; Idx++)
+		{
+		switch(Idx & 0x03) {
+			case 0: szDiSNPs[1] = 'a'; break;
+			case 1: szDiSNPs[1] = 'c'; break;
+			case 2: szDiSNPs[1] = 'g'; break;
+			case 3: szDiSNPs[1] = 't'; break;
+			}
+		switch((Idx >> 2) & 0x03) {
+			case 0: szDiSNPs[0] = 'a'; break;
+			case 1: szDiSNPs[0] = 'c'; break;
+			case 2: szDiSNPs[0] = 'g'; break;
+			case 3: szDiSNPs[0] = 't'; break;
+			}
+		szDiSNPs[2] = '\0';
+		LineLen += sprintf(&m_pszLineBuff[LineLen],",\"%s\"",szDiSNPs);
+		}
+	LineLen += sprintf(&m_pszLineBuff[LineLen],"\n");
+	CUtility::SafeWrite(m_hDiSNPfile,m_pszLineBuff,LineLen);
+	LineLen = 0;
+	}
+
+if(m_hTriSNPfile != -1)
+	{
+	int Idx;
+	char szTriSNPs[4];
+	LineLen = sprintf(m_pszLineBuff,"\"Chrom\",\"SNP1Loci\",\"SNP2Loci\",\"SNP3Loci\",\"Depth\",\"Antisense\",\"Haplotypes\"");
+	for(Idx = 0; Idx < 64; Idx++)
+		{
+		switch(Idx & 0x03) {
+			case 0: szTriSNPs[2] = 'a'; break;
+			case 1: szTriSNPs[2] = 'c'; break;
+			case 2: szTriSNPs[2] = 'g'; break;
+			case 3: szTriSNPs[2] = 't'; break;
+			}
+		switch((Idx >> 2) & 0x03) {
+			case 0: szTriSNPs[1] = 'a'; break;
+			case 1: szTriSNPs[1] = 'c'; break;
+			case 2: szTriSNPs[1] = 'g'; break;
+			case 3: szTriSNPs[1] = 't'; break;
+			}
+		switch((Idx >> 4) & 0x03) {
+			case 0: szTriSNPs[0] = 'a'; break;
+			case 1: szTriSNPs[0] = 'c'; break;
+			case 2: szTriSNPs[0] = 'g'; break;
+			case 3: szTriSNPs[0] = 't'; break;
+			}
+		szTriSNPs[3] = '\0';
+		LineLen += sprintf(&m_pszLineBuff[LineLen],",\"%s\"",szTriSNPs);
+		}
+	LineLen += sprintf(&m_pszLineBuff[LineLen],"\n");
+	CUtility::SafeWrite(m_hTriSNPfile,m_pszLineBuff,LineLen);
+	LineLen = 0;
+	}
+
 // need to check that there are accepted aligned reads to process for SNPs!!!
 if(m_hSNPCentsfile != -1)
 	{
@@ -6572,6 +6908,7 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 			if(m_pChromSNPs != NULL)
 				{
 				// this is where the SNPs for the previously processed chrom need to saved off as new chrom is about to be processed
+				m_pChromSNPs->MeanReadLen = (UINT32)(((m_pChromSNPs->TotReadLen + m_pChromSNPs->NumReads - 1) / m_pChromSNPs->NumReads));
 				if((Rslt=OutputSNPs())!=eBSFSuccess)
 					{
 					Reset(false);
@@ -6602,6 +6939,19 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 			m_pChromSNPs->ChromID = pSeg->ChromID;
 			m_pChromSNPs->TotMatch = 0;
 			m_pChromSNPs->TotMismatch = 0;
+			m_pChromSNPs->MeanReadLen = 0;
+			m_pChromSNPs->NumReads = 0;
+			m_pChromSNPs->TotReadLen = 0;
+			m_pChromSNPs->AdjacentSNPs[0].StartLoci = 0;
+			m_pChromSNPs->AdjacentSNPs[0].EndLoci = 0;
+			m_pChromSNPs->AdjacentSNPs[0].pFirstIterReadHit = NULL;
+			m_pChromSNPs->AdjacentSNPs[0].pPrevIterReadHit = 0;
+			m_pChromSNPs->AdjacentSNPs[1].StartLoci = 0;
+			m_pChromSNPs->AdjacentSNPs[1].EndLoci = 0;
+			m_pChromSNPs->AdjacentSNPs[1].pFirstIterReadHit = NULL;
+			m_pChromSNPs->AdjacentSNPs[1].pPrevIterReadHit = 0;
+			m_pChromSNPs->pFirstReadHit = NULL;
+			m_pChromSNPs->pLastReadHit = NULL;
 			PrevTargEntry = m_pChromSNPs->ChromID;
 			PrevMMChromID = 0;
 			PrevMMLoci = -1;
@@ -6658,12 +7008,17 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 			}
 
 		// double check not about to update snp counts past the expected chrom length
-		// truncate length as may be required
 		if((HitLoci + MatchLen) > ChromLen)
 			{
 			if((MatchLen = (int)ChromLen - HitLoci) < 10)
 				continue;
 			}
+
+		if(m_pChromSNPs->pFirstReadHit == NULL)
+			m_pChromSNPs->pFirstReadHit = pReadHit;
+		m_pChromSNPs->pLastReadHit = pReadHit;
+		m_pChromSNPs->TotReadLen += MatchLen;
+		m_pChromSNPs->NumReads += 1;
 
 		// now iterate read bases and if mismatch then update appropriate counts
 		pSNP = &m_pChromSNPs->Cnts[HitLoci];
@@ -6776,6 +7131,28 @@ if(m_hSNPfile != -1)
 #endif
 	close(m_hSNPfile);
 	m_hSNPfile = -1;
+	}
+
+if(m_hDiSNPfile != -1)
+	{
+#ifdef _WIN32
+	_commit(m_hDiSNPfile);
+#else
+	fsync(m_hDiSNPfile);
+#endif
+	close(m_hDiSNPfile);
+	m_hDiSNPfile = -1;
+	}
+
+if(m_hTriSNPfile != -1)
+	{
+#ifdef _WIN32
+	_commit(m_hTriSNPfile);
+#else
+	fsync(m_hTriSNPfile);
+#endif
+	close(m_hTriSNPfile);
+	m_hTriSNPfile = -1;
 	}
 
 if(m_hSNPCentsfile != -1)
@@ -8304,6 +8681,7 @@ while(Hi >= Lo) {
 return(NULL);
 }
 
+
 int
 CAligner::AddMHitReads(UINT32 NumHits,	// number of multimatches loci in pHits
 		tsReadHit *pHits)		// pts to array of hit loci
@@ -8470,6 +8848,80 @@ else
 	if(pCurReadHit->ReadHitIdx < m_NumReadsLoaded)
 		pNxtReadHit = m_ppReadHitsIdx[pCurReadHit->ReadHitIdx];
 return(pNxtReadHit);
+}
+
+tsReadHit *		// returned read which overlaps StartLoci and EndLoci, NULL if no read located
+CAligner::IterateReadsOverlapping(bool bTriSNPs, // false if iterating DiSNPs, true if iterating TriSNPs
+						tsChromSNPs *pChromSNPs, // processing SNPs on this chromosome
+						int StartLoci,				// returned reads are required to overlap both this starting and
+						int EndLoci)				// this ending loci
+{
+bool bNewStartEnd;
+int CurStart;
+int CurEnd;
+tsAdjacentSNPs *pAdjacentSNPs;
+tsReadHit *pNxtReadHit = NULL;
+
+pAdjacentSNPs = bTriSNPs ? &pChromSNPs->AdjacentSNPs[1] : &pChromSNPs->AdjacentSNPs[0];
+bNewStartEnd = false;
+if(pAdjacentSNPs->pFirstIterReadHit == NULL ||				// only NULL if iterations just starting for SNPs on this chrom
+	StartLoci <  pAdjacentSNPs->StartLoci || EndLoci <  pAdjacentSNPs->EndLoci)	// or if StartLoci/EndLoci now 5' to previous so needing to search from start
+	{
+	pNxtReadHit = pChromSNPs->pFirstReadHit;
+	pAdjacentSNPs->pFirstIterReadHit = pChromSNPs->pFirstReadHit;
+	pAdjacentSNPs->pPrevIterReadHit = NULL;
+	pAdjacentSNPs->StartLoci = StartLoci;
+	pAdjacentSNPs->EndLoci = EndLoci;
+	bNewStartEnd = true;
+	}
+else
+	{
+	if(StartLoci == pAdjacentSNPs->StartLoci && EndLoci == pAdjacentSNPs->EndLoci) // same start/end loci as previous so must be iterating same start/end loci
+		{
+		if(pAdjacentSNPs->pPrevIterReadHit == pChromSNPs->pLastReadHit)		// check if last returned was last on chrom
+			return(NULL);
+
+		pNxtReadHit = m_ppReadHitsIdx[pAdjacentSNPs->pPrevIterReadHit->ReadHitIdx]; // recommence search from next
+		}
+	else   // else starting new Start/EndLoci which is 3' to previous
+		{
+		pNxtReadHit = pAdjacentSNPs->pFirstIterReadHit;
+		pAdjacentSNPs->pPrevIterReadHit = pNxtReadHit;
+		pAdjacentSNPs->StartLoci = StartLoci;
+		pAdjacentSNPs->EndLoci = EndLoci;
+		bNewStartEnd = true;
+		}	
+	}
+
+	// have the current read, iterate forward returning reads until reads align past the StartLoci
+do {
+	if(pNxtReadHit == NULL)
+		return(NULL);
+	if(pNxtReadHit->NAR == eNARAccepted &&
+		!(pNxtReadHit->HitLoci.Hit.FlgInDel || pNxtReadHit->HitLoci.Hit.FlgSplice))
+		{
+		if(pNxtReadHit->HitLoci.Hit.Seg[0].ChromID !=  pChromSNPs->ChromID) // double check read is aligning on to expected chrom
+			return(NULL);
+
+		CurStart = AdjStartLoci(&pNxtReadHit->HitLoci.Hit.Seg[0]); 
+		CurEnd = AdjEndLoci(&pNxtReadHit->HitLoci.Hit.Seg[0]);
+
+		if(CurStart <= StartLoci && CurEnd >= EndLoci)   // this read overlaps both start and end?
+			{
+			pAdjacentSNPs->pPrevIterReadHit = pNxtReadHit;
+			if(bNewStartEnd)		
+				pAdjacentSNPs->pFirstIterReadHit = pNxtReadHit;
+			return(pNxtReadHit);
+			}
+		else
+			if(CurStart > StartLoci)
+				return(NULL);
+		}
+
+	}
+while((pNxtReadHit != pChromSNPs->pLastReadHit) && (pNxtReadHit = m_ppReadHitsIdx[pNxtReadHit->ReadHitIdx])!=NULL);
+
+return(NULL);
 }
 
 // NumDnUniques
@@ -8725,7 +9177,7 @@ return(0);
 
 
 // SortHitmatch
-// Sort by ascending read NAR,NumHits(1,0,2,3..), chrom, loci, strand, LowMMCnt
+// Sort by ascending read NAR,NumHits(1,0,2,3..), chrom, loci, len, strand, LowMMCnt
 int
 CAligner::SortHitMatch(const void *arg1, const void *arg2)
 {

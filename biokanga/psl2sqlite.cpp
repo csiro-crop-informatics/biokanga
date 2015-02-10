@@ -200,7 +200,7 @@ if (!argerrors)
 	if(TrimLen < 1)
 		strcpy(szExprDescr,"N/A");
 
-	if(exprdescr->count)
+	if(blatparams->count)
 		strcpy(szBlatParams,blatparams->sval[0]);
 	else
 		strcpy(szBlatParams,"N/A");

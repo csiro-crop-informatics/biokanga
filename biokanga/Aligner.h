@@ -37,6 +37,7 @@ const int cSNPBkgndRateWindow = 51;		// window size within which the substitutio
 const int cSNPCentfFlankLen = 3;			// SNP centroid flank length
 const int cSNPCentroidLen = ((cSNPCentfFlankLen * 2) + 1); // SNP centroid k-mer length
 const int cSNPCentroidEls = ( 4 * 4 * 4 * 4 * 4 * 4 * 4);  // number of SNP centroid elements - could develop a macro but not worth the effort???
+const int cDfltMaxDiSNPSep = 300;       // DiSNPs (TriSNPs) are two (three) individual SNPs separated by at most this many bp 
 
 const int cMinMarkerLen = 25;			// minimum allowed marker length
 const int cMaxMarkerLen = 500;			// maximum allowed marker length
@@ -288,12 +289,25 @@ typedef struct TAG_sSNPcnts {
 	UINT32 NonRefBaseCnts[5]; // counts of non-reference bases a,c,g,t,n covering this loci
 	} tsSNPcnts;
 
+typedef struct TAG_sAdjacentSNPs {
+	int StartLoci;		// currently iterating reads which overlap between StartLoci and	
+	int EndLoci;		// EndLoci inclusive
+	tsReadHit *pFirstIterReadHit; // this read was the first iterated returned read overlapping StartLoci and EndLoci
+	tsReadHit *pPrevIterReadHit; // this read was the previously iterated returned read overlapping StartLoci and EndLoci
+	} tsAdjacentSNPs;
+
 typedef struct TAG_sChromSNPs {
 	UINT32 ChromID;		// uniquely identifies this chromosome
 	UINT32 ChromLen;	// this chromosome length
+	tsAdjacentSNPs AdjacentSNPs[2]; // allowing for both DiSNPs and TriSNPs
+ 	tsReadHit *pFirstReadHit; // 1st read on chromosome which was accepted for SNP processing
+	tsReadHit *pLastReadHit; // last read on chromosome which was accepted for SNP processing
 	UINT32 AllocChromLen; // cnts can be for a chromosome of at most this length
 	INT64 TotMatch;	// total number of aligned read bases which exactly matched corresponding chrom sequence bases
 	INT64 TotMismatch;	// total number of aligned read bases which mismatched corresponding chrom sequence base
+	UINT32 MeanReadLen;  // mean length of all reads used for identifying putative SNPs, determines max separation used for Di/TriSNP counts
+	UINT32 NumReads;     // number of reads used for identifying putative SNPs from which MeanReadLen was calculated 
+	UINT64 TotReadLen;	 // total length, in bp, of all reads used for identifying putative SNPs from which MeanReadLen was calculated
 	tsSNPcnts Cnts[1]; // will be allocated to hold base cnts at each loci in this chromosome
 	} tsChromSNPs;
 
@@ -493,6 +507,7 @@ class CAligner
 
 	int m_MinSNPreads;				// before SNP can be called there must be at least this number of reads covering the loci
 	double m_SNPNonRefPcnt;			// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25) 
+	int m_MaxDiSNPSep;				// putative DiSNPs only processed if separation between the SNPs <= this many bp
 
 	tBSFEntryID m_PrevSAMTargEntry; // used to determine when generating SAM output if the target chrom has already been loaded
 	char m_szSAMTargChromName[128];	// holds previously loaded SAM chrom
@@ -531,6 +546,8 @@ class CAligner
 	int m_hNoneAlignFile;	// optional output none-alignable file handle
 	int m_hMultiAlignFile;	// optional output multialigned reads file handle
 	int m_hSNPfile;			// file handle used if SNPs are being processed
+	int m_hDiSNPfile;       // file handle used if DiSNPs are being processed
+	int m_hTriSNPfile;       // file handle used if TriSNPs are being processed
 	int m_hSNPCentsfile;	// file handle used if SNP centroids are being processed
 
 	gzFile m_gzOutFile;			// results output when compressing the output as gzip
@@ -541,6 +558,8 @@ class CAligner
 	gzFile m_gzSNPfile;			// when compressing the output as gzip used if SNPs are being processed
 	gzFile m_gzSNPCentsfile;	// fwhen compressing the output as gzip if SNP centroids are being processed
 
+	char m_szDiSNPFile[_MAX_PATH];		// DiSNP results to this file
+	char m_szTriSNPFile[_MAX_PATH];		// TriSNP results to this file
 	char m_szIndRsltsFile[_MAX_PATH];		// microIndel results to this file
 	char m_szJctRsltsFile[_MAX_PATH];		// splice junction results to this file
 
@@ -711,6 +730,11 @@ class CAligner
 	static UINT32 AdjAlignHitLen(tsHitLoci *pHit);
 	static int AdjAlignMismatches(tsHitLoci *pHit);
 
+// NOTE: will only return SNP bases, e.g. aligned read sequence must not contain microInDel or span splice junctions
+	static eSeqBase AdjAlignSNPBase(tsReadHit *pReadHit,	// aligned read
+		   UINT32 ChromID,			// read expected to have aligned to this chromosome
+			UINT32 Loci);            // base to be returned is at this alignment loci, base will be complemented if antisense alignment
+
 	int AutoTrimFlanks(int MinFlankExacts); // Autotrim back aligned read flanks until there are at least MinFlankExacts exactly matching bases in the flanks
 
 	int PCR5PrimerCorrect(int MaxAllowedSubRate, int KLen = 12); // correct substitutions in first Klen 5' read bases - assumed to be PCR random primer artefacts - until overall read meets MaxAllowedSubRate
@@ -877,6 +901,12 @@ class CAligner
 
 	tsReadHit *IterReads(tsReadHit *pCurReadHit);			// to start from first read then pass in NULL as pCurReadHit
 	tsReadHit *IterSortedReads(tsReadHit *pCurReadHit);		// iterate over sorted reads, to start from first read then pass in NULL as pCurReadHit
+	tsReadHit *		// returned read which overlaps StartLoci and EndLoci, NULL if no read located
+			IterateReadsOverlapping(bool bTriSNPs, // false if iterating DiSNPs, true if iterating TriSNPs
+						tsChromSNPs *pChromSNPs, // processing SNPs on this chromosome
+						int StartLoci,				// returned reads are required to overlap both this starting and
+						int EndLoci);				// this ending loci
+
 	bool	// returns false if no more reads availing for processing by calling thread
 		ThreadedIterReads(tsReadsHitBlock *pRetBlock);
 
