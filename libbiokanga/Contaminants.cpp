@@ -1232,7 +1232,7 @@ return(0);
 
 int			// < 0 if errors, 0 if no Contaminant overlap, 1..N number of Contaminant suffix bases overlapping
 CContaminants::MatchContaminants(teContamType Type,	// process for this overlay type
-					int AllowSubsRate,		// if non-zero then allow substitutions in the overlapping Contaminants at this rate per 25bp of overlap length if overlap >= 10bp
+					int AllowSubsRate,		// if non-zero then allow substitutions in the overlapping Contaminants at this rate per 25bp of overlap length with a minimum of 2 subs allowed
 					int MinOverlap,			// minimum required overlap
 					int QueryLen,			// query sequence length
 					etSeqBase *pQuerySeq)	// attempt to locate a contaminate flanking sequence which overlays onto this query read sequence
@@ -1289,8 +1289,13 @@ pTypeRootNode = &m_pContamSeqNodes[pContaminantType->RootContamSeqNodeIdx-1];
 // have at least one contaminant of requested type which is at least the minimum required length to be an otherlap
 for (OverlapIdx = CurOverlapLen; OverlapIdx >= MinOverlap; OverlapIdx--,bSuffixOverlaps ? pTargBase -= 1 : pTargBase += 1 )
 	{
-	if(AllowSubsRate > 0 && OverlapIdx >= 10)
-		MaxAcceptedSubs = (AllowSubsRate * (OverlapIdx + 15)) / 25;
+	if(AllowSubsRate > 0)
+		{
+		if(OverlapIdx >= 10)
+			MaxAcceptedSubs = min(2,(AllowSubsRate * (OverlapIdx + 15)) / 25);
+		else
+			MaxAcceptedSubs = 2;
+		}
 	else
 		MaxAcceptedSubs = 0;
 		

@@ -224,7 +224,7 @@ public:
 
 	int			// 0 if no Contaminant overlap, 1..N number of Contaminant suffix bases overlaping onto target pTargSeq
 		MatchContaminants(teContamType Type,		// process for this overlay type
-					int AllowSubsRate,	// if non-zero then allow substitutions in the overlapping Contaminants at this rate per 25bp of overlap length if overlap >= 10bp
+					int AllowSubsRate,		// if non-zero then allow substitutions in the overlapping Contaminants at this rate per 25bp of overlap length with a minimum of 2 subs allowed
 					int MinOverlap,			// minimum required overlap
 					int QueryLen,			// query sequence length
 					etSeqBase *pQuerySeq);	// attempt to locate a contaminate flanking sequence which overlays onto this query read sequence

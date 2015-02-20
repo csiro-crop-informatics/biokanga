@@ -1338,7 +1338,7 @@ return(eBSFSuccess);
 int
 CArtefactReduce::RemoveNonOverlaps(int MinOverlap,			// minimum required overlap (in bp)
 						int MinFlankLen,            // minimum required non-overlap flank (in bp)
-						int NumIterations) 	// because of artefact errors tending to be at end of reads (both 5' and 3') then by default 2 iterations of passes are utilised 
+						int NumIterations) 	// because of artefact errors tending to be at end of reads (both 5' and 3') then by default 1 iterations of passes are utilised 
 {
 int Rslt;
 int Iteration;

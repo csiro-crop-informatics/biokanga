@@ -128,7 +128,7 @@ class CArtefactReduce : public CKangadna
 	int
 		RemoveNonOverlaps(int MinOverlap,			// minimum required overlap (in bp)
 						int MinFlankLen,            // minimum required non-overlap flank (in bp)
-						int NumIterations = 1); 	// because of artefact errors tending to be at end of reads (both 5' and 3') then by default 2 iterations of passes are utilised 
+						int NumIterations = 1); 	// because of artefact errors tending to be at end of reads (both 5' and 3') then by default 1 iterations of passes are utilised 
 
 	int									// returns number of KMers of length m_KMerSeqLen accepted from pRead, 0 if none, < 0 if errors
 		AddReadKMers(int ReadLen,		// number of bases in read
