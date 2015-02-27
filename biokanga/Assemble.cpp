@@ -128,7 +128,7 @@ struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file"
 struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - standard, 1 - higher stringency, 2 - quick de Novo assembly");
 
 struct arg_int *trimends = arg_int0("t","trimends","<int>",     "when loading reads or high confidence seed contigs then trim 5' and 3' ends by this many bases (default 0, range 1..50)");
-struct arg_int *minseqlen = arg_int0("X","minseqlen","<int>",   "only accept reads or high confidence seed contigs, after any trimming, of at least this length (default 90, range 70..500)");
+struct arg_int *minseqlen = arg_int0("X","minseqlen","<int>",   "only accept reads or high confidence seed contigs, after any trimming, of at least this length (default 70, range 60..500)");
 
 struct arg_int *trimpe2se = arg_int0("x","trimpe2se","<int>",	"trim PEs both 5' and 3' ends by this many bases when treating as SE (default 10, range 0..50)");
 
@@ -166,7 +166,7 @@ struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",				"Output resul
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");
 
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..64 (defaults to 0 which sets threads to number of cores)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_end *end = arg_end(200);
 
@@ -324,10 +324,10 @@ if (!argerrors)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected end trimming '-t%d' to be in range 0..50",TrimEnds);
 		return(1);
 		} 
-	MinSeqLen = minseqlen->count ? minseqlen->ival[0] : 90;
-	if(MinSeqLen < 70 || MinSeqLen > 500)
+	MinSeqLen = minseqlen->count ? minseqlen->ival[0] : 70;
+	if(MinSeqLen < 60 || MinSeqLen > 500)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected minimum sequence length '-X%d' to be in range 70..500",MinSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected minimum sequence length '-X%d' to be in range 60..500",MinSeqLen);
 		return(1);
 		} 
 

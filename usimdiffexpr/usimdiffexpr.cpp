@@ -17,7 +17,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.0.2";		// increment with each release
+const char *cpszProgVer = "1.0.3";		// increment with each release
 
 const int cDfltNumReads = 20;			// default number of million reads 
 const int cMinNumReads =  1;			// minimum number of million reads
@@ -34,7 +34,7 @@ const int cMaxNumReps  = 100;			// maximum number of replicates supported
 const double cDfltShotNoise = 0.0;			// mean shot noise per transcript as proportion of counts
 const double cMaxShotNoise = 0.5;			// max mean shot noise per transcript as proportion of counts
 
-const int cMaxWorkerThreads = 64;		// allow for at most 64 worker threads
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 
 // processing modes
 typedef enum TAG_ePMode {
@@ -192,7 +192,7 @@ struct arg_int *numreps = arg_int0("r","nreplicates","<int>",   "total number of
 struct arg_int *whitenoise = arg_int0("w","whitenoise","<int>",	"white noise to apply to read acceptance thresholds between replicates representing change in sampling biases (default = 100)");
 struct arg_file *infile = arg_file1("i","infile","<file>",		"use features or genes in this BED file for defining transcriptome isoform lengths");
 struct arg_file *outfile = arg_file1("o","outfile","<file>",	"output transcript counts to this file");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPUs)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 
 struct arg_end *end = arg_end(20);

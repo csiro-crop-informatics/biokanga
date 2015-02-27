@@ -34,7 +34,7 @@ const int cMaxBatchSize = 5000000;		// max number of defaulted Hamming and non-p
 const int cMaxAllocBuffChunk = 0x07fffff;			// buffer fasta
 const int cAllocNumChroms = 4096;					// allocate for chrom seqs in this many increments
 
-const int cMaxWorkerThreads = 64;		// allow for at most 64 worker threads
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 
 // processing modes
 typedef enum TAG_ePMode {

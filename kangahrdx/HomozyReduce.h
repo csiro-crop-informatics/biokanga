@@ -66,7 +66,7 @@ const int cHashAEntries = 0x07fff;		// TargSeqID start loci are hashed into this
 //const int cHashAEntries = 0x0fffff;		// TargSeqID start loci are hashed into this many entries
 const int cMaxNumAIdentNodes = (cHashAEntries * 128);	// allow at most this many TargSeqIDs to be hash linked per thread
 
-const int cMaxWorkerThreads = 64;			// can handle at most 64 threads
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 const int cMaxProbesPerBlock = 0x03fff;     // each thread can process at most this many probe reads per block
 
 #pragma pack(1)

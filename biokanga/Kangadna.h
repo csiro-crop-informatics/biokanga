@@ -83,7 +83,7 @@ const UINT32 cMaxSfxBlkEls = 4000000000;	// construct suffix block arrays with 4
 
 const UINT64 cMaxConcatSeqLen = (UINT64)0x0ffffffffff; // arbitary limit to all concatenated read sequences lengths - 1Tbp should be enough!   
 
-const int cMaxWorkerThreads = 64;			// can handle at most 64 threads
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 const int cMaxDupInstances = 2500;			// maintain instance counts up this max number of instances
 
 const int cMaxMultiSeqFlags = 4000;			// limit local copy of sequence flags to at most this many

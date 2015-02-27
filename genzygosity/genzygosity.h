@@ -3,7 +3,7 @@
 const int cBSFRdsVersion = 5;			// latest file header version which can be handled
 const int cBSFRdsVersionBack= 3;		// backward compatible to this version
 
-const int cMaxWorkerThreads = 64;		// allow for at most 64 worker threads (will be clamped to the max available)
+const int cMaxWorkerThreads = 128;		// limiting max number of threads to this many
 const int cMaxSubseqsPerBlock = 0x07fff;// max number of subsequences for processing per thread as a block
 
 const int cDfltAllowedSubs = 2;			// default number of aligner induced substitutions

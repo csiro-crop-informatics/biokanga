@@ -30,7 +30,6 @@
 
 
 const size_t cAllocInBuffer =   16000000;
-const size_t cgzAllocInBuffer = 1000000;
 
 int main(int argc, char* argv[])
 {

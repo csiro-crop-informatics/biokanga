@@ -29,7 +29,7 @@
 
 #include "biokanga.h"
 
-const int cMaxWorkerThreads = 64;		// allow for at most 64 worker threads (will be clamped to the max available)
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 const size_t cGbpSeqSize = 1000000000;	// define our definition of a Gbp
 const int cMaxSimGenomeGbp = 1000;      // when simulating genomes then allowing for genomes of upto 1 Tbp which would require ~ 6TB of memory!
 const int cNumSimChroms = 10000;		// simulated genomes will be split over this many equal sized chromosomes
@@ -113,7 +113,7 @@ struct arg_file *OutFile = arg_file0("o",NULL,"<file>",			"output suffix array f
 struct arg_str *Descr = arg_str0("d","descr","<string>",		"full description");
 struct arg_str *Title = arg_str0("t","title","<string>",		"short title");
 struct arg_str *RefSpecies = arg_str1("r","ref","<string>",		"reference species");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPU cores, max 64)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",		"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");

@@ -102,7 +102,7 @@ struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences
 struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file containing PacBio long reads to be filtered");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output accepted filtered reads to this file");
 
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPU cores, max 64)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",				"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");

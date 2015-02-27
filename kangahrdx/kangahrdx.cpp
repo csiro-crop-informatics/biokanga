@@ -27,7 +27,7 @@
 
 #include "./HomozyReduce.h"
 
-const char *cpszProgVer = "2.0.0";		// increment with each release
+const char *cpszProgVer = "2.0.1";		// increment with each release
 
 int
 Process(etPMode PMode,					// processing mode
@@ -126,7 +126,7 @@ struct arg_int *minseqlen= arg_int0("l","minlen","<int>",       "filter out inpu
 struct arg_int *minctglen= arg_int0("L","minctglen","<int>",    "filter out homozygous region reduced contigs which which are less than this length (default is 100bp, range 30..10000)");
 
 
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPUs)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_lit  *strand   = arg_lit0("S","strand",              "strand specific homozygous region reduction - identified homozygous regions between any two contigs must be same orientation");
 
 struct arg_int  *maxhomozysubs = arg_int0("z","maxhomozysubs","<int>","characterise region as homozygous if differs by at most this base rate per 100 from any other region (default is 3%%, range 0..7%%");

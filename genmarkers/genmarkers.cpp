@@ -20,7 +20,7 @@
 #include "./genmarkers.h"
 #include "./Markers.h"
 
-const char *cpszProgVer = "1.0.1";		// increment with each release
+const char *cpszProgVer = "1.0.3";		// increment with each release
 const char *cpszProcOverview = "Generate Markers";
 
 CStopWatch gStopWatch;
@@ -127,7 +127,7 @@ struct arg_file *alignfiles = arg_filen("I","inaligns","<file>",1,cRRMaxInFileSp
 
 struct arg_file *markerfile = arg_file1("o","out","<file>",		"Output markers to this file");
 
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPUs)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_end *end = arg_end(100);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,

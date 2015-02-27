@@ -133,7 +133,7 @@ struct arg_file *contaminantfile = arg_file0("c", "contaminants", "<file>", "Put
 struct arg_file *outfile = arg_file0("o", "out", "<file>", "Output distributions to this CSV file");
 struct arg_file *outhtmlfile = arg_file0("O", "out", "<file>", "Output distributions to this HTML5 file");
 
-struct arg_int *threads = arg_int0("T", "threads", "<int>", "number of processing threads 0..64 (defaults to 0 which sets threads to number of cores)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_file *summrslts = arg_file0("q", "sumrslts", "<file>", "Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w", "experimentname", "<str>", "experiment name SQLite3 database file");

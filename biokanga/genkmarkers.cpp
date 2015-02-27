@@ -108,7 +108,7 @@ struct arg_str *chromnames = arg_str1("C","chromnames","<str>",	"Comma/space sep
 struct arg_file *infile = arg_file1("i","in","<file>",		    "Use this suffix indexed pseudo-chromosomes file");
 struct arg_file *outfile = arg_file1("o","markers","<file>",		"Output accepted marker K-mer sequences to this multifasta file");
 struct arg_file *outreadsfile = arg_file0("O","markerreads","<file>",	"Output reads containing accepted marker K-mers to this multifasta file");
-struct arg_int *numthreads = arg_int0("T","threads","<int>",	"number of processing threads 0..n (defaults to 0 which sets threads to number of CPU cores, max 64)");
+struct arg_int *numthreads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",		"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");

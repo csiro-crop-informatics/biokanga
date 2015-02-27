@@ -247,7 +247,7 @@ struct arg_str  *title = arg_str0("t","title","<string>",       "track title");
 
 struct arg_str  *ExcludeChroms = arg_strn("Z","chromexclude",	"<string>",0,cMaxExcludeChroms,"high priority - regular expressions defining chromosomes to exclude");
 struct arg_str  *IncludeChroms = arg_strn("z","chromeinclude",	"<string>",0,cMaxIncludeChroms,"low priority - regular expressions defining chromosomes to include");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPU cores, max 64)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_int *maxmlmatches = arg_int0("R","maxmulti","<int>",	"allow any read to match at most this many genome loci then process according to mlmode (default is 5)");
 struct arg_lit *clampmaxmulti = arg_lit0("X","clampmaxmulti",	 "treat reads mapping to more than limit set with '-R<n>' as if exactly <n> matches (default is not to further process reads exceeding limit set with '-R<n>')");

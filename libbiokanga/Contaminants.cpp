@@ -1232,7 +1232,7 @@ return(0);
 
 int			// < 0 if errors, 0 if no Contaminant overlap, 1..N number of Contaminant suffix bases overlapping
 CContaminants::MatchContaminants(teContamType Type,	// process for this overlay type
-					int AllowSubsRate,		// if non-zero then allow substitutions in the overlapping Contaminants at this rate per 25bp of overlap length with a minimum of 2 subs allowed
+					int AllowSubsRate,		// if non-zero then allow substitutions in the overlapping Contaminants at this rate per 25bp of overlap length with a minimum of 1 subs allowed
 					int MinOverlap,			// minimum required overlap
 					int QueryLen,			// query sequence length
 					etSeqBase *pQuerySeq)	// attempt to locate a contaminate flanking sequence which overlays onto this query read sequence
@@ -1292,9 +1292,9 @@ for (OverlapIdx = CurOverlapLen; OverlapIdx >= MinOverlap; OverlapIdx--,bSuffixO
 	if(AllowSubsRate > 0)
 		{
 		if(OverlapIdx >= 10)
-			MaxAcceptedSubs = min(2,(AllowSubsRate * (OverlapIdx + 15)) / 25);
+			MaxAcceptedSubs = min(1,(AllowSubsRate * (OverlapIdx + 15)) / 25);
 		else
-			MaxAcceptedSubs = 2;
+			MaxAcceptedSubs = 1;
 		}
 	else
 		MaxAcceptedSubs = 0;

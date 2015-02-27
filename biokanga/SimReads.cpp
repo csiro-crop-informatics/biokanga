@@ -189,7 +189,7 @@ struct arg_file *hammfile = arg_file0("H","hammingfile","<file>","use distances 
 struct arg_file *outfile = arg_file1("o","out","<file>",		"output simulated (or N/1 if paired) reads to this file");
 struct arg_file *outpefile = arg_file0("O","outpe","<file>",	"output simulated (N/2) paired end reads to this file");
 struct arg_file *outsnpfile = arg_file0("u","outsnp","<file>",	"output simulated SNP loci to this BED file, if no SNP rate specified then defaults to 1000 per Mbp");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPUs)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_lit  *dedupe = arg_lit0("d","dedupe",                "generate unique read sequences only");
 struct arg_int *hamming = arg_int0("e","hamming","<int>",		"if specified and < 0, then dynamically generate Hamming edit distances, otherwise use this static distance (default = static generation with Hamming 0)");
 struct arg_lit  *readhamdist = arg_lit0("r","readhamdist",      "generate hamming distribution from each simulated read to all other subsequences of same length in genome");

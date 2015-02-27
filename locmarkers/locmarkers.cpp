@@ -22,7 +22,7 @@
 
 #include "./LocKMers.h"
 
-const char *cpszProgVer = "0.9.4";		// increment with each release
+const char *cpszProgVer = "0.9.5";		// increment with each release
 const char *cpszProcOverview = "Locate alignment-less markers";
 
 CStopWatch gStopWatch;
@@ -105,7 +105,7 @@ struct arg_str *chromnames = arg_str1("C","chromnames","<str>",	"Comma/space sep
 struct arg_file *infile = arg_file1("i","in","<file>",		    "Use this suffix indexed pseudo-chromosomes file");
 struct arg_file *outfile = arg_file1("o","markers","<file>",		"Output accepted marker K-mer sequences to this multifasta file");
 struct arg_file *outreadsfile = arg_file0("O","markerreads","<file>",	"Output reads containing accepted marker K-mers to this multifasta file");
-struct arg_int *numthreads = arg_int0("T","threads","<int>",	"number of processing threads 0..n (defaults to 0 which sets threads to number of CPU cores, max 64)");
+struct arg_int *numthreads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_end *end = arg_end(80);
 

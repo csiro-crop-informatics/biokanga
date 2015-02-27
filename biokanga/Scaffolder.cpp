@@ -121,7 +121,7 @@ struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",		 "Output result
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>","experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>","experiment description SQLite3 database file");
 
-struct arg_int *threads = arg_int0("T","threads","<int>",		     "number of processing threads 0..64 (defaults to 0 which sets threads to number of cores)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_end *end = arg_end(200);
 

@@ -20,13 +20,13 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const unsigned int cProgVer = 111;		// increment with each release
+const unsigned int cProgVer = 112;		// increment with each release
 
 const int cMinSeqLen = 5;				// minimum sequence length for Hamming distances
 const int cDfltSeqLen = 36;				// default sequence length for Hamming distances
 const int cMaxSeqLen = 500;				// maximum sequence length for Hamming distances
 
-const int cMaxWorkerThreads = 64;		// allow for at most 64 worker threads - or number of CPU Cores - per node
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 const int cMaxNumNodes = 10000;			// allow for upto this many nodes if processing is distributed over multiple nodes
 
 #pragma pack(4)
@@ -201,7 +201,7 @@ struct arg_file *infile = arg_file1("i","in","<file>",			"in mode 0 and 1, input
 struct arg_int *sample = arg_int0("k","sample","<int>",		    "sample every -S<N> sweep instances (default is 1) useful if only interested in overall distributions");
 
 struct arg_file *outfile = arg_file0("o","out","<file>",		"output (merged) Hamming distances to this file");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPUs)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_end *end = arg_end(20);
 
 void *argtable[] = {help,version,FileLogLevel,ScreenLogLevel,LogFile,
@@ -1526,7 +1526,7 @@ m_NumSubSeqs = 0;
 pChrom = m_pGChroms;
 for(ChromIdx = 0; ChromIdx < m_NumGChroms; ChromIdx++, pChrom++)
 	{
-	if((NumSubSeqs = (UINT32)(pChrom->Len + 1 - m_SubSeqLen)) < 1) // don't bother with chromsome too short to contain a subseq
+	if((NumSubSeqs = (UINT32)(pChrom->Len + 1 - m_SubSeqLen)) < 1) // don't bother with chromosome too short to contain a subseq
 		{
 		pChrom->NumSubSeqs = 0;
 		continue;

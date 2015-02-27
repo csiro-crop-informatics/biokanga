@@ -40,7 +40,7 @@ const int cGapMaxLength = 100000;    // treat any gaps longer than this length a
 const int cMinCoreDelta = 1;		// minimum allowed core shift delta in bp
 const int cMaxCoreDelta = 50;		// max allowed core shift delta in bp
 
-const int cMaxWorkerThreads = 64;	// allow for at most 64 worker threads (will be clamped to the max available)
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 
 const int cDfltSensCoreIters  = 1500;	// default sensitivity core explore depth 
 const int cMoreSensCoreIters  = 2000;	// more sensitivity core explore depth

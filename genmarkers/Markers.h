@@ -5,7 +5,7 @@ const int cMaxLenName = 100;			// accept species or chrom/contig names of at mos
 const int cMaxMarkerSpecies = 25;		// allow at most 25 different species
 const int cMaxSeqID = 100000000;		// allow at most 10^8 different target species sequences
 const int cDfltThreads = 8;				// by default use 8 threads when sorting
-const int cMaxWorkerThreads = 64;		// allow up to this many worker threads
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 
 // following two constants are used when determing species specific SNPs
 const int cAltMaxBases = 1;			// must be no more than this number of bases in alternative species

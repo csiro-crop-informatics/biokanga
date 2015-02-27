@@ -21,7 +21,7 @@
 
 #include "genzygosity.h"
 
-const char *cpszProgVer = "0.0.3";		// increment with each release
+const char *cpszProgVer = "0.0.4";		// increment with each release
 
 // processing modes
 typedef enum TAG_ePMode {
@@ -206,7 +206,7 @@ struct arg_int *maxns = arg_int0("n","maxns","<int>",	        "maximum number of
 
 struct arg_int *maxmatches = arg_int0("x","maxmatches","<int>",	"exclude subsequences having more matches than this limit - 0 if no limit (default is 5000)");
 
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPU cores)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_end *end = arg_end(20);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,

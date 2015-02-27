@@ -54,7 +54,7 @@ sNAR CAligner::m_NARdesc[] = {{eNARUnaligned,(char *)"NA",(char *)"Not processed
 	{eNARPENoHit,(char *)"UP",(char *)"PE partner not aligned"},
 	{eNARPEStrand,(char *)"IS",(char *)"PE partner aligned to inconsistent strand"},
 	{eNARPEChrom,(char *)"IT",(char *)"PE partner aligned to different target sequence"},
-	{eNARPEUnalign,(char *)"UP",(char *)"PE alignment not accepted"},
+	{eNARPEUnalign,(char *)"NP",(char *)"PE alignment not accepted"},
 {eNARLociConstrained,(char *)"LC",(char *)"Alignment violated loci base constraints"}};
 
 CAligner::CAligner(void)

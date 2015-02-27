@@ -51,4 +51,4 @@ const int cSummaryTargCoreHitCnts = 10;					 // summary core hit counts on at mo
 
 const int cChkOverlapGapLen = 20;						 // if gap between probe cores with at least one match > this threhold then set core probe offset at which to check for core extension (set 0 to disable core extensions)
 
-const int cMaxWorkerThreads = 64;						// allow for at most 64 worker threads (will be clamped to the max available)
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many

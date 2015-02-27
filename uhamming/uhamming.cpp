@@ -24,7 +24,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.4.0";		// increment with each release
+const char *cpszProgVer = "1.4.1";		// increment with each release
 
 const int cMinSeqLen = 20;				// minimum sequence length for Hamming distances
 const int cDfltSeqLen = 100;			// default sequence length for Hamming distances
@@ -38,7 +38,7 @@ const int cMaxNthRHamming = 100;		// sampling is to sample every Nth K-mer, with
 const int cMinCoreLen = 8;				// restricted hamming minimum core length supported
 const int cMaxCoreLen = 200;			// restricted hamming max core length supported
 
-const int cMaxWorkerThreads = 64;		// allow for at most 64 worker threads - or number of CPU Cores - per node
+const int cMaxWorkerThreads = 128;		// limiting max number of threads to this many
 const int cMaxNumNodes = 10000;			// allow for upto this many nodes if processing is distributed over multiple nodes
 
 const int cRptBuffAllocsize = 0x0fffff; // reporting buffer allocation size
@@ -247,7 +247,7 @@ struct arg_file *inseqfile = arg_file0("I","seq","<file>",		"if restricted hammi
 struct arg_int *sample = arg_int0("k","sample","<int>",		    "sample every -S<N> sweep instances (default is 1) useful if only interested in overall distributions\n\t\tin restricted Hamming processing then sample every Nth (max 100) K-mer");
 
 struct arg_file *outfile = arg_file0("o","out","<file>",		"output (merged) Hamming distances to this file");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defaults to 0 which sets threads to number of CPUs)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_end *end = arg_end(20);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,

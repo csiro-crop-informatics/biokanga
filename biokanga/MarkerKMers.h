@@ -18,7 +18,7 @@ const int cMinKMerLen  = 20;			// minimum K-mer length
 const int cDfltKMerLen = 50;			// default K-mer length
 const int cMaxKMerLen = 200;			// maximum K-mer length
 
-const int cMaxWorkerThreads = 64;		// allow upto 64 threads
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 
 const int cMarkerSeqBuffSize = 0x0fffff;	// marker sequence buffering used to hold markers prior to writing out to file
 const int cAllocNumPutativeSeqs = 0x0fffff;	// allocate for this many putative marker sequences, and realloc in this many increments as may be required

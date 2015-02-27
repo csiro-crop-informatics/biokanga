@@ -43,9 +43,9 @@ ProcessArtefactReduce(etARPMode PMode,	// processing mode; currently eAR2Fasta, 
 		int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
 		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
 		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
-		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..10000)
-		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
-		int MinOverlap,					// minimum required overlap (in bp) if -1 then no overlap processing
+		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 70bp, range 50..500)
+		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...1000)
+		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 		int MinFlankLen,				// non-overlapping flank must be at least this length (defults to 1, else range 1bp to 25bp, only applies if overlap processing)
 		int SampleNth,					// process every Nth reads
 		int Zreads,						// maximum number of reads to accept for processing from any file
@@ -90,9 +90,9 @@ bool bStrand;				// if true then strand specific filtering
 int MaxNs;					// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
 int Trim5;					// trim this number of 5' bases from input sequences (default is 0, range 0..20)
 int Trim3;					// trim this number of 3' bases from input sequences (default is 0, range 0..20)
-int MinSeqLen;              // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..500)
-int TrimSeqLen;				// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...5000)
-int MinOverlap;				// minimum required overlap (in bp) ( if -1 then no overlap processing required)
+int MinSeqLen;              // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 70..500)
+int TrimSeqLen;				// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...1000)
+int MinOverlap;				// minimum required overlap (in %) ( if <= 0 then no overlap processing required)
 int MinFlankLen;			// non-overlapping flank must be at least this length (defults to 1, range 1bp to 25bp, only applies if overlap processing)
 int SampleNth;				// process every Nth reads
 int Zreads;					// maximum number of reads to accept for processing from any file 
@@ -137,11 +137,11 @@ struct arg_int *maxns = arg_int0("n","indeterminates","<int>",  "filter out inpu
 struct arg_int *trim5 = arg_int0("x","trim5","<int>",			"trim this number of 5' bases from each input sequence (default is 0, range 0..20)");
 struct arg_int *trim3 = arg_int0("X","trim3","<int>",			"trim this number of 3' bases from each input sequence (default is 0, range 0..20)");
 struct arg_int *trimseqlen = arg_int0("L","trimseqlen","<int>",	"trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen to 1000)");
-struct arg_int *minoverlap = arg_int0("y","minoverlap","<int>",	"accept as overlapping if overlaps are at least this length (defaults to 80%% of mean read length, range 25bp to 150bp, if -1 then no overlap processing)");
+struct arg_int *minoverlap = arg_int0("y","minoverlap","<int>",	"accept as overlapping if overlaps are at least this percentage of read length (defaults to 70%% of read length, range 50 to 95%%p, if 0 then no overlap processing)");
 struct arg_int *minflanklen = arg_int0("Y","minflanklen","<int>","non-overlapping flank must be at least this length (default 1, range 1bp to 25bp, only applies if overlap processing)");
 
-struct arg_int *minseqlen= arg_int0("l","minlen","<int>",       "filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..5000)");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..64 (defaults to 0 which sets threads to number of cores)");
+struct arg_int *minseqlen= arg_int0("l","minlen","<int>",       "filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 70..500)");
+struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_lit  *strand   = arg_lit0("S","strand",              "strand specific filtering - filter reads with read orientation - default is for non-strand specific");
 struct arg_lit  *nodedupe   = arg_lit0("D","nodedupe",          "do not dedupe exactly matching input sequences - default is to only retain a single copy of duplicate sequences");
 struct arg_lit  *dedupepe   = arg_lit0("d","dedupepe",          "if paired end preprocessing then treat ends as independent when deduping");
@@ -313,9 +313,9 @@ if (!argerrors)
 	MaxNs = 0;
 	SampleNth = 1;
 	Zreads = 0;
-	MinSeqLen = 50;
+	MinSeqLen = cDfltAceptSeqLen;
 	TrimSeqLen = 0;
-	MinOverlap = 0;
+	MinOverlap = cDfltOverlappc;
 	MinFlankLen = 0;
 	bDedupeIndependent = false;
 	bNoDedupe = false;
@@ -430,32 +430,32 @@ if (!argerrors)
 			SampleNth = 1;
 			Zreads = 0;
 
-			MinSeqLen = minseqlen->count ? minseqlen->ival[0] : 50;
-			if(MinSeqLen < 20 || MinSeqLen > 10000)
+			MinSeqLen = minseqlen->count ? minseqlen->ival[0] : cDfltAceptSeqLen;
+			if(MinSeqLen < cMinAceptSeqLen || MinSeqLen > cMaxAceptSeqLen)
 				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum sequence length '-l%d' must be in range 30..10000 bases",MinSeqLen);
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum sequence length '-l%d' must be in range %d..%d bases",MinSeqLen,cMinAceptSeqLen,cMaxAceptSeqLen);
 				return(1);
 				}
 
 			TrimSeqLen = trimseqlen->count ? trimseqlen->ival[0] : 0;
-			if(TrimSeqLen != 0 &&  (TrimSeqLen < MinSeqLen || TrimSeqLen > 1000))
+			if(TrimSeqLen != 0 &&  (TrimSeqLen < MinSeqLen || TrimSeqLen > cMaxTrimSeqLen))
 				{
-				if(TrimSeqLen < MinSeqLen && MinSeqLen > 20)
-					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Trimming sequence length '-L%d' must be in range %d..1000 bases",TrimSeqLen,MinSeqLen);
+				if(TrimSeqLen < MinSeqLen && MinSeqLen > cMinAceptSeqLen)
+					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Trimming sequence length '-L%d' must be in range %d..%d bases",TrimSeqLen,MinSeqLen,cMaxTrimSeqLen);
 				else
-					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Trimming sequence length '-L%d' must be in range 20..1000 bases",TrimSeqLen);
+					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Trimming sequence length '-L%d' must be in range %d..%d bases",TrimSeqLen,cMinAceptSeqLen,cMaxTrimSeqLen);
 				return(1);
 				}
 			}
 	
-		MinOverlap = minoverlap->count ? minoverlap->ival[0] : 0;
-		if(!(MinOverlap == 0 || MinOverlap == -1) && (MinOverlap < 25 || MinOverlap > 150))
+		MinOverlap = minoverlap->count ? minoverlap->ival[0] : cDfltOverlappc;
+		if(!(MinOverlap == 0 || MinOverlap == -1) && (MinOverlap < cMinOverlappc || MinOverlap > cMaxOverlappc))
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum overlap '-y%d' must be in range 25..150 or 0 for auto or -1 to disable overlap processing",MinOverlap);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum overlap as percentage of read length '-y%d' must be in range %d..%d or <= 0 to disable overlap processing",MinOverlap,cMinOverlappc,cMaxOverlappc);
 			return(1);
 			}
 
-		if(MinOverlap != -1) // -1 if no overlap processing
+		if(MinOverlap >= cMinOverlappc) // less than 50 if no overlap processing
 			{
 			MinFlankLen = minflanklen->count ? minflanklen->ival[0] : 1;
 			if(MinFlankLen < 1 || MinFlankLen > 25)
@@ -465,7 +465,10 @@ if (!argerrors)
 				}
 			}
 		else
+			{
+			MinOverlap = 0;
 			MinFlankLen = 0;
+			}
 
 		bNoDedupe = nodedupe->count ? true : false;
 		if(bNoDedupe)
@@ -605,16 +608,12 @@ if (!argerrors)
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Accept input sequences (after any trim) if at least this length : %d",MinSeqLen);
 			}
 
-		if(MinOverlap == 0)
-			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum sequence overlap: Use 80%% of mean read length");
+		if(MinOverlap <= 0)
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum sequence overlaps: No overlap processing");
 		else
-			{
-			if(MinOverlap == -1)
-				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum sequence overlaps: No overlap processing");
-			else
-				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum sequence flank overlap: %d bp",MinOverlap);
-			}
-		if(MinOverlap != -1)
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum sequence overlap: %d%%",MinOverlap);
+	
+		if(MinOverlap > 0)
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Non-overlapping flank must be at least this length: %dbp",MinFlankLen);
 
 		if(NumPE2InputFiles)
@@ -744,7 +743,7 @@ ProcessArtefactReduce(etARPMode PMode,	// processing mode, currently eAR2Fasta, 
 		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
 		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..10000)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
-		int MinOverlap,					// minimum required overlap (in bp) or -1 if no overlap processing
+		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 		int MinFlankLen,				// non-overlapping flank must be at least this length (defults 1, else range 1bp to 25bp, only applies if overlap processing)
 		int SampleNth,					// process every Nth reads
 		int Zreads,						// maximum number of reads to accept for processing from any file
@@ -859,7 +858,9 @@ m_NumKMerSeqHashes = 0;
 m_UsedKMerSeqInsts = 0; 
 m_AllocdKMerSeqInsts = 0;
 m_AllocdKMerSeqInstsMem = 0;
-
+m_LoadedMeanSeqLen = 0;
+m_LoadedMinSeqLen = 0;
+m_LoadedMaxSeqLen = 0; 
 }
 
 int
@@ -875,7 +876,7 @@ CArtefactReduce::Process(etARPMode PMode,	// processing mode, currently eAR2Fast
 		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
 		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..10000)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
-		int MinOverlap,					// minimum required overlap (in bp) or -1 if no overlap processing
+		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 		int MinFlankLen,				// non-overlapping flank must be at least this length (defults to 1, else range 1bp to 25bp, only applies if overlap processing)
 		int SampleNth,					// process every Nth reads
 		int Zreads,						// maximum number of reads to accept for processing from any file
@@ -1161,8 +1162,18 @@ if(Rslt < eBSFSuccess)
 UINT32 TotSeqsParsed;
 UINT32 TotSeqsUnderlength;
 UINT32 TotSeqsExcessNs;
-UINT32 MeanSeqLen;
-GetNumReads(&NumPE1Reads,&NumPE2Reads,NULL,NULL,&TotSeqsParsed,&TotSeqsUnderlength,&TotSeqsExcessNs,&MeanSeqLen);
+
+UINT32 LoadedMeanSeqLen;
+UINT32 LoadedMinSeqLen;
+UINT32 LoadedMaxSeqLen;
+
+GetNumReads(&NumPE1Reads,&NumPE2Reads,NULL,NULL,&TotSeqsParsed,&TotSeqsUnderlength,&TotSeqsExcessNs,&LoadedMeanSeqLen,&LoadedMinSeqLen,&LoadedMaxSeqLen);
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Process: Accepted read lengths: min %d, max %d, mean %d",LoadedMinSeqLen,LoadedMaxSeqLen,LoadedMeanSeqLen);
+
+m_LoadedMeanSeqLen = LoadedMeanSeqLen;
+m_LoadedMinSeqLen = LoadedMinSeqLen;
+m_LoadedMaxSeqLen = LoadedMaxSeqLen; 
 
 if(gProcessingID > 0)
 	{
@@ -1188,17 +1199,13 @@ if(NumPE1Reads < cMinSeqs2Assemb)				// arbitary lower limit on number of reads 
 	return(eBSFerrFastqSeq);
 	}
 
-if(MinOverlap == 0)
-	MinOverlap = (79+(MeanSeqLen * 80))/100;
-if(MinOverlap != -1)
-	{
-	if(MinOverlap < 25)
-		MinOverlap = 25;
-	else
-		if(MinOverlap > 150)
-			MinOverlap = 150;
-	}
-if(MinOverlap != -1)
+if(MinOverlap < 25)	// ensure within expected range of 0 or 25 to 90%
+	MinOverlap = 0;
+else
+	if(MinOverlap > 90)
+		MinOverlap = 90;
+
+if(MinOverlap >= 25)
 	{
 	if(MinFlankLen < 1)
 		MinFlankLen = 1;
@@ -1209,7 +1216,6 @@ if(MinOverlap != -1)
 else
 	MinFlankLen = 0;
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Process: Mean sequence length was %d, using minimum required overlap length of %d and non-overlap flank length of %d",MeanSeqLen,MinOverlap,MinFlankLen);
 
 GenSeqStarts(true,false);
 GenRdsSfx(1);			// first SeqWrd only requires indexing
@@ -1336,14 +1342,14 @@ return(eBSFSuccess);
 }
 
 int
-CArtefactReduce::RemoveNonOverlaps(int MinOverlap,			// minimum required overlap (in bp)
+CArtefactReduce::RemoveNonOverlaps(int MinOverlap,			// minimum required overlap of probe onto target (in percentage of actual read length)
 						int MinFlankLen,            // minimum required non-overlap flank (in bp)
 						int NumIterations) 	// because of artefact errors tending to be at end of reads (both 5' and 3') then by default 1 iterations of passes are utilised 
 {
 int Rslt;
 int Iteration;
 
-if(MinOverlap < 25 || MinOverlap > 150 || NumIterations < 1 || NumIterations > 10)
+if(MinOverlap < 25 || MinOverlap > 90 || NumIterations < 1 || NumIterations > 10)
 	return(eBSFerrParams);
 
 for(Iteration = 1; Iteration <= NumIterations; Iteration++)
@@ -1681,7 +1687,7 @@ return(eBSFSuccess);
 // IdentifyOverlaps
 int
 CArtefactReduce::IdentifyOverlaps(etOvlFlankPhase OvlFlankPhase,	// overlap flank processing phase
-							int MinOverlap,			// sequences must overlap by at least this number of bases
+							int MinOverlap,			// sequences must overlap by at least this percentage of read length
 							int MinFlankLen,            // minimum required non-overlap flank (in bp)
 							bool bRevCpl)			// if true then all sequences have been reverse complemented and sfx index is over these sequences
 							
@@ -1764,7 +1770,8 @@ for(ThreadIdx = 1; ThreadIdx <= NumThreads; ThreadIdx++,pCurThread++)
 	pCurThread->ThreadIdx = ThreadIdx;
 	pCurThread->pThis = this;
 	pCurThread->bRevCpl = bRevCpl;
-	pCurThread->MinOverlap = MinOverlap;
+	pCurThread->ProbeMinOverlap = MinOverlap;
+	pCurThread->TargMinOverlap = MinOverlap;
 	pCurThread->MinFlankLen = MinFlankLen;
 	pCurThread->OvlFlankPhase = OvlFlankPhase;
 	pCurThread->AllocMemOverlapSeq = cMaxOvrlapSeqWrds * sizeof(tSeqWrd4);	
@@ -2155,7 +2162,8 @@ CArtefactReduce::ProcIdentOverlaps(tsThreadIdentOverlapPars *pPars)
 {
 int CmpRslt;
 int SubOfs;
-int MinOverlap;
+int ProbeMinOverlap;
+int TargMinOverlap;
 int MinFlankLen;
 int ProcFlags;
 int FlgOverlapping;
@@ -2245,16 +2253,26 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 				gDiagnostics.DiagOut(eDLWarn,gszProcName,"Thread %d Couldn't find sequence header for known sequence %d...",pPars->ThreadIdx,SeqID);
 			continue;
 			}
-	
-		if(pPars->MinOverlap == 0)			// if not specified then default to be 80% of the probe length
-			MinOverlap = (79+(ProbeLen * 80)) / 100; // but normally expect the default to have been set to be 80% of read length mean
-		else
-			MinOverlap = pPars->MinOverlap;
-		if(MinOverlap < 25)
-			MinOverlap = 25;
-		else
-			if(MinOverlap > 150)
-				MinOverlap = 150;
+
+#ifdef ISSUE_RESOLVED
+Seems that it is becoming more frequent that readsets to filter may not all be of the same read length, e.g could be 2 lanes of 100bp and 3 lanes of 150bp !!!!!
+So when looking for overlaps it is plausible that a short read can be completely contained within a longer read, or the long read may overlap on to the short read
+but not enough of an overlap to accept the long read 3' overlapping which means the short read 5' is not marked as overlapped.
+
+Resolution is to initially try for overlaps of at least n% of the shortest read in the dataset. Then maximally extend this overlap.
+If extension fully covers the target then mark the target 5' and 3' as accepted
+If extension to the end of the query the extension at least n% of the query length then mark the query as 5' overlap accepted
+If extension to the end of the target and the extension length at least n% of the target length then mark the target 3' as overlap accepted 
+
+#endif	
+		if(pPars->ProbeMinOverlap == 0)			// if not specified then default to be cDfltOverlappc of the probe length
+			pPars->ProbeMinOverlap = cDfltOverlappc;
+		if(pPars->TargMinOverlap == 0)			// if not specified then default to be same as probe overlap percentage
+			pPars->TargMinOverlap = pPars->ProbeMinOverlap;
+
+		ProbeMinOverlap = (ProbeLen * pPars->ProbeMinOverlap) / 100; 
+		if(ProbeMinOverlap < cMinOverlapbp)
+			continue;
 
 		MinFlankLen = pPars->MinFlankLen;
 		if(MinFlankLen < 1)
@@ -2263,8 +2281,10 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 			if(MinFlankLen > 25)
 				MinFlankLen = 25;
 
-		if((MinOverlap + MinFlankLen) > (int)ProbeLen)			// no point in processing this sequence further if too short to overlap any other sequence with at least 1 base overhang
+		if((ProbeMinOverlap + MinFlankLen) > (int)ProbeLen)			// no point in processing this sequence further if too short to overlap any other sequence with at least 1 base overhang
 			continue;
+
+		TargMinOverlap = (m_LoadedMinSeqLen * pPars->ProbeMinOverlap) / 100;      // have to have an initial minimum overlap which can be then extended ... 
 
 		// make a copy of probe sequence as will be slicing and dicing when subsequencing...
 		GetSeqWrdSubSeq(0,ProbeLen, pStartSeqWrd, (tSeqWrd4 *)pPars->pOverlapSeq); 
@@ -2273,16 +2293,16 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 		if(pPars->OvlFlankPhase != eOvlpSenseToSense)
 			PackedRevCpl((tSeqWrd4 *)pPars->pOverlapSeq);
 
-		// determine if this read overlaps any other reads by at least MinOverlap 
+		// determine if this read overlaps any other reads by at least ProbeMinOverlap  
 		CmpRslt = 0;
 		ProcFlags = 0;
-		for(SubOfs = MinFlankLen; SubOfs <= ((int)ProbeLen - MinOverlap); SubOfs++)
+		for(SubOfs = MinFlankLen; SubOfs <= ((int)ProbeLen - TargMinOverlap); SubOfs++)
 			{
 			GetSeqWrdSubSeq(SubOfs,ProbeLen - SubOfs, (tSeqWrd4 *)pPars->pOverlapSeq, (tSeqWrd4 *)pPars->pOverlapFlankSeq); 
 	
 			SfxWrdIdx =	LocateFirstExact(m_Sequences.SfxElSize,		// sizeof elements in pSfxArray - currently will be either 4 or 5 bytes
 						pPars->pOverlapFlankSeq,			// pts to probes flank subsequence
-						ProbeLen - SubOfs,					// probe length (in bases, not tSeqWrd4's) to exactly match over
+						TargMinOverlap,						// length (in bases, not tSeqWrd4's), as a minimum to exactly match over
 						m_Sequences.pSeqs2Assemb,			// target sequence
 						(UINT8 *)m_Sequences.pSuffixArray,	// target sequence suffix array
 						0,									// low index in pSfxArray
@@ -2304,25 +2324,54 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 					break;
 					}
 
-				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,ProbeLen - SubOfs))!=0)
-					break;
-				
-				if(MatchTargID == SeqID)			// if self then try any next target sequence
-					continue;
-				// if already known probe is overlapping and target also overlapped then no need to check target again if overlapped
-				TargFlags = m_Sequences.pSeqFlags[MatchTargID-1];
-				if(ProcFlags & FlgOverlapping && TargFlags & FlgOverlapped)		
+				if(MatchTargID == SeqID)			// if self then try next target sequence
 					continue;
 
-				if(!(ProcFlags & FlgOverlapping))
+				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,TargMinOverlap))!=0)
+					break;
+
+				int ReqOverlap;
+				bool bProbeOverlapping;
+				bool bTargContained;
+				int TargOverlapedFlags;
+
+				if(TargLen <= (ProbeLen - SubOfs))	// if probe is completely containing the target
+					{
+					ReqOverlap = TargLen;
+					TargOverlapedFlags = (cFlg3Prime | cFlg5Prime);
+					bTargContained = true;
+					bProbeOverlapping = TargLen == (ProbeLen - SubOfs) ? true : false;
+					}
+				else								// else probe is overlapping onto the target
+					{
+					ReqOverlap = ProbeLen - SubOfs;
+					if(ReqOverlap < ProbeMinOverlap)
+						continue;
+					TargOverlapedFlags = FlgOverlapped;
+					bTargContained = false;
+					bProbeOverlapping = true;
+					}
+
+				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,ReqOverlap))!=0)
+					{
+					CmpRslt = 0;
+					continue;
+					}
+	
+				// if already known probe is overlapping and target also overlapped then no need to check target again if overlapped
+				TargFlags = m_Sequences.pSeqFlags[MatchTargID-1];
+				if(ProcFlags & FlgOverlapping && ((TargFlags & TargOverlapedFlags) == TargOverlapedFlags))		
+					continue;
+
+				if(!(ProcFlags & FlgOverlapping) && bProbeOverlapping)
 					{
 					ProcFlags |= FlgOverlapping;
 					NumOverlapping += 1;
 					}
 
-				if(!(TargFlags & FlgOverlapped))
+				if((TargFlags & TargOverlapedFlags) != TargOverlapedFlags)
 					{
-					UpdateSeqFlags(MatchTargID,FlgOverlapped,0,true);
+					UpdateSeqFlags(MatchTargID,TargOverlapedFlags,0,true);
 					NumOverlapped += 1;
 					}
 				}

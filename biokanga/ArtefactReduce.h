@@ -12,6 +12,18 @@ const UINT32 cMaxKMerSeqHashArrayEntries = (cKMerSeqHashMask + 1);  // alloc has
 
 const size_t cWorkThreadStackSize = (1024*1024*2);					// working threads (can be multiple) stack size
 
+const int cMinAceptSeqLen = 70;			// user can specify that reads must be of at least this min length after any end trimming to be further processed
+const int cDfltAceptSeqLen = 80;		// default is that reads must be of at least this min length after any end trimming
+const int cMaxAceptSeqLen = 500;		// user can specify that reads must be of at least this min length after any end trimming
+
+const int cMaxTrimSeqLen = 1000;        // user can specify that reads are to be trimmed down to this length
+
+const int cMinOverlapbp = (cMinAceptSeqLen+1)/2;			// any putative overlap must be at least this many bp before being further explored 
+const int cMinOverlappc = 50;			// user can specify down to this required overlap as a percentage of read length
+const int cDfltOverlappc = 70;			// default overlap as a percentage of read length
+const int cMaxOverlappc = 95;			// user can specify at most this required overlap as a percentage of read length
+
+
 typedef enum TAG_eARPMode {
 	eAR2Fasta = 0,		// artefact reduce reads to multifasta
 	eAR2Packed,			// artefact reduce reads to packed file for subsequent assembly
@@ -91,7 +103,8 @@ typedef struct TAG_sThreadIdentOverlapPars {
 	bool bStrand;					// if true then strand specific processing
 	bool bRevCpl;					// if true then all reads have been reverse complemented
 	etOvlFlankPhase OvlFlankPhase;	// current flank overlap processing phase
-	int MinOverlap;					// minimum required overlap in bp
+	int ProbeMinOverlap;			// minimum required probe overlap in % of probe length
+	int TargMinOverlap;             // minimum required overlap of probe onto target in % of target length
 	int MinFlankLen;				// minimum required non-overlap flank
 	int OverlapSense;				// 0 sense overlaps sense, 1 antisense overlaps sense, 2 sense overlaps antisense
 	tSeqID StartingSeqID;			// process starting with this sequence identifier (0 to start with 1st)
@@ -111,6 +124,10 @@ typedef struct TAG_sThreadIdentOverlapPars {
 class CArtefactReduce : public CKangadna
 {
 
+	int m_LoadedMeanSeqLen;			// reads loaded post contaminate filtering and flank trimming have this mean sequence length
+	int m_LoadedMinSeqLen;			// min length of any read loaded post contaminate filtering and flank trimming
+	int m_LoadedMaxSeqLen;			// max length of any read loaded post contaminate filtering and flank trimming 
+
 	int m_KMerSeqLen;				// current KMer sequence length
 	int m_KMerSeqInstSize;			// size of a complete tsKMerSeqInst containing m_KMerSeqLen bases
 	int m_NumKMerSeqHashes;			// number of hashes currently used in m_pKMerSeqHashes
@@ -126,7 +143,7 @@ class CArtefactReduce : public CKangadna
 									bool bStrand,			// if true then strand specific duplicates
 									char *pszDupDist);		// optionally specify a file to which duplicate distributions are to be written
 	int
-		RemoveNonOverlaps(int MinOverlap,			// minimum required overlap (in bp)
+		RemoveNonOverlaps(int MinOverlap,			// minimum required overlap (in percentage of actual read length)
 						int MinFlankLen,            // minimum required non-overlap flank (in bp)
 						int NumIterations = 1); 	// because of artefact errors tending to be at end of reads (both 5' and 3') then by default 1 iterations of passes are utilised 
 
@@ -157,7 +174,7 @@ public:
 			int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
 			int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..10000)
 			int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
-			int MinOverlap,					// minimum required overlap (in bp)
+			int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 			int MinFlankLen,				// non-overlapping flank must be at least this length (defults to 15%% of mean read length if 0, else range 1bp to 25bp, only applies if overlap processing)
 			int SampleNth,					// process every Nth reads
 			int Zreads,						// maximum number of reads to accept for processing from any file
@@ -181,8 +198,8 @@ public:
 
 	int
 		IdentifyOverlaps(etOvlFlankPhase OvlFlankPhase,		// overlap flank processing phase
-						int MinOverlap = 0,					// sequences must flank overlap by at least this number of bases
-						int MinFlankLen = 0,				// minimum required non-overlap flank (in bp)
+						int MinOverlap = 70,					// sequences must flank overlap by at least this percentage of read length
+						int MinFlankLen = 1,				// minimum required non-overlap flank (in bp)
 						bool bRevCpl = false);				// if true then all sequences have been reverse complemented and sfx index is over these sequences
 
 	int ProcIdentDuplicates(tsThreadIdentDuplicatePars *pPars);		// potentially called by multiple threads!

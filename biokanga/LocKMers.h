@@ -23,10 +23,10 @@ const int cMinHamming = 1;				// minimum required Hamming separation
 const int cDfltHamming = 2;				// default Hamming separation
 const int cMaxHamming = 5;				// maximum required Hamming separation
 
-const int cMaxWorkerThreads = 64;		// allow upto 64 threads
+const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
 
 const int cBlockReqSize = 0x07ffff;		// each worker thread will request a block containing no more than this total concatenated sequences length
-const int cConcatSeqBuffSize = (cBlockReqSize * cMaxWorkerThreads * 8);	// will buffer up to this sized concatenated sequences from which blocks will be allocated
+const int cConcatSeqBuffSize = (cBlockReqSize * cMaxWorkerThreads * 4);	// will buffer up to this sized concatenated sequences from which blocks will be allocated
 
 const int cMarkerSeqBuffSize = 0x0ffffff;	// marker sequence buffering used to hold markers prior to writing out to file
 
