@@ -124,6 +124,8 @@ typedef struct TAG_sThreadIdentOverlapPars {
 class CArtefactReduce : public CKangadna
 {
 
+	int m_MinAcceptSeqLen;           // filter out input sequences (after any trimming) which are less than this length
+
 	int m_LoadedMeanSeqLen;			// reads loaded post contaminate filtering and flank trimming have this mean sequence length
 	int m_LoadedMinSeqLen;			// min length of any read loaded post contaminate filtering and flank trimming
 	int m_LoadedMaxSeqLen;			// max length of any read loaded post contaminate filtering and flank trimming 

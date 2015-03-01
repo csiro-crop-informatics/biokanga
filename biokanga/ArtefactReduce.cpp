@@ -861,6 +861,7 @@ m_AllocdKMerSeqInstsMem = 0;
 m_LoadedMeanSeqLen = 0;
 m_LoadedMinSeqLen = 0;
 m_LoadedMaxSeqLen = 0; 
+m_MinAcceptSeqLen = 0;
 }
 
 int
@@ -930,6 +931,7 @@ if(PMode == eARPacked2fasta)
 	return((teBSFrsltCodes)Rslt);
 	}
 
+m_MinAcceptSeqLen = MinSeqLen;
 NumInputFilesProcessed = 0;
 TotNumSeqsAccepted = 0;
 TotNumSEReads = 0;
@@ -1334,7 +1336,7 @@ if((Rslt = IdentifyDuplicates(bPEdups,bStrand,pszDupDist))!= eBSFSuccess)
 	return(Rslt);
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Removing duplicate sequences...");
-if((Rslt = RemoveMarkedSeqs(cFlgSeqNthDup | cFlgSeqRemove, 0 ,true))!= eBSFSuccess)	
+if((Rslt = RemoveMarkedSeqs(cFlgSeqNthDup | cFlgSeqRemove, 0 ,0, true))!= eBSFSuccess)	
 	return(Rslt);
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Removal of duplicate sequences completed");
@@ -1349,6 +1351,22 @@ CArtefactReduce::RemoveNonOverlaps(int MinOverlap,			// minimum required overlap
 int Rslt;
 int Iteration;
 
+UINT16 *pPE1SeqFlags;
+UINT16 *pPE2SeqFlags;
+UINT16 PE1Flags;
+UINT16 PE2Flags;
+tSeqWrd4 *pPE1Targ;
+tSeqWrd4 *pPE2Targ;
+UINT32 PE1SeqLen;
+UINT32 PE2SeqLen;
+UINT32 PE1OvrlapLen;
+UINT32 PE2OvrlapLen;
+UINT32 NumPairedRecovered;
+UINT32 NumPairedAccepted;
+UINT32 NumPairedRejected;
+
+tSeqID SeqID;
+
 if(MinOverlap < 25 || MinOverlap > 90 || NumIterations < 1 || NumIterations > 10)
 	return(eBSFerrParams);
 
@@ -1357,7 +1375,7 @@ for(Iteration = 1; Iteration <= NumIterations; Iteration++)
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identification of non-overlapping sequences processing starting, iteration %d ...",Iteration);
 	if(Iteration > 1)
 		{
-		UpdateAllSeqHeaderFlags(0,~(cFlgSeqPE | cFlgSeqPE2),false);
+		UpdateAllSeqHeaderFlags(0,~(cFlgSeqPE | cFlgSeqPE2 | cFlgOvlLenMsk),false);
 		GenSeqStarts(true,false);
 		GenRdsSfx(1);	// first SeqWrd only requires indexing
 		}
@@ -1383,34 +1401,117 @@ for(Iteration = 1; Iteration <= NumIterations; Iteration++)
 	if(m_Sequences.bPESeqs && !m_bDedupeIndependent)	
 		{
 		// check that PE's both ends are overlapping; if not then mark both for removal
-		UINT16 *pPE1SeqFlags;
-		UINT16 *pPE2SeqFlags;
-		UINT16 PE1Flags;
-		UINT16 PE2Flags;
-		tSeqID SeqID;
+		NumPairedRecovered = 0;
+		NumPairedAccepted = 0;
+		NumPairedRejected = 0;
 
 		pPE1SeqFlags = m_Sequences.pSeqFlags;
 		pPE2SeqFlags = pPE1SeqFlags+1;
 		for(SeqID = 1; SeqID < m_Sequences.NumSeqs2Assemb; SeqID+=2,pPE1SeqFlags+=2,pPE2SeqFlags+=2)
 			{
-			// if either not marked as having both 5' and 3' overlaps then both to be deleted
+			// if either not marked as having both 5' and 3' overlaps then both to be deleted unless can flank truncate
 			// if either marked for deletion then both are to be deleted
 			PE1Flags = *pPE1SeqFlags;
 			PE2Flags = *pPE2SeqFlags;
+
+			if((PE1Flags & (cFlgSeqRemove  | cFlgSeqNthDup)) ||
+				(PE2Flags & (cFlgSeqRemove  | cFlgSeqNthDup)) ||
+				!(PE1Flags & (cFlg5Prime | cFlg3Prime)) ||
+				!(PE2Flags & (cFlg5Prime | cFlg3Prime)))
+				{
+				*pPE1SeqFlags |= cFlgSeqRemove;
+				*pPE2SeqFlags |= cFlgSeqRemove;
+				NumPairedRejected += 1;
+				continue;
+				}
+
+			if(((PE1Flags & (cFlg5Prime | cFlg3Prime)) == (cFlg5Prime | cFlg3Prime)) &&
+				((PE2Flags & (cFlg5Prime | cFlg3Prime)) == (cFlg5Prime | cFlg3Prime)))
+				{
+				NumPairedAccepted += 1;
+				continue;
+				}
+
 			if((PE1Flags & (cFlg5Prime | cFlg3Prime)) != (cFlg5Prime | cFlg3Prime))
-				PE1Flags |= cFlgSeqRemove;
+				{
+				pPE1Targ = GetSeqHeader(SeqID,NULL,NULL,&PE1SeqLen,false);
+				PE1OvrlapLen = ((PE1SeqLen * (PE1Flags & cFlgOvlLenMsk) >> 9)) / 100;
+				if(PE1OvrlapLen < (UINT32)m_MinAcceptSeqLen)
+					{
+					*pPE1SeqFlags |= cFlgSeqRemove;
+					*pPE2SeqFlags |= cFlgSeqRemove;
+					NumPairedRejected += 1;
+					continue;
+					}
+				}
+
 			if((PE2Flags & (cFlg5Prime | cFlg3Prime)) != (cFlg5Prime | cFlg3Prime))
-				PE2Flags |= cFlgSeqRemove;
-			if(PE1Flags & (cFlgSeqRemove  | cFlgSeqNthDup))
-				PE2Flags |= cFlgSeqRemove;
-			if(PE2Flags & (cFlgSeqRemove | cFlgSeqNthDup))
-				PE1Flags |= cFlgSeqRemove;
-			*pPE1SeqFlags = PE1Flags;
-			*pPE2SeqFlags = PE2Flags;
+				{
+				pPE2Targ = GetSeqHeader(SeqID+1,NULL,NULL,&PE2SeqLen,false);
+				PE2OvrlapLen = ((PE2SeqLen * (PE2Flags & cFlgOvlLenMsk) >> 9)) / 100;
+				if(PE2OvrlapLen < (UINT32)m_MinAcceptSeqLen)
+					{
+					*pPE1SeqFlags |= cFlgSeqRemove;
+					*pPE2SeqFlags |= cFlgSeqRemove;
+					NumPairedRejected += 1;
+					continue;
+					}
+				}
+
+			NumPairedRecovered += 1;
 			}
+
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identification of non-overlapping %d PE pairs of sequences completed, iteration %d, accepted % pairs as overlapped, rejected % pairs as non-overlapped",m_Sequences.NumSeqs2Assemb/2,Iteration,NumPairedAccepted+NumPairedRecovered,NumPairedRejected);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"PE pairs 5' and 3' fully overlaid %d, PE pairs 5' or 3' overlaid flank truncated and recovered %d",NumPairedAccepted,NumPairedRecovered);
+		}
+	else
+		{
+		// check that single read sequences have both 5' and 3' ends are overlapping; if not then mark for removal
+		NumPairedRecovered = 0;
+		NumPairedAccepted = 0;
+		NumPairedRejected = 0;
+
+		pPE1SeqFlags = m_Sequences.pSeqFlags;
+		for(SeqID = 1; SeqID < m_Sequences.NumSeqs2Assemb; SeqID+=1,pPE1SeqFlags+=1)
+			{
+			// if either not marked as having both 5' and 3' overlaps then both to be deleted
+			// if either marked for deletion then both are to be deleted
+			PE1Flags = *pPE1SeqFlags;
+
+			if((PE1Flags & (cFlgSeqRemove  | cFlgSeqNthDup)) ||
+				!(PE1Flags & (cFlg5Prime | cFlg3Prime)))
+				{
+				*pPE1SeqFlags |= cFlgSeqRemove;
+				NumPairedRejected += 1;
+				continue;
+				}
+
+			if(((PE1Flags & (cFlg5Prime | cFlg3Prime)) == (cFlg5Prime | cFlg3Prime)))
+				{
+				NumPairedAccepted += 1;
+				continue;
+				}
+
+			if((PE1Flags & (cFlg5Prime | cFlg3Prime)) != (cFlg5Prime | cFlg3Prime))
+				{
+				pPE1Targ = GetSeqHeader(SeqID,NULL,NULL,&PE1SeqLen,false);
+				PE1OvrlapLen = ((PE1SeqLen * (PE1Flags & cFlgOvlLenMsk) >> 9)) / 100;
+				if(PE1OvrlapLen < (UINT32)m_MinAcceptSeqLen)
+					{
+					*pPE1SeqFlags |= cFlgSeqRemove;
+					NumPairedRejected += 1;
+					continue;
+					}
+				}
+			NumPairedRecovered += 1;
+			}
+
+
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identification of non-overlapping %d sequences completed, iteration %d, accepted % pairs as overlapped, rejected % pairs as non-overlapped",m_Sequences.NumSeqs2Assemb,Iteration,NumPairedAccepted+NumPairedRecovered,NumPairedRejected);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Num sequences with 5' and 3' fully overlaid %d, sequences with 5' or 3' overlaid flank truncated and recovered %d",NumPairedAccepted,NumPairedRecovered);
 		}
 
-	if((Rslt = RemoveMarkedSeqs(cFlgSeqRemove | cFlgSeqNthDup, cFlg5Prime | cFlg3Prime ,true))!= eBSFSuccess)	
+	if((Rslt = RemoveMarkedSeqs(cFlgSeqRemove | cFlgSeqNthDup, 0, cFlg5Prime | cFlg3Prime ,true))!= eBSFSuccess)	
 		return(Rslt);
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Removal of non-overlapping sequences completed, iteration %d",Iteration);
 	}
@@ -2164,8 +2265,9 @@ int CmpRslt;
 int SubOfs;
 int ProbeMinOverlap;
 int TargMinOverlap;
+int MinSeedOverlap;
 int MinFlankLen;
-int ProcFlags;
+int ProbOverlapFlags;
 int FlgOverlapping;
 int FlgOverlapped;
 tSeqID StartingSeqID;
@@ -2254,17 +2356,6 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 			continue;
 			}
 
-#ifdef ISSUE_RESOLVED
-Seems that it is becoming more frequent that readsets to filter may not all be of the same read length, e.g could be 2 lanes of 100bp and 3 lanes of 150bp !!!!!
-So when looking for overlaps it is plausible that a short read can be completely contained within a longer read, or the long read may overlap on to the short read
-but not enough of an overlap to accept the long read 3' overlapping which means the short read 5' is not marked as overlapped.
-
-Resolution is to initially try for overlaps of at least n% of the shortest read in the dataset. Then maximally extend this overlap.
-If extension fully covers the target then mark the target 5' and 3' as accepted
-If extension to the end of the query the extension at least n% of the query length then mark the query as 5' overlap accepted
-If extension to the end of the target and the extension length at least n% of the target length then mark the target 3' as overlap accepted 
-
-#endif	
 		if(pPars->ProbeMinOverlap == 0)			// if not specified then default to be cDfltOverlappc of the probe length
 			pPars->ProbeMinOverlap = cDfltOverlappc;
 		if(pPars->TargMinOverlap == 0)			// if not specified then default to be same as probe overlap percentage
@@ -2284,7 +2375,7 @@ If extension to the end of the target and the extension length at least n% of th
 		if((ProbeMinOverlap + MinFlankLen) > (int)ProbeLen)			// no point in processing this sequence further if too short to overlap any other sequence with at least 1 base overhang
 			continue;
 
-		TargMinOverlap = (m_LoadedMinSeqLen * pPars->ProbeMinOverlap) / 100;      // have to have an initial minimum overlap which can be then extended ... 
+		MinSeedOverlap = (m_LoadedMinSeqLen * pPars->ProbeMinOverlap) / 100;      // have to have an initial minimum seed overlap which can be then extended ... 
 
 		// make a copy of probe sequence as will be slicing and dicing when subsequencing...
 		GetSeqWrdSubSeq(0,ProbeLen, pStartSeqWrd, (tSeqWrd4 *)pPars->pOverlapSeq); 
@@ -2295,14 +2386,14 @@ If extension to the end of the target and the extension length at least n% of th
 
 		// determine if this read overlaps any other reads by at least ProbeMinOverlap  
 		CmpRslt = 0;
-		ProcFlags = 0;
-		for(SubOfs = MinFlankLen; SubOfs <= ((int)ProbeLen - TargMinOverlap); SubOfs++)
+		ProbOverlapFlags = 0;
+		for(SubOfs = MinFlankLen; SubOfs <= ((int)ProbeLen - MinSeedOverlap); SubOfs++)
 			{
 			GetSeqWrdSubSeq(SubOfs,ProbeLen - SubOfs, (tSeqWrd4 *)pPars->pOverlapSeq, (tSeqWrd4 *)pPars->pOverlapFlankSeq); 
 	
 			SfxWrdIdx =	LocateFirstExact(m_Sequences.SfxElSize,		// sizeof elements in pSfxArray - currently will be either 4 or 5 bytes
 						pPars->pOverlapFlankSeq,			// pts to probes flank subsequence
-						TargMinOverlap,						// length (in bases, not tSeqWrd4's), as a minimum to exactly match over
+						MinSeedOverlap,						// length (in bases, not tSeqWrd4's), as a minimum to exactly match over
 						m_Sequences.pSeqs2Assemb,			// target sequence
 						(UINT8 *)m_Sequences.pSuffixArray,	// target sequence suffix array
 						0,									// low index in pSfxArray
@@ -2327,29 +2418,50 @@ If extension to the end of the target and the extension length at least n% of th
 				if(MatchTargID == SeqID)			// if self then try next target sequence
 					continue;
 
-				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,TargMinOverlap))!=0)
+				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,MinSeedOverlap))!=0)
 					break;
+			 
 
 				int ReqOverlap;
 				bool bProbeOverlapping;
 				bool bTargContained;
 				int TargOverlapedFlags;
+				int ProbeFlgOvlLen;
+				int TargFlgOvlLen;
 
-				if(TargLen <= (ProbeLen - SubOfs))	// if probe is completely containing the target
+				ReqOverlap = 0;
+				ProbeFlgOvlLen = 0;
+				TargFlgOvlLen = 0;
+				bProbeOverlapping = false;
+				bTargContained = false;
+				TargOverlapedFlags = 0;
+				if(TargLen <= (ProbeLen - SubOfs))	// if probe could be completely containing the target
 					{
-					ReqOverlap = TargLen;
+					ReqOverlap = TargMinOverlap = TargLen;
 					TargOverlapedFlags = (cFlg3Prime | cFlg5Prime);
 					bTargContained = true;
-					bProbeOverlapping = TargLen == (ProbeLen - SubOfs) ? true : false;
+					TargFlgOvlLen = 100 << 9;
+					TargOverlapedFlags |= TargFlgOvlLen;
+					bProbeOverlapping = (ProbeMinOverlap <= TargMinOverlap) && (TargLen == (ProbeLen - SubOfs) ? true : false); // could also accept as probe overlapping?
+					if(bProbeOverlapping)
+						ProbeFlgOvlLen = ((ReqOverlap * 100) / ProbeLen) << 9;
 					}
 				else								// else probe is overlapping onto the target
 					{
+					TargMinOverlap = (TargLen * pPars->TargMinOverlap) / 100;
 					ReqOverlap = ProbeLen - SubOfs;
-					if(ReqOverlap < ProbeMinOverlap)
+					if(ReqOverlap < ProbeMinOverlap && ReqOverlap < TargMinOverlap)
 						continue;
-					TargOverlapedFlags = FlgOverlapped;
-					bTargContained = false;
-					bProbeOverlapping = true;
+					if(ReqOverlap >= ProbeMinOverlap)
+						{
+						ProbeFlgOvlLen = ((ReqOverlap * 100) / ProbeLen) << 9;
+						bProbeOverlapping = true;
+						}
+					if(ReqOverlap >= TargMinOverlap)
+						{
+						TargOverlapedFlags = FlgOverlapped;
+						TargOverlapedFlags |= ((ReqOverlap * 100) / TargLen) << 9;
+						}
 					}
 
 				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,ReqOverlap))!=0)
@@ -2358,14 +2470,21 @@ If extension to the end of the target and the extension length at least n% of th
 					continue;
 					}
 	
+				if(bProbeOverlapping && ProbeFlgOvlLen > (ProbOverlapFlags & cFlgOvlLenMsk))
+					{
+					ProbOverlapFlags &= ~cFlgOvlLenMsk;			// replacing existing cFlgOvlLenMsk
+					ProbOverlapFlags |= ProbeFlgOvlLen;								
+					}
+
+			
 				// if already known probe is overlapping and target also overlapped then no need to check target again if overlapped
 				TargFlags = m_Sequences.pSeqFlags[MatchTargID-1];
-				if(ProcFlags & FlgOverlapping && ((TargFlags & TargOverlapedFlags) == TargOverlapedFlags))		
+				if(ProbOverlapFlags & FlgOverlapping && ((TargFlags & TargOverlapedFlags) == TargOverlapedFlags))		
 					continue;
 
-				if(!(ProcFlags & FlgOverlapping) && bProbeOverlapping)
+				if(!(ProbOverlapFlags & FlgOverlapping) && bProbeOverlapping)
 					{
-					ProcFlags |= FlgOverlapping;
+					ProbOverlapFlags |= FlgOverlapping;
 					NumOverlapping += 1;
 					}
 
@@ -2378,9 +2497,9 @@ If extension to the end of the target and the extension length at least n% of th
 			while(!CmpRslt);
 			}
 
-		if(ProcFlags)		// if any flags set for this sequence then can propagate these to all other identical sequences
+		if(ProbOverlapFlags & FlgOverlapping)		// if any flags set for this sequence then can propagate these to all other identical sequences
 			{
-			MultiSeqFlags[SeqID - StartingSeqID].SetFlags = ProcFlags | cFlgNoProc;
+			MultiSeqFlags[SeqID - StartingSeqID].SetFlags = ProbOverlapFlags | cFlgNoProc;
 
 			SfxWrdIdx =	LocateFirstExact(m_Sequences.SfxElSize,	// sizeof elements in pSfxArray - currently will be either 4 or 5 bytes
 						  pStartSeqWrd,							// pts to probe sequence
@@ -2413,7 +2532,7 @@ If extension to the end of the target and the extension length at least n% of th
 				TargFlags = m_Sequences.pSeqFlags[MatchTargID-1];
 				if(TargFlags & cFlgNoProc)						// if already marked then try next matching sequence
 					continue;
-				UpdateSeqFlags(MatchTargID,ProcFlags | cFlgNoProc,0,true);
+				UpdateSeqFlags(MatchTargID,ProbOverlapFlags | cFlgNoProc,0,true);
 				NumOverlapping += 1;
 				}
 			while(!CmpRslt);

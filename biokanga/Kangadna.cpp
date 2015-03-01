@@ -8074,14 +8074,15 @@ return(SeqFlags);
 
 // UpdateSeqFlags
 // Batch update sequence flags for multiple sequences
+// Sequence flags are reset with ResetFlags before being set with SetFlags
 int
-CKangadna::UpdateSeqFlags(UINT32 NumSeqs,								// number of sequences requiring flag updates
+CKangadna::UpdateSeqFlags(UINT32 NumSeqs,				// number of sequences requiring flag updates
 			tsMultiSeqFlags *pMultiSeqFlags,			// holds sequence identifiers plus flag update operations
 			bool bSerialise)							// set true if access to flags are required to be serialised
 {
 UINT32 NumUpdated;
-int SeqFlags;
-int PrevSeqFlags;
+UINT32 SeqFlags;
+UINT32 PrevSeqFlags;
 if(bSerialise)
 	AcquireSerialiseSeqFlags();
 
@@ -8094,8 +8095,16 @@ for(NumUpdated = 0; NumUpdated < NumSeqs; NumUpdated++, pMultiSeqFlags++)
 		return(0);
 		}
 	PrevSeqFlags = SeqFlags = m_Sequences.pSeqFlags[pMultiSeqFlags->SeqID-1];
-	SeqFlags |= pMultiSeqFlags->SetFlags;
 	SeqFlags &= ~pMultiSeqFlags->ResetFlags;
+
+	if((pMultiSeqFlags->SetFlags & cFlgOvlLenMsk) < (UINT16)(SeqFlags & cFlgOvlLenMsk))
+		SeqFlags |= (pMultiSeqFlags->SetFlags & ~cFlgOvlLenMsk);			// retaining existing cFlgOvlLenMsk
+	else
+		{
+		SeqFlags &= ~cFlgOvlLenMsk;			// replacing existing cFlgOvlLenMsk
+		SeqFlags |= pMultiSeqFlags->SetFlags;								
+		}
+	
 	if(SeqFlags != PrevSeqFlags)
 		m_Sequences.pSeqFlags[pMultiSeqFlags->SeqID-1] = SeqFlags;
 	pMultiSeqFlags->CurFlags = SeqFlags;
@@ -8107,19 +8116,32 @@ return(NumUpdated);
 
 // UpdateSeqFlags
 // Update sequence flags for a single sequence
+// Sequence flags are reset with ResetFlags before being set with SetFlags
 int
-CKangadna::UpdateSeqFlags(tSeqID SeqID,				// sequence identifier (32 bits)
-			UINT32 SetFlags,			// flags to set
+CKangadna::UpdateSeqFlags(tSeqID SeqID,	// sequence identifier (32 bits)
+			UINT32 SetFlags,			// flags to set, any overlap len in cFlgOvlLenMsk is only copied into flags if > existing overlap len
 			UINT32 ResetFlags,			// flags to be reset
 			bool bSerialise)			// set true if access to flags are required to be serialised
 {
-int SeqFlags;
-int PrevSeqFlags;
+UINT32 SeqFlags;
+UINT32 PrevSeqFlags;
+
+SetFlags   &= 0x0000ffff;
+ResetFlags &= 0x0000ffff;
+
 if(bSerialise)
 	AcquireSerialiseSeqFlags();
 PrevSeqFlags = SeqFlags = m_Sequences.pSeqFlags[SeqID-1];
-SeqFlags |= SetFlags;
+
 SeqFlags &= ~ResetFlags;
+if((SetFlags & cFlgOvlLenMsk) < (SeqFlags & cFlgOvlLenMsk))
+	SeqFlags |= (SetFlags & ~cFlgOvlLenMsk);			// retaining existing cFlgOvlLenMsk
+else
+	{
+	SeqFlags &= ~cFlgOvlLenMsk;			// replacing existing cFlgOvlLenMsk
+	SeqFlags |= SetFlags;								
+	}
+
 if(SeqFlags != PrevSeqFlags)
 	m_Sequences.pSeqFlags[SeqID-1] = SeqFlags;
 if(bSerialise)
@@ -8127,9 +8149,10 @@ if(bSerialise)
 return(SeqFlags);
 }
 
+// Sequence flags are reset with ResetFlags before being set with SetFlags
 int										// returned updated flags, < 0 if errors
 CKangadna::UpdateSeqHeaderFlags(tSeqID SeqID,	// sequence identifier (32 bits)
-					UINT32 SetFlags,			// flags to set
+					UINT32 SetFlags,			// flags to set, any overlap len in cFlgOvlLenMsk is only copied into flags if > existing overlap len
 					UINT32 ResetFlags,			// flags to be reset
 					bool bSerialise)			// set true if access to headers are required to be serialised
 {
@@ -8144,13 +8167,15 @@ tSeqWrd4 *pSeqWrd;
 pSeqWrd = (tSeqWrd4 *)m_Sequences.pSeqs2Assemb;
 pStartSeqWrd = &pSeqWrd[*pSeqStart];
 
+SetFlags   &= 0x0000ffff;
+ResetFlags &= 0x0000ffff;
 
 return(UpdateSeqHeaderFlags(pStartSeqWrd,SetFlags,ResetFlags,bSerialise));
 }
 
-
+// Sequence flags are reset with ResetFlags before being set with SetFlags
 int					// < 0 if errors
-CKangadna::UpdateAllSeqHeaderFlags(UINT32 SetFlags,	// flags to set
+CKangadna::UpdateAllSeqHeaderFlags(UINT32 SetFlags,	// flags to set, any overlap len in cFlgOvlLenMsk is only copied into flags if > existing overlap len
 					UINT32 ResetFlags,				// flags to be reset
 					bool bSerialise)				// set true if access to headers are required to be serialised
 {
@@ -8162,6 +8187,9 @@ tSeqWrd4 *pSeqHdr;
 Rslt = 0;
 pSeqHdr = NULL;
 
+SetFlags   &= 0x0000ffff;
+ResetFlags &= 0x0000ffff;
+
 while((pSeqHdr = IterSeqHeaders(pSeqHdr,&SeqID,NULL,&Flags,NULL,bSerialise))!=NULL)
 	{
 	if((Flags & ResetFlags) || ((Flags & SetFlags) != SetFlags))
@@ -8172,9 +8200,10 @@ while((pSeqHdr = IterSeqHeaders(pSeqHdr,&SeqID,NULL,&Flags,NULL,bSerialise))!=NU
 return(Rslt);
 }
 
+// Sequence flags are reset with ResetFlags before being set with SetFlags
 int									// returned updated flags, or if < 0 then error 
 CKangadna::UpdateSeqHeaderFlags(tSeqWrd4 *pSeqWrd,				// pts to a SeqWrd within the sequence
-			UINT32 SetFlags,			// flags to set
+			UINT32 SetFlags,			// flags to set, any overlap len in cFlgOvlLenMsk is only copied into flags if > existing overlap len
 			UINT32 ResetFlags,			// flags to be reset
 			bool bSerialise)			// set true if access to headers are required to be serialised
 {
@@ -8183,7 +8212,6 @@ tSeqWrd4 SeqWrd;
 
 SetFlags   &= 0x0000ffff;
 ResetFlags &= 0x0000ffff;
-ResetFlags = ~ResetFlags;
 
 // get existing flags from sequence header
 pSeqHdrWrd = (tSeqWrd4 *)pSeqWrd;
@@ -8194,14 +8222,21 @@ while((*pSeqHdrWrd & cSeqWrd4LSWHdr) != cSeqWrd4MSWHdr)	// backup until the most
 if(bSerialise)
 	AcquireSerialiseSeqHdr();
 SeqWrd = *pSeqHdrWrd;
-SeqWrd &= ResetFlags;
-SeqWrd |= SetFlags;
+SeqWrd &= ~ResetFlags;
+if((SetFlags & cFlgOvlLenMsk) < (SeqWrd & cFlgOvlLenMsk))
+	SeqWrd |= (SetFlags & ~cFlgOvlLenMsk);			// retaining existing cFlgOvlLenMsk
+else
+	{
+	SeqWrd &= ~cFlgOvlLenMsk;			// replacing existing cFlgOvlLenMsk
+	SeqWrd |= SetFlags;								
+	}
+
 *pSeqHdrWrd = SeqWrd;
 
 if(bSerialise)
 	ReleaseSerialiseSeqHdr();
 
-return((int)(SeqWrd & 0x000fffff));
+return((int)(SeqWrd & 0x0000ffff));
 }
 
 
@@ -8211,7 +8246,8 @@ return((int)(SeqWrd & 0x000fffff));
 //
 int
 CKangadna::RemoveMarkedSeqs(UINT32 RemovalFlags,		// if any of these flags set then remove this sequence
-								UINT32 AllRequiredFlags,        // if containing any flags then remove this sequence unless all of these flags are set
+								UINT32 AllRequiredFlags,    // if containing any flags then remove this sequence unless all of these flags are set
+								UINT32 AllOptionalFlags,    // if containing any flags then remove this sequence unless at least one of these flags is set
 								bool bUpdateHdrFlags)		// if true, and if pSeqFlags != NULL, then replace sequence header flags with those from pSeqFlags
 {
 bool bRemove;
@@ -8272,6 +8308,55 @@ while((SeqWrd = *pSeqWrd++) != cSeqWrd4EOS)
 			if((CurFlags & AllRequiredFlags) != AllRequiredFlags)
 				bRemove = true;
 			}
+
+		if(!bRemove && AllOptionalFlags)
+			{
+			if(!(CurFlags & AllOptionalFlags))
+				bRemove = true;
+			}
+
+		if(!bRemove && AllOptionalFlags)
+			{
+			// is trimming required?
+			if((CurFlags & (cFlg5Prime | cFlg3Prime)) != (cFlg5Prime | cFlg3Prime))
+				{
+				int TrimTo;
+				int TrimBy;
+				int NumSeqWrds;
+
+				pSeqWrd -= 1;
+				if(pCopyTo == NULL)
+					pCopyTo = pSeqWrd;
+				TrimTo = ((SeqLen * (CurFlags & cFlgOvlLenMsk) >> 9)) / 100;
+				TrimBy = SeqLen - TrimTo;
+				NumSeqWrds = 3 + ((TrimTo+14)/15);
+
+				if(MinSeqLen == 0 || MinSeqLen > (UINT32)TrimTo) // note min and max sequence accepted
+					MinSeqLen = TrimTo;
+				if(MaxSeqLen < (UINT32)TrimTo)
+					MaxSeqLen = TrimTo;
+				Seqs2AssembLen += TrimTo;
+				NumSeqs2Assemb += 1;
+				NewSeqID += 1;				
+
+				SetSeqHeader(pSeqWrd,NewSeqID,SrcFileID,CurFlags | cFlg5Prime | cFlg3Prime,TrimTo,NULL,false,false);
+				if(CurFlags & cFlg5Prime)		// overlap was on the 5' end of sequence so will trim back the 3' end
+					NHSeqTrim(0,TrimBy,SeqLen,&pSeqWrd[3],true);
+				else                            // overlap was on the 3' end of sequence so will trim back the 5' end
+					NHSeqTrim(TrimBy,0,SeqLen,&pSeqWrd[3],true);
+
+				while(NumSeqWrds--)
+					{
+					Seqs2AssembOfs += 1;
+					*pCopyTo++ = *pSeqWrd++;
+					}  
+	
+				while(((SeqWrd = *pSeqWrd) != cSeqWrd4EOS) && ((SeqWrd & cSeqWrd4LSWHdr) != cSeqWrd4MSWHdr)) // slough remainder of existing sequence
+					pSeqWrd++;	
+				continue;
+				}
+			}
+
 		if(bRemove)
 			{
 			if(pCopyTo == NULL)
@@ -8281,7 +8366,7 @@ while((SeqWrd = *pSeqWrd++) != cSeqWrd4EOS)
 			{
 			NumSeqs2Assemb += 1;		// accepting this sequence
 			Seqs2AssembLen += SeqLen;
-			if(MinSeqLen == 0 || MinSeqLen > SeqLen)
+			if(MinSeqLen == 0 || MinSeqLen > SeqLen) // note min and max sequence accepted
 					MinSeqLen = SeqLen;
 			if(MaxSeqLen < SeqLen)
 					MaxSeqLen = SeqLen;
@@ -8294,6 +8379,7 @@ while((SeqWrd = *pSeqWrd++) != cSeqWrd4EOS)
 				}	
 			}
 		}
+
 	if(!bRemove)
 		{
 		Seqs2AssembOfs += 1;
@@ -8306,19 +8392,15 @@ if(pCopyTo != NULL)
 
 
 NumRemoved = m_Sequences.NumSeqs2Assemb - NumSeqs2Assemb;
-if(NumSeqs2Assemb != m_Sequences.NumSeqs2Assemb)
-	{
-	m_Sequences.NumSeqs2Assemb = NumSeqs2Assemb;
-	m_Sequences.Seqs2AssembLen = Seqs2AssembLen;
-	m_Sequences.MinSeqLen = MinSeqLen;
-	m_Sequences.MaxSeqLen = MaxSeqLen;
-	if(NumSeqs2Assemb > 0)
-		m_Sequences.MeanSeqLen = (double)Seqs2AssembLen / NumSeqs2Assemb;
-	else
-		m_Sequences.MeanSeqLen = 0.0;
-	m_Sequences.Seqs2AssembOfs = Seqs2AssembOfs;
-	}
-
+m_Sequences.NumSeqs2Assemb = NumSeqs2Assemb;
+m_Sequences.Seqs2AssembLen = Seqs2AssembLen;
+m_Sequences.MinSeqLen = MinSeqLen;
+m_Sequences.MaxSeqLen = MaxSeqLen;
+if(NumSeqs2Assemb > 0)
+	m_Sequences.MeanSeqLen = (double)Seqs2AssembLen / NumSeqs2Assemb;
+else
+	m_Sequences.MeanSeqLen = 0.0;
+m_Sequences.Seqs2AssembOfs = Seqs2AssembOfs;
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"RemoveMarkedSeqs: Removed %u sequences, %u remaining",NumRemoved,m_Sequences.NumSeqs2Assemb);
 if(m_Sequences.NumSeqs2Assemb == 0)

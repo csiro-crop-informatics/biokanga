@@ -59,6 +59,7 @@ const UINT16 cFlgSeqUnique	  = 0x020;		// sequence is marked as being unique wit
 const UINT16 cFlgSeq1stDup	  = 0x040;		// sequence is marked as being the representative duplicate sequence with other indentically matching sequences marked as being cFlgSeqNthDup
 const UINT16 cFlgSeqNthDup	  = 0x080;		// sequence is marked as being a duplicate of one or more another sequences with one representative duplicate sequence marked as cFlgSeq1stDup
 const UINT16 cFlgSeqRemove	 = 0x0100;		// sequence is marked as being for removal, either because it is a duplicate and duplicates being removed, or because it is not fully overlapped
+const UINT16 cFlgOvlLenMsk	 = 0xFE00;		// sequence overlays, or is overlaid by, at least one other sequence by this percentage of the sequence length 
 
 // sequences being processed for de Novo assembly are marked with these flags (can have a maximum of 16 defined as must fit within UINT16
 //const UINT16 cFlgSeqPE        = 0x001;		// sequence is paired ended; if reset then sequence is single ended
@@ -1159,6 +1160,7 @@ static const int cLevenshteinPacBioMismatch = 2;  // PacBio has very low rates o
 	int
 		RemoveMarkedSeqs(UINT32 RemovalFlags,		// if any of these flags set then remove this sequence
 								UINT32 AllRequiredFlags = 0,        // if containing any flags then remove this sequence unless all of these flags are set
+								UINT32 AllOptionalFlags = 0,        // if containing any flags then remove this sequence unless at least one of these flags is set
 								bool bUpdateHdrFlags = false);		// if true, and if pSeqFlags != NULL, then replace sequence header flags with those from pSeqFlags
 
 
