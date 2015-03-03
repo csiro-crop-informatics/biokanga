@@ -1507,7 +1507,7 @@ for(Iteration = 1; Iteration <= NumIterations; Iteration++)
 			}
 
 
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identification of non-overlapping %d sequences completed, iteration %d, accepted % pairs as overlapped, rejected % pairs as non-overlapped",m_Sequences.NumSeqs2Assemb,Iteration,NumPairedAccepted+NumPairedRecovered,NumPairedRejected);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identification of non-overlapping %d sequences completed, iteration %d, accepted %d pairs as overlapped, rejected %d pairs as non-overlapped",m_Sequences.NumSeqs2Assemb,Iteration,NumPairedAccepted+NumPairedRecovered,NumPairedRejected);
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Num sequences with 5' and 3' fully overlaid %d, sequences with 5' or 3' overlaid flank truncated and recovered %d",NumPairedAccepted,NumPairedRecovered);
 		}
 
