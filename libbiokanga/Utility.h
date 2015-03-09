@@ -102,5 +102,7 @@ public:
 						int MaxLen,				// max length to copy
 						char *pszTarg1,char *pszTarg2, ...); // var number of source files, use NULL or empty (pszSource[0] == '\0') to terminate
 
+	static void SleepMillisecs(int milliseconds); // cross-platform sleep function
+
 
 };

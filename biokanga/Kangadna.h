@@ -552,6 +552,8 @@ friend class CPacBio;					// CPacBio requires access to all members of this clas
 	pthread_rwlock_t m_hRwLock;
 #endif
 
+	volatile unsigned int CASSeqFlags; // used with synchronous compare and swap (CAS) for serialising access to sequence header flags
+
 	int CreateMutexes(void);
 	void DeleteMutexes(void);
 

@@ -4569,6 +4569,7 @@ return(eHRnone);				// no putative hits
 int						// < 0 if errors, 0 if no matches or change, 1 if mumber of matches accepted, 2 MMDelta criteria not met, 3 too many match instances
 CSfxArrayV3::LocateCoreMultiples(UINT32 ExtdProcFlags,	// flags indicating if lower levels need to do any form of extended processing with this specific read...
 						 UINT32 ReadID,					// identifies this read
+						 int MinChimericLen,			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 						 int MaxTotMM,			        // max number of mismatches allowed
 						 int CoreLen,					// core window length
 						 int CoreDelta,					// core window offset increment (1..n)
@@ -4597,6 +4598,12 @@ etSeqBase *pProbeBase;
 etSeqBase *pTargBase;
 char CurStrand;
 INT64 TargIdx;
+
+char BestChimericStrand;
+int BestChimericLen;
+UINT16 BestTrim5Flank;
+UINT16 BestTrim3Flank;
+int BestMaxChimericMMs;
 
 tsIdentNode *pHashArray[cHashEntries+1];		// hash array holding ptrs to identifier nodes
 tsIdentNode *pIdentNodes = pAllocsIdentNodes;	// identifier nodes
@@ -4632,6 +4639,12 @@ void *pSfxArray;			// target sequence suffix array
 INT64 SfxLen;				// number of suffixs in pSfxArray
 tsSfxEntry *pEntry;
 BisBase=eBaseN;
+
+// force MinChimericLen to be either 0, or in the range 50..99. if MinChimericLen is < 50 or > 99 then treat as if a normal full length match required 
+if(MinChimericLen >= 50 && MinChimericLen <= 99)
+	MinChimericLen = (MinChimericLen * ProbeLen) / 100;
+else
+	MinChimericLen = 0;
 
 // ensure suffix array block loaded for iteration!
 if(m_pSfxBlock == NULL || m_pSfxBlock->ConcatSeqLen == 0)
@@ -4683,6 +4696,12 @@ if(Align2Strand == eALSCrick)
 	}
 else
 	CurStrand = '+';
+
+BestChimericStrand = '?';
+BestChimericLen = 0;
+BestTrim5Flank = 0;
+BestTrim3Flank = 0;
+BestMaxChimericMMs = 0;
 
 do
 	{
@@ -4809,126 +4828,334 @@ do
 			// now do the matching allowing for missmatches
 			// if colorspace then need to allow for adjacent apparent mismatches actually being the result of a single substitution relative to the target
 			// if colorspace and a standalone, without an adjacent, mismatch then this is supposedly a sequencing error, still treat as though a mismatch
-			pTargBase = &pTarg[TargSeqLeftIdx];
-			pProbeBase = pProbeSeq;
-			CurMMCnt = 0;
-			CoreMMCnt = 0;
-			bool bPairMM = false;
-			if(m_bBisulfite)
-				BisBase = GetBisBase(TargMatchLen,pTargBase,pProbeBase);
-			for(PatIdx = 0; PatIdx < (UINT32)TargMatchLen; PatIdx++,pTargBase++,pProbeBase++)
-				{
-				TargBase = *pTargBase & 0x0f;
-				ProbeBase = *pProbeBase & 0x0f;
-				if(TargBase == eBaseEOS)		// mustn't match across entry sequences
-					break;
 
-				if(m_bColorspace)		// in colorspace, unpaired mismatches are sequencer errors but still treat as if a substitution
+
+			if(MinChimericLen > 0)
+				{
+				pTargBase = &pTarg[TargSeqLeftIdx];
+				pProbeBase = pProbeSeq;
+				CurMMCnt = 0;
+				CoreMMCnt = 0;
+				bool bPairMM = false;
+				if(m_bBisulfite)
+					BisBase = GetBisBase(TargMatchLen,pTargBase,pProbeBase);
+
+				etSeqBase *pProbeSubSeq;
+				etSeqBase *pTargSubSeq;
+
+				int FlankIdx;
+				int MaxSubSeqMMs;
+				int CurChimericLen;
+				int MaxChimericMMs;
+				int MaxChimericLen;
+				UINT16 Trim5Flank;
+				UINT16 Trim3Flank;
+
+
+				pTargSubSeq = pTargBase;
+				pProbeSubSeq = pProbeBase;
+				MaxChimericLen = 0;
+				MaxChimericMMs = 0;
+				for(PatIdx = 0; (int)PatIdx < (TargMatchLen - MinChimericLen) && MaxChimericLen < (TargMatchLen - (int)PatIdx); PatIdx++,pTargSubSeq++,pProbeSubSeq++)
 					{
-					if(!bPairMM && TargBase != ProbeBase)
+					pProbeBase = pProbeSubSeq;
+					pTargBase = pTargSubSeq;
+					CurChimericLen = 0;
+					CurMMCnt = 0;
+					// note: reducing allowed subs down by 1 as want to ensure maximal confidence in the accepted subsequences
+					MaxSubSeqMMs = MaxTotMM == 0 ? 0 :  max(1,(int)(0.5 + ((MaxTotMM * (TargMatchLen - PatIdx)) / (double)ProbeLen)) - 1);
+					for(FlankIdx = PatIdx; FlankIdx < TargMatchLen; FlankIdx++,CurChimericLen++, pTargBase++, pProbeBase++)
 						{
-						if(PatIdx < ((UINT32)TargMatchLen-1))
+						TargBase = *pTargBase & 0x0f;
+						ProbeBase = *pProbeBase & 0x0f;
+						if(TargBase == eBaseEOS)		// mustn't match across entry sequences
+							break;
+
+						if(m_bColorspace)		// in colorspace, unpaired mismatches are sequencer errors but still treat as if a substitution
 							{
-							if((pTargBase[1] & 0x0f) == (pProbeBase[1] & 0x0f))
+							if(!bPairMM && TargBase != ProbeBase)
 								{
-								if(++CurMMCnt > MaxTotMM)
-									break;
-								if(CurMMCnt >= NxtLowMMCnt)
-									break;
+								if(FlankIdx < (TargMatchLen-1))
+									{
+									if((pTargBase[1] & 0x0f) == (pProbeBase[1] & 0x0f))
+										{
+										if(++CurMMCnt > MaxSubSeqMMs)
+											break;
+										if(CurMMCnt >= NxtLowMMCnt)
+											break;
+										continue;
+										}
+									}
+								// accept as being a mismatch
+								bPairMM = true;
+								}
+							else
+								{
+								bPairMM = false;
 								continue;
 								}
 							}
-						// accept as being a mismatch
-						bPairMM = true;
-						}
-					else
-						{
-						bPairMM = false;
-						continue;
-						}
-					}
-				else				// in basespace
-					{
-					if(ProbeBase == TargBase)
-						continue;
-
-					if(m_bBisulfite)
-						{
-						if(TargBase == eBaseC || TargBase == eBaseG)
+						else				// in basespace
 							{
-							switch(BisBase) {
-								case eBaseA:		// only allow A
-									if(ProbeBase == eBaseA && TargBase == eBaseG)
-										continue;
-									break; // mismatch
-								case eBaseT:		// only allow T
-									if(ProbeBase == eBaseT && TargBase == eBaseC)
-										continue;
-									break; // mismatch
+							if(ProbeBase == TargBase)
+								continue;
+
+							if(m_bBisulfite)
+								{
+								if(TargBase == eBaseC || TargBase == eBaseG)
+									{
+									switch(BisBase) {
+										case eBaseA:		// only allow A
+											if(ProbeBase == eBaseA && TargBase == eBaseG)
+												continue;
+											break; // mismatch
+										case eBaseT:		// only allow T
+											if(ProbeBase == eBaseT && TargBase == eBaseC)
+												continue;
+											break; // mismatch
+										}
+									}
 								}
+							}
+
+						// execution here only if mismatch
+						// allowed mismatches are pro-rata dependent on the length
+						if(++CurMMCnt > MaxSubSeqMMs)
+							break;
+						if(CurMMCnt >= NxtLowMMCnt)
+							break;
+						if(CurChimericLen >= MinChimericLen && CurChimericLen >= MaxChimericLen)
+							{
+							int ProRataMM = max(1,(int)(0.5 + ((MaxTotMM * CurChimericLen) / (double)ProbeLen)));
+							if(CurMMCnt <= ProRataMM && (CurChimericLen > MaxChimericLen || CurMMCnt < MaxChimericMMs))
+								{
+								MaxChimericLen = CurChimericLen;
+								Trim5Flank = PatIdx;
+								Trim3Flank = TargMatchLen - FlankIdx;
+								MaxChimericMMs = CurMMCnt;
+								}
+							}
+						}
+					if(CurChimericLen >= MinChimericLen && CurChimericLen >= MaxChimericLen)
+						{
+						int ProRataMM = max(1,(int)(0.5 + ((MaxTotMM * CurChimericLen) / (double)ProbeLen)));
+						if(CurMMCnt <= ProRataMM)
+							{
+							MaxChimericLen = CurChimericLen;
+							Trim5Flank = PatIdx;
+							Trim3Flank = TargMatchLen - FlankIdx;
+							MaxChimericMMs = CurMMCnt;
 							}
 						}
 					}
 
-				// execution here only if mismatch
-				if(++CurMMCnt > MaxTotMM)
-					break;
-				if(CurMMCnt >= NxtLowMMCnt)
-					break;
-				}
-			if(PatIdx != TargMatchLen)
-				continue;
+				if(MaxChimericLen < MinChimericLen)
+					continue;
 
-			// processing continues here only if number of mismatches over whole probe accepted
-			if(CurMMCnt < LowMMCnt)	// if fewer mismatches than any previous match then this is a new unique putative hit
-				{
-				pCurHit = pHits;
-				LowHitInstances = 1;
-				NxtLowMMCnt = LowMMCnt;
-				LowMMCnt = CurMMCnt;
-				pEntry = MapChunkHit2Entry(TargSeqLeftIdx);
-				pCurHit->FlgInDel = 0;
-				pCurHit->FlgInsert = 0;
-				pCurHit->FlgSplice = 0;
-				pCurHit->FlgNonOrphan = 0;
-				memset(pCurHit->Seg,0,sizeof(pCurHit->Seg));
-				pCurHit->Seg[0].Strand = CurStrand;
-				pCurHit->Seg[0].ChromID = pEntry->EntryID;
-				pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);
-				pCurHit->Seg[0].MatchLen = ProbeLen;
-				pCurHit->Seg[0].Mismatches = CurMMCnt;
-				pCurHit->Seg[0].TrimMismatches = CurMMCnt;
-				pCurHit->BisBase = BisBase;
-				}
-			else							//	CurMMCnt >= LowMMCnt
-				if(CurMMCnt == LowMMCnt)	// multiple instances with this number of mismatches?
+				if(MaxChimericLen > BestChimericLen ||	// if at least as long as any previous match then this is a new unique putative hit
+					(MaxChimericLen == BestChimericLen && MaxChimericMMs < BestMaxChimericMMs))
 					{
-					LowHitInstances += 1;
-					if(pCurHit != NULL && LowHitInstances <= MaxHits)
+					BestChimericLen = MaxChimericLen;
+					BestTrim5Flank = Trim5Flank;
+					BestTrim3Flank = Trim3Flank;
+					BestMaxChimericMMs = MaxChimericMMs;
+					BestChimericStrand = CurStrand;
+					pCurHit = pHits;
+					LowHitInstances = 1;
+					NxtLowMMCnt = LowMMCnt;
+					LowMMCnt = MaxChimericMMs;
+					pEntry = MapChunkHit2Entry(TargSeqLeftIdx + Trim5Flank);
+					pCurHit->FlgChimeric = 1;
+					pCurHit->FlgInDel = 0;
+					pCurHit->FlgInsert = 0;
+					pCurHit->FlgSplice = 0;
+					pCurHit->FlgNonOrphan = 0;
+					memset(pCurHit->Seg,0,sizeof(pCurHit->Seg));
+					pCurHit->Seg[0].Strand = CurStrand;
+					if(CurStrand == '+')
 						{
-						pCurHit += 1;
-						pEntry = MapChunkHit2Entry(TargSeqLeftIdx);
-						pCurHit->FlgInDel = 0;
-						pCurHit->FlgInsert = 0;
-						pCurHit->FlgSplice = 0;
-						pCurHit->FlgNonOrphan = 0;
-						memset(pCurHit->Seg,0,sizeof(pCurHit->Seg));
-						pCurHit->Seg[0].Strand = CurStrand;
-						pCurHit->Seg[0].ChromID = pEntry->EntryID;
-						pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);
-						pCurHit->Seg[0].MatchLen = ProbeLen;
-						pCurHit->Seg[0].Mismatches = CurMMCnt;
-						pCurHit->Seg[0].TrimMismatches = CurMMCnt;
-						pCurHit->BisBase = BisBase;
+						pCurHit->Seg[0].TrimLeft = Trim5Flank;
+						pCurHit->Seg[0].TrimRight = Trim3Flank;
 						}
+					else
+						{
+						pCurHit->Seg[0].TrimLeft = Trim3Flank;
+						pCurHit->Seg[0].TrimRight = Trim5Flank;
+						}
+					pCurHit->Seg[0].ChromID = pEntry->EntryID;
+					pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx + Trim5Flank - pEntry->StartOfs);
+					pCurHit->Seg[0].MatchLen = ProbeLen;
+					pCurHit->Seg[0].Mismatches = MaxChimericMMs;
+					pCurHit->Seg[0].TrimMismatches = MaxChimericMMs;
+					pCurHit->BisBase = BisBase;
 					}
-				else						//	CurMMCnt > LowMMCnt
+				else							//	MaxChimericMMs >= LowMMCnt
+					if(MaxChimericLen == BestChimericLen && MaxChimericMMs == BestMaxChimericMMs)	// multiple instances with this number of mismatches?
+						{
+						LowHitInstances += 1;
+						if(pCurHit != NULL && LowHitInstances <= MaxHits)
+							{
+							pCurHit += 1;
+							pEntry = MapChunkHit2Entry(TargSeqLeftIdx + Trim5Flank);
+							pCurHit->FlgChimeric = 1;
+							pCurHit->FlgInDel = 0;
+							pCurHit->FlgInsert = 0;
+							pCurHit->FlgSplice = 0;
+							pCurHit->FlgNonOrphan = 0;
+							memset(pCurHit->Seg,0,sizeof(pCurHit->Seg));
+							pCurHit->Seg[0].Strand = CurStrand;
+							if(CurStrand == '+')
+								{
+								pCurHit->Seg[0].TrimLeft = Trim5Flank;
+								pCurHit->Seg[0].TrimRight = Trim3Flank;
+								}
+							else
+								{
+								pCurHit->Seg[0].TrimLeft = Trim3Flank;
+								pCurHit->Seg[0].TrimRight = Trim5Flank;
+								}
+							pCurHit->Seg[0].ChromID = pEntry->EntryID;
+							pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx + Trim5Flank - pEntry->StartOfs);
+							pCurHit->Seg[0].MatchLen = ProbeLen;
+							pCurHit->Seg[0].Mismatches = MaxChimericMMs;
+							pCurHit->Seg[0].TrimMismatches = MaxChimericMMs;
+							pCurHit->BisBase = BisBase;
+							}
+						}
+					else						//	CurMMCnt > LowMMCnt
+						{
+						if(MaxChimericLen == BestChimericLen && MaxChimericMMs < NxtLowMMCnt) // is this an instance with the next fewest mismatches?
+							NxtLowMMCnt = MaxChimericMMs;
+						}
+				if(MaxChimericLen == ProbeLen && LowHitInstances > MaxHits && LowMMCnt == 0)
+					break;
+				}
+			else   // standard, non-chimeric, full read match required processing
+				{
+				pTargBase = &pTarg[TargSeqLeftIdx];
+				pProbeBase = pProbeSeq;
+				CurMMCnt = 0;
+				CoreMMCnt = 0;
+				bool bPairMM = false;
+				if(m_bBisulfite)
+					BisBase = GetBisBase(TargMatchLen,pTargBase,pProbeBase);
+
+				for(PatIdx = 0; PatIdx < (UINT32)TargMatchLen; PatIdx++,pTargBase++,pProbeBase++)
 					{
-					if(CurMMCnt < NxtLowMMCnt) // is this an instance with the next fewest mismatches?
-						NxtLowMMCnt = CurMMCnt;
+					TargBase = *pTargBase & 0x0f;
+					ProbeBase = *pProbeBase & 0x0f;
+					if(TargBase == eBaseEOS)		// mustn't match across entry sequences
+						break;
+
+					if(m_bColorspace)		// in colorspace, unpaired mismatches are sequencer errors but still treat as if a substitution
+						{
+						if(!bPairMM && TargBase != ProbeBase)
+							{
+							if(PatIdx < ((UINT32)TargMatchLen-1))
+								{
+								if((pTargBase[1] & 0x0f) == (pProbeBase[1] & 0x0f))
+									{
+									if(++CurMMCnt > MaxTotMM)
+										break;
+									if(CurMMCnt >= NxtLowMMCnt)
+										break;
+									continue;
+									}
+								}
+							// accept as being a mismatch
+							bPairMM = true;
+							}
+						else
+							{
+							bPairMM = false;
+							continue;
+							}
+						}
+					else				// in basespace
+						{
+						if(ProbeBase == TargBase)
+							continue;
+
+						if(m_bBisulfite)
+							{
+							if(TargBase == eBaseC || TargBase == eBaseG)
+								{
+								switch(BisBase) {
+									case eBaseA:		// only allow A
+										if(ProbeBase == eBaseA && TargBase == eBaseG)
+											continue;
+										break; // mismatch
+									case eBaseT:		// only allow T
+										if(ProbeBase == eBaseT && TargBase == eBaseC)
+											continue;
+										break; // mismatch
+									}
+								}
+							}
+						}
+
+					// execution here only if mismatch
+					if(++CurMMCnt > MaxTotMM)
+						break;
+					if(CurMMCnt >= NxtLowMMCnt)
+						break;
 					}
-			if(LowHitInstances > MaxHits && LowMMCnt == 0)
-				break;
+				if(PatIdx != TargMatchLen)
+					continue;
+
+				// processing continues here only if number of mismatches over whole probe accepted
+				if(CurMMCnt < LowMMCnt)	// if fewer mismatches than any previous match then this is a new unique putative hit
+					{
+					pCurHit = pHits;
+					LowHitInstances = 1;
+					NxtLowMMCnt = LowMMCnt;
+					LowMMCnt = CurMMCnt;
+					pEntry = MapChunkHit2Entry(TargSeqLeftIdx);
+					pCurHit->FlgChimeric = 0;
+					pCurHit->FlgInDel = 0;
+					pCurHit->FlgInsert = 0;
+					pCurHit->FlgSplice = 0;
+					pCurHit->FlgNonOrphan = 0;
+					memset(pCurHit->Seg,0,sizeof(pCurHit->Seg));
+					pCurHit->Seg[0].Strand = CurStrand;
+					pCurHit->Seg[0].ChromID = pEntry->EntryID;
+					pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);
+					pCurHit->Seg[0].MatchLen = ProbeLen;
+					pCurHit->Seg[0].Mismatches = CurMMCnt;
+					pCurHit->Seg[0].TrimMismatches = CurMMCnt;
+					pCurHit->BisBase = BisBase;
+					}
+				else							//	CurMMCnt >= LowMMCnt
+					if(CurMMCnt == LowMMCnt)	// multiple instances with this number of mismatches?
+						{
+						LowHitInstances += 1;
+						if(pCurHit != NULL && LowHitInstances <= MaxHits)
+							{
+							pCurHit += 1;
+							pEntry = MapChunkHit2Entry(TargSeqLeftIdx);
+							pCurHit->FlgChimeric = 0;
+							pCurHit->FlgInDel = 0;
+							pCurHit->FlgInsert = 0;
+							pCurHit->FlgSplice = 0;
+							pCurHit->FlgNonOrphan = 0;
+							memset(pCurHit->Seg,0,sizeof(pCurHit->Seg));
+							pCurHit->Seg[0].Strand = CurStrand;
+							pCurHit->Seg[0].ChromID = pEntry->EntryID;
+							pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);
+							pCurHit->Seg[0].MatchLen = ProbeLen;
+							pCurHit->Seg[0].Mismatches = CurMMCnt;
+							pCurHit->Seg[0].TrimMismatches = CurMMCnt;
+							pCurHit->BisBase = BisBase;
+							}
+						}
+					else						//	CurMMCnt > LowMMCnt
+						{
+						if(CurMMCnt < NxtLowMMCnt) // is this an instance with the next fewest mismatches?
+							NxtLowMMCnt = CurMMCnt;
+						}
+				if(LowHitInstances > MaxHits && LowMMCnt == 0)
+					break;
+				}
 			}
 		if(LowHitInstances > MaxHits && LowMMCnt == 0)
 			{
@@ -5682,6 +5909,7 @@ do
 				if(pCurHit != NULL)
 					{
 					pEntry = MapChunkHit2Entry(TargSeqLeftIdx);
+					pCurHit->FlgChimeric = 0;
 					pCurHit->FlgInDel = 0;
 					pCurHit->FlgInsert = 0;
 					pCurHit->FlgSplice = 0;
@@ -6404,6 +6632,7 @@ return(BestScoreInstances <= MaxHits ? eHRhits : eHRnone);
 int														// < 0 if errors, 0 if no matches or change, 1 if mumber of matches accepted, 2 MMDelta criteria not met, 3 too many match instances
 CSfxArrayV3::AlignReads(UINT32 ExtdProcFlags,			// flags indicating if lower levels need to do any form of extended processing with this specific read...
 						 UINT32 ReadID,					// identifies this read
+						 int MinChimericLen,			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 						 int MaxTotMM,					// max number of mismatches allowed
 						 int CoreLen,					// core window length
 						 int CoreDelta,					// core window offset increment (1..n)
@@ -6436,7 +6665,7 @@ if(MaxTotMM > 0)
 		CL = ProbeLen / (AllowMM+MMDelta);
 		if(CL <= CoreLen)
 			break;
-		Rslt = LocateCoreMultiples(ExtdProcFlags,ReadID,AllowMM,CL,CL,MaxNumCoreSlides,MMDelta,Align2Strand,pLowHitInstances,
+		Rslt = LocateCoreMultiples(ExtdProcFlags,ReadID,0,AllowMM,CL,CL,MaxNumCoreSlides,MMDelta,Align2Strand,pLowHitInstances,
 								pLowMMCnt,pNxtLowMMCnt,pProbeSeq,ProbeLen,MaxHits,pHits,m_MaxIter,NumAllocdIdentNodes,pAllocsIdentNodes);
 		if(Rslt != 0)
 			return(Rslt);
@@ -6448,8 +6677,12 @@ else
 	AllowMM = 0;
 
 if(AllowMM <= MaxTotMM)
-	Rslt = LocateCoreMultiples(ExtdProcFlags,ReadID,MaxTotMM,CoreLen,CoreDelta,MaxNumCoreSlides,MMDelta,Align2Strand,pLowHitInstances,
+	{
+	Rslt = LocateCoreMultiples(ExtdProcFlags,ReadID,0,MaxTotMM,CoreLen,CoreDelta,MaxNumCoreSlides,MMDelta,Align2Strand,pLowHitInstances,
 								pLowMMCnt,pNxtLowMMCnt,pProbeSeq,ProbeLen,MaxHits,pHits,m_MaxIter,NumAllocdIdentNodes,pAllocsIdentNodes);
+	if(Rslt != 0)
+		return(Rslt);
+	}
 
 // Note: only interested in unique splice junctions or InDels
 if(Rslt == 0 && microInDelLen > 0)
@@ -6461,6 +6694,8 @@ if(Rslt == 0 && microInDelLen > 0)
 	SpliceCore = min((CoreLen * 2), (ProbeLen-1)/2);
 	Rslt = LocateInDels(ExtdProcFlags,ReadID,microInDelLen,MaxTotMM > cMaxMicroInDelMM ? cMaxMicroInDelMM : MaxTotMM,SpliceCore,Align2Strand,pLowHitInstances,
 								pLowMMCnt,pNxtLowMMCnt,pProbeSeq,ProbeLen,1,pHits,&BestInDelScore,m_MaxIter,NumAllocdIdentNodes,pAllocsIdentNodes);
+	if(Rslt != 0)
+		return(Rslt);
 	}
 
 if(Rslt == 0 && MaxSpliceJunctLen > 0)
@@ -6474,8 +6709,18 @@ if(Rslt == 0 && MaxSpliceJunctLen > 0)
 	Rslt=LocateSpliceJuncts(ExtdProcFlags,ReadID,MaxSpliceJunctLen,MaxTotMM > cMaxJunctAlignMM ? cMaxJunctAlignMM : MaxTotMM,
 						SpliceCore,Align2Strand,pLowHitInstances,
 								pLowMMCnt,pNxtLowMMCnt,pProbeSeq,ProbeLen,1,pHits,&BestInDelScore,m_MaxIter,NumAllocdIdentNodes,pAllocsIdentNodes);
+	if(Rslt != 0)
+		return(Rslt);
 	}
-return(Rslt);
+
+if(MinChimericLen > 0)
+	{
+	Rslt = LocateCoreMultiples(ExtdProcFlags,ReadID,MinChimericLen,MaxTotMM,CoreLen,CoreDelta,MaxNumCoreSlides,MMDelta,Align2Strand,pLowHitInstances,
+								pLowMMCnt,pNxtLowMMCnt,pProbeSeq,ProbeLen,MaxHits,pHits,m_MaxIter,NumAllocdIdentNodes,pAllocsIdentNodes);
+	return(Rslt);
+	}
+
+return(0);
 }
 
 
@@ -7784,6 +8029,7 @@ for(MMIdx = 0; MMIdx <= TotMM && cMinInDelSeqLen	< (ProbeLen - ProbeMMOfss[MMIdx
 			CurInsert.Seg[1].ReadOfs = CurInsert.Seg[0].MatchLen + CurInDelLen;
 			CurInsert.Seg[1].Strand = CurStrand;
 			CurInsert.Score = CurScore;
+			CurInsert.FlgChimeric = 0;
 			CurInsert.FlgInDel = 1;
 			CurInsert.FlgInsert = 1;
 			CurInsert.FlgSplice = 0;
@@ -7842,6 +8088,7 @@ for(MMIdx = 0; MMIdx <= TotMM && cMinInDelSeqLen	< (ProbeLen - ProbeMMOfss[MMIdx
 			CurDelete.Seg[1].ReadOfs = CurDelete.Seg[0].MatchLen;
 			CurDelete.Seg[1].Strand = CurStrand;
 			CurDelete.Score = CurScore;
+			CurDelete.FlgChimeric = 0;
 			CurDelete.FlgInDel = 1;
 			CurDelete.FlgSplice = 0;
 			CurDelete.FlgInsert = 0;
@@ -8017,6 +8264,7 @@ for(MMIdx = 0; MMIdx <= TotMM && cMinInDelSeqLen	< ProbeMMOfss[MMIdx]; MMIdx++)
 			CurInsert.Seg[1].ReadOfs = CurInsert.Seg[0].MatchLen + CurInDelLen;
 			CurInsert.Seg[1].Strand = CurStrand;
 			CurInsert.Score = CurScore;
+			CurInsert.FlgChimeric = 0;
 			CurInsert.FlgInDel = 1;
 			CurInsert.FlgInsert = 1;
 			CurInsert.FlgSplice = 0;
@@ -8080,6 +8328,7 @@ for(MMIdx = 0; MMIdx <= TotMM && cMinInDelSeqLen	< ProbeMMOfss[MMIdx]; MMIdx++)
 			CurDelete.Seg[1].ReadOfs = TmpProbeLen;
 			CurDelete.Seg[1].Strand = CurStrand;
 			CurDelete.Score = CurScore;
+			CurDelete.FlgChimeric = 0;
 			CurDelete.FlgInDel = 1;
 			CurDelete.FlgInsert = 0;
 			CurDelete.FlgSplice = 0;

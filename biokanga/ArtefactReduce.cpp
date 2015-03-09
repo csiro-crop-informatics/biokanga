@@ -1461,7 +1461,7 @@ for(Iteration = 1; Iteration <= NumIterations; Iteration++)
 			NumPairedRecovered += 1;
 			}
 
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identification of non-overlapping %d PE pairs of sequences completed, iteration %d, accepted % pairs as overlapped, rejected % pairs as non-overlapped",m_Sequences.NumSeqs2Assemb/2,Iteration,NumPairedAccepted+NumPairedRecovered,NumPairedRejected);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identification of non-overlapping %d PE pairs of sequences completed, iteration %d, accepted %u pairs as overlapped, rejected %u pairs as non-overlapped",m_Sequences.NumSeqs2Assemb/2,Iteration,NumPairedAccepted+NumPairedRecovered,NumPairedRejected);
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"PE pairs 5' and 3' fully overlaid %d, PE pairs 5' or 3' overlaid flank truncated and recovered %d",NumPairedAccepted,NumPairedRecovered);
 		}
 	else

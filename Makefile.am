@@ -14,4 +14,4 @@ SUBDIRS = libbiokanga libBKPLPlot genhyperconserved genbiobed \
 	  genstructprofile filterreads fasta2struct ufilter genseqcandidates genmarkers GFFfilter \
 	  genElementProfiles BEDMerge BEDFilter loci2dist genzygosity genNormWiggle GTFfilter genDiffExpr \
           dmpbioseq genpseudogenome usimdiffexpr genreadsde HammingDist RNAFragSim mergeoverlaps fastafilter \
-          kanga kangasr kangar kangahrdx kangade kangas kangapr csv2sqlite biokanga locmarkers PEscaffold SSRdiscovery pacbiokanga 
+          kangasr kangar kangahrdx kangade kangas kangapr csv2sqlite biokanga locmarkers PEscaffold SSRdiscovery pacbiokanga 

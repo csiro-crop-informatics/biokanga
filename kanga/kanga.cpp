@@ -7703,7 +7703,7 @@ while(ThreadedIterReads(&ReadsHitBlock))
 													MaxTotMM,CoreLen,CoreDelta,
 													pPars->MaxNumSlides,
 													pPars->MinEditDist,
-													pPars->AlignStrand,				// watson, crick or both?
+													pPars->AlignStrand,0,				// watson, crick or both?
 													pPars->microInDelLen,			// microInDel length maximum
 													pPars->SpliceJunctLen,			// maximum splice junction length when aligning RNAseq reads
 													&LowHitInstances,

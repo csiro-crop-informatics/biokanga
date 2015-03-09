@@ -46,6 +46,7 @@ Process(etPMode PMode,					// processing mode
 		bool bPEcircularised,			// experimental - true if processing for PE spaning circularised fragments
 		bool bPEInsertLenDist,			// true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -135,6 +136,7 @@ int Trim5;					// trim this number of bases from 5' end of reads when loading th
 int Trim3;					// trim this number of bases from 3' end of reads when loading the reads
 int MaxRptSAMSeqsThres;		// report all SAM chroms or sequences to SAM header if number of reference chroms <= this limit (defaults to 10000)
 int AlignStrand;			// align on to watson, crick or both strands of target
+int MinChimericLen;			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 int microInDelLen;			// microInDel length maximum
 int SpliceJunctLen;			// maximum splice junction length when aligning RNAseq reads
 int MinSNPreads;			// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -212,6 +214,8 @@ struct arg_lit  *pairstrand = arg_lit0("E","pairstrand",         "5' and 3' are 
 
 struct arg_int  *alignstrand = arg_int0("Q","alignstrand","<int>", "align to this strand: 0 either, 1 Watson '+', 2 Crick '-' (default is to align to either strand)");
 
+struct arg_int  *minchimericlen = arg_int0("c","minchimeric","<int>", "minimum chimeric length as a percentage of probe length (default is 0 to disable, otherwise 50..99)");
+
 struct arg_int *qual = arg_int0("g","quality","<int>",		    "fastq quality scoring - 0 - Sanger or Illumina 1.8+, 1 = Illumina 1.3+, 2 = Solexa < 1.3, 3 = Ignore quality (default = 3)");
 struct arg_file *sfxfile = arg_file1("I","sfx","<file>",		"align against this suffix array (kangax generated) file");
 struct arg_file *outfile = arg_file1("o","out","<file>",		"output alignments to this file");
@@ -231,7 +235,7 @@ struct arg_file *contamsfile = arg_file0("H","contaminants","<file>", "Optional 
 
 
 struct arg_file *snpfile = arg_file0("S","snpfile","<file>",	"Output SNPs (CSV or VCF if file name extension is '.vcf') to this file (default is to output as CSV to file name with '.snp' appended)");
-struct arg_file *centroidfile = arg_file0("c","snpcentroid","<file>", "Output SNP centroid distributions (CSV format) to this file (default is for no centroid processing)");
+struct arg_file *centroidfile = arg_file0("7","snpcentroid","<file>", "Output SNP centroid distributions (CSV format) to this file (default is for no centroid processing)");
 struct arg_int *markerlen = arg_int0("K","markerlen","<int>", "output marker sequences of this length with centralised SNP, output to SNP file name with '.marker' apended (default no markers, range 25..500)");
 struct arg_dbl *markerpolythres = arg_dbl0("G","markerpolythres","<dbl>", "maximum allowed marker sequence base polymorphism independent of centroid SNP (default 0.333, range 0.0 to 0.5)");
 
@@ -275,7 +279,7 @@ struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					summrslts,experimentname,experimentdescr,
-					pmode,alignstrand,pecircularised,peinsertlendist,microindellen,splicejunctlen,solid,pcrartefactwinlen,qual,mlmode,trim5,trim3,maxmlmatches,rptsamseqsthres,clampmaxmulti,bisulfite,
+					pmode,alignstrand,minchimericlen,pecircularised,peinsertlendist,microindellen,splicejunctlen,solid,pcrartefactwinlen,qual,mlmode,trim5,trim3,maxmlmatches,rptsamseqsthres,clampmaxmulti,bisulfite,
 					mineditdist,maxsubs,maxns,minflankexacts,pcrprimercorrect,minsnpreads,markerlen,markerpolythres,qvalue,snpnonrefpcnt,format,title,priorityregionfile,nofiltpriority,bestmatches,
 					pe1inputfiles,peproc,pairminlen,pairmaxlen,pairstrand,pe2inputfiles,sfxfile,snpfile,centroidfile,
 					outfile,nonealignfile,multialignfile,statsfile,siteprefsfile,siteprefsofs,lociconstraintsfile,contamsfile,ExcludeChroms,IncludeChroms,threads,
@@ -430,9 +434,9 @@ if (!argerrors)
 	szMultiAlignFile[0] = '\0';
 	szNoneAlignFile[0] = '\0';
 	szSitePrefsFile[0] = '\0';
-
+	MinChimericLen = 0;
 	bLocateBestMatches = false;
-
+	
 	bSOLiD = solid->count ? true : false;
 
 	PMode = (etPMode)(pmode->count ? pmode->ival[0] : ePMdefault);
@@ -649,13 +653,29 @@ if (!argerrors)
 	else
 		bClampMaxMLmatches = false;
 	if(bLocateBestMatches)
-		bClampMaxMLmatches;
+		bClampMaxMLmatches = true;
 
 
 	microInDelLen = microindellen->count ? microindellen->ival[0] : 0;
 	if(microInDelLen < 0 || microInDelLen > cMaxMicroInDelLen)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: microInDel length maximum '-a%d' specified outside of range 0..%d\n",microInDelLen,cMaxMicroInDelLen);
+		exit(1);
+		}
+
+	MinChimericLen = minchimericlen->count ? minchimericlen->ival[0] : 0;
+	if(MinChimericLen != 0 && !(MinChimericLen >= 50 && MinChimericLen <= 99))
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum chimeric length percentage '-c%d' specified outside of range 50..99\n",MinChimericLen);
+		exit(1);
+		}
+	else
+		MinChimericLen = 0;
+
+
+	if(MinChimericLen > 0 && (bSOLiD || bLocateBestMatches))		// chimeric read processing not currently supported for SOLiD colorspace processing or for reporting multiple best matches
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Sorry, chimeric read processing not supported in this release if either SOLiD or locating multiple best matches also requested");
 		exit(1);
 		}
 
@@ -1033,6 +1053,7 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"alignments are to : %s",pszDescr);
 
+
 	if(PCRartefactWinLen >= 0)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Use this window length when reducing PCR differential amplification artefacts : %d",PCRartefactWinLen);
 	else
@@ -1196,6 +1217,10 @@ if (!argerrors)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Aligned read octamer site preferencing into this file: '%s'",szSitePrefsFile);
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allow microInDels of upto this inclusive length: %d",microInDelLen);
+
+	if(MinChimericLen > 0)
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Check for chimeric sequences in reads of at least this percentage length: %d",MinChimericLen);
+
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum RNA-seq splice junction separation distance: %d",SpliceJunctLen);
 	if(MinSNPreads == 0)
 		{
@@ -1258,6 +1283,7 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(AlignStrand),"alignstrand",&AlignStrand);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Quality),"quality",&Quality);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(microInDelLen),"microindellen",&microInDelLen);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinChimericLen),"minchimericlen",&MinChimericLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SpliceJunctLen),"splicejunctlen",&SpliceJunctLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SitePrefsOfs),"siteprefsofs",&SitePrefsOfs);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinEditDist),"editdelta",&MinEditDist);
@@ -1324,7 +1350,8 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = Process((etPMode)PMode,(etFQMethod)Quality,bSOLiD,bBisulfite,(etPEproc)PEproc,PairMinLen,PairMaxLen,bPairStrand,bPEcircularised,bPEInsertLenDist,(eALStrand)AlignStrand,microInDelLen,SpliceJunctLen,
+	Rslt = Process((etPMode)PMode,(etFQMethod)Quality,bSOLiD,bBisulfite,(etPEproc)PEproc,PairMinLen,PairMaxLen,bPairStrand,bPEcircularised,bPEInsertLenDist,
+				    (eALStrand)AlignStrand,MinChimericLen,microInDelLen,SpliceJunctLen,
 					MinSNPreads,QValue,SNPNonRefPcnt,MarkerLen,MarkerPolyThres,PCRartefactWinLen,(etMLMode)MLMode,
 					MaxMLmatches,bClampMaxMLmatches,bLocateBestMatches,
 					MaxNs,MinEditDist,MaxSubs,Trim5,Trim3,MinFlankExacts,PCRPrimerCorrect, MaxRptSAMSeqsThres,
@@ -1375,6 +1402,7 @@ Process(etPMode PMode,					// processing mode
 		bool bPEcircularised,			// experimental - true if processing for PE spaning circularised fragments
 		bool bPEInsertLenDist,			// true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -1442,6 +1470,7 @@ Rslt = pAligner->Align(PMode,			// processing mode
 			bPEcircularised,			// experimental - true if processing for PE spaning circularised fragments
 			bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 			AlignStrand,				// align on to watson, crick or both strands of target
+			MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 			microInDelLen,				// microInDel length maximum
 			SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 			MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci

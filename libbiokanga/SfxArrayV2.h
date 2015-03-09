@@ -187,13 +187,14 @@ typedef struct TAG_sSegLoci {
 		UINT64 MatchLoci;			// original match loci
 		UINT16 MatchLen;			// original match length
 		UINT8 Mismatches;			// original number of mismatches
-		UINT8 TrimLeft;				// left flank trimming removes this many bases
-        UINT8 TrimRight;			// right flank trimming removes this many bases
+		UINT16 TrimLeft;			// left flank trimming removes this many bases
+        UINT16 TrimRight;			// right flank trimming removes this many bases
 		UINT8 TrimMismatches;		// after trimming there are this many mismatches
 }	tsSegLoci;
 
 typedef struct TAG_tsHitLoci {
 	 etSeqBase BisBase;				// bisulfite mapping base if appropriate
+	 UINT8 FlgChimeric:1;			// set if chimeric alignment with TrimLeft and/or TrimRight flank trimming required
 	 UINT8 FlgInDel:1;				// set if microInDel alignment with 2 segments
 	 UINT8 FlgInsert:1;				// set if alignment with insertion into read relative to reference, false if deletion from read
 	 UINT8 FlgSplice:1;				// set if splice junction with 2 segments
@@ -538,6 +539,7 @@ public:
 			int											// < 0 if errors, 0 if no matches or change, 1 if mumber of matches accepted, 2 MMDelta criteria not met, 3 too many match instances  
 				AlignReads(UINT32 ExtdProcFlags,		// flags indicating if lower levels need to do any form of extended processing with this specific read...
 						 UINT32 ReadID,					// identifies this read
+						 int MinChimericLen,			// if checking for chimerics then minimim length required, set to 0 if not checking for chimerics
 						 int TotMM,						// max number of mismatches allowed including any core
 						 int CoreLen,					// core window length 
 						 int CoreDelta,					// core window offset increment (1..n)
@@ -625,9 +627,10 @@ public:
 						int CurMaxIter);				// max allowed iterations per subsegmented sequence when matching that subsegment
 
 	int						// < 0 if errors, 0 if no matches or change, 1 if mumber of matches accepted, 2 MMDelta criteria not met, 3 too many match instances  
-		LocateCoreMultiples(UINT32 ExtdProcFlags,			// flags indicating if lower levels need to do any form of extended processing with this specific read...
+		LocateCoreMultiples(UINT32 ExtdProcFlags,		// flags indicating if lower levels need to do any form of extended processing with this specific read...
 						 UINT32 ReadID,					// identifies this read
-						 int TotMM,			// max number of mismatches allowed including any core
+						 int MinChimericLen,			// if checking for chimerics then minimim length required, set to 0 if not checking for chimerics
+						 int TotMM,						// max number of mismatches allowed including any core
 						 int CoreLen,					// core window length 
 						 int CoreDelta,					// core window offset increment (1..n)
 						 int MaxNumCoreSlides,			// max number of times to slide core on each strand

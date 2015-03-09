@@ -170,8 +170,8 @@ typedef struct TAG_sReadAlignLoci {
 	UINT32 MatchLoci;			// original match loci
 	UINT16 MatchLen;			// original match length
 	UINT8 Mismatches;			// original number of mismatches
-	UINT8 TrimLeft;				// left flank trimming removes this many bases
-    UINT8 TrimRight;			// right flank trimming removes this many bases
+	UINT16 TrimLeft;			// left flank trimming removes this many bases
+    UINT16 TrimRight;			// right flank trimming removes this many bases
 	UINT8 TrimMismatches;		// after trimming there are this many mismatches
 } tsReadAlignLoci;
 
@@ -360,6 +360,7 @@ typedef struct TAG_sThreadMatchPars {
 #endif
 	int CurBlockID;					// current suffix block identifier
 	int ChromID;					// hit chrom identifier
+	int MinChimericLen;				// if checking for chimerics then minimim length required, set to 0 if not checking for chimerics
     int NumAllowedSubs;				// number of allowed substitutions
 	int MaxNumSlides;				// limit on number of times core window can be moved or slide to right over read
     etQFiltType FiltQuality;		// filtering type
@@ -373,6 +374,7 @@ typedef struct TAG_sThreadMatchPars {
 	int MaxSubs;					// maximum number of substitutions allowed per 100bp of actual read length
 	int PlusHits;					// returned number of hits on to plus strand
 	int MinusHits;					// returned number of hits on to minus strand
+	int ChimericHits;				// returned number of hits which were chimeric
 	int NumReadsProc;				// returned number of reads processed by this thread instance
 	int OutBuffIdx;					// index at which to write next formated hit into szOutBuff
 	UINT8 *pszOutBuff;				// used to buffer multiple hit formated output records prior to writing to disk
@@ -524,6 +526,7 @@ class CAligner
 	int m_NumConstraintLoci;		// number of constrained alignment loci in m_pConstraintLoci[]
 	tsConstraintLoci *m_pConstraintLoci; // allocated to hold any read alignment loci constraints
 
+	int m_MinChimericLen;			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 	int m_microInDelLen;			// microInDel length maximum
 	int m_SpliceJunctLen;			// minimum splice junction length when aligning RNAseq reads
 
@@ -734,6 +737,8 @@ class CAligner
 	static eSeqBase AdjAlignSNPBase(tsReadHit *pReadHit,	// aligned read
 		   UINT32 ChromID,			// read expected to have aligned to this chromosome
 			UINT32 Loci);            // base to be returned is at this alignment loci, base will be complemented if antisense alignment
+
+	int TrimChimeric(void);			// trim back aligned chimeric read flanks
 
 	int AutoTrimFlanks(int MinFlankExacts); // Autotrim back aligned read flanks until there are at least MinFlankExacts exactly matching bases in the flanks
 
@@ -971,6 +976,7 @@ public:
 				bool bPEcircularised,			// experimental - true if processing for PE spanning circularised fragments
 				bool bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 				eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+				int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 				int microInDelLen,				// microInDel length maximum
 				int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 				int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci

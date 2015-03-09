@@ -30,6 +30,10 @@
 #include "./biokanga.h"
 #include "./Kangadna.h"
 
+#ifdef _WIN32
+#pragma intrinsic(_InterlockedCompareExchange)
+#endif
+
 static UINT8 *m_xpConcatSeqs;	// to hold all concatenated packed sequences
 static int SeqWrdBytes;			// sequence packing used in m_xpConcatSeqs
 
@@ -427,6 +431,8 @@ CKangadna::CreateMutexes(void)
 if(m_bMutexesCreated)
 	return(eBSFSuccess);
 
+CASSeqFlags = 0;
+
 #ifdef _WIN32
 InitializeSRWLock(&m_hRwLock);
 #else
@@ -578,22 +584,27 @@ pthread_mutex_unlock(&m_hMtxIterNxtProcRead);
 void
 CKangadna::AcquireSerialiseSeqHdr(void)
 {
-int SpinCnt = 10000;
+int SpinCnt = 5000;
+int BackoffMS = 5;
 #ifdef _WIN32
 while(!TryEnterCriticalSection(&m_hSCritSectSeqHdrs))
 	{
 	if(SpinCnt -= 1)
 		continue;
-	SwitchToThread();
-	SpinCnt = 1000;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 2500;
+	if(BackoffMS < 500)
+		BackoffMS += 5;
 	}
 #else
 while(pthread_spin_trylock(&m_hSpinLockSeqHdrs)==EBUSY)
 	{
 	if(SpinCnt -= 1)
 		continue;
-	pthread_yield();
-	SpinCnt = 1000;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 2500;
+	if(BackoffMS < 500)
+		BackoffMS += 5;
 	}
 #endif
 }
@@ -608,10 +619,38 @@ pthread_spin_unlock(&m_hSpinLockSeqHdrs);
 #endif
 }
 
+
 void
 CKangadna::AcquireSerialiseSeqFlags(void)
 {
-int SpinCnt = 10000;
+int SpinCnt = 5000;
+int BackoffMS = 5;
+#ifndef NOCAS
+
+#ifdef _WIN32
+while(InterlockedCompareExchange(&CASSeqFlags,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 2500;
+	if(BackoffMS < 500)
+		BackoffMS += 5;
+	}
+#else
+while(__sync_val_compare_and_swap(&CASSeqFlags,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 10000;
+	SpinCnt = 2500;
+	if(BackoffMS < 500)
+		BackoffMS += 5;
+	}
+#endif
+
+#else
 #ifdef _WIN32
 while(!TryEnterCriticalSection(&m_hSCritSectSeqFlags))
 	{
@@ -629,15 +668,24 @@ while(pthread_spin_trylock(&m_hSpinLockSeqFlags)==EBUSY)
 	SpinCnt = 1000;
 	}
 #endif
+#endif
 }
 
 void
 CKangadna::ReleaseSerialiseSeqFlags(void)
 {
+#ifndef NOCAS
+#ifdef _WIN32
+while(InterlockedCompareExchange(&CASSeqFlags,1,0)!=1);
+#else
+while(__sync_val_compare_and_swap(&CASSeqFlags,1,0)!=1);
+#endif
+#else
 #ifdef _WIN32
 LeaveCriticalSection(&m_hSCritSectSeqFlags);
 #else
 pthread_spin_unlock(&m_hSpinLockSeqFlags);
+#endif
 #endif
 }
 

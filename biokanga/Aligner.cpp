@@ -81,6 +81,7 @@ CAligner::Align(etPMode PMode,			// processing mode
 		bool bPEcircularised,			// experimental - true if processing for PE spaning circularised fragments
 		bool bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -210,6 +211,7 @@ else
 	m_InitalAlignSubs = MaxSubs;
 
 m_AlignStrand = AlignStrand;
+m_MinChimericLen = MinChimericLen;
 m_microInDelLen = microInDelLen;
 m_SpliceJunctLen = SpliceJunctLen;
 m_MinSNPreads = MinSNPreads;
@@ -467,6 +469,10 @@ if(Rslt < eBSFSuccess)
 	return(Rslt);
 	}
 
+
+if(MinChimericLen > 0) // any aligned reads accepted as being chimeric are flank trimmed and subsequently processed as if full length aligned
+	TrimChimeric();
+
 // if autodetermining max subs that were allowed from actual reads then let user know what the average read length was
 size_t TotReadsLen = 0;
 tsReadHit *pReadHit;
@@ -515,7 +521,7 @@ if(m_InitalAlignSubs != 0)
 else
 	if(gProcessingID > 0)
 		gSQLiteSummaries.AddResult(gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MaxSubs),"MeanSubs",&m_InitalAlignSubs);
-
+ 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Provisionally accepted %d aligned reads (%d uniquely, %d aligning to multiloci) aligning to a total of %d loci", m_TotAcceptedAsAligned,m_TotAcceptedAsUniqueAligned,m_TotAcceptedAsMultiAligned,m_TotLociAligned);
 
 m_OrigNumReadsLoaded = m_NumReadsLoaded;		// make a copy of actual number of reads loaded as if m_MLMode >= eMLall then will be overwritten with number of multialigned loci 
@@ -825,6 +831,7 @@ m_bPEInsertLenDist = false;
 m_bIsSOLiD = false;
 m_bBisulfite = false;
 m_AlignStrand = eALSnone;
+m_MinChimericLen = 0;
 m_microInDelLen = 0;
 m_SpliceJunctLen = 0;
 m_AllocLociPValuesMem = 0;
@@ -1770,12 +1777,114 @@ if(MinFlankExacts > 0)	// do  3' and 5' autotrim? Note that currently can't trim
 
 	if(gProcessingID)
 		{
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimPlusTrimed),"5PrimeRemoved",&m_ElimPlusTrimed);
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimMinusTrimed),"3PrimeRemoved",&m_ElimMinusTrimed);
+		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimPlusTrimed),"5' trimmed",&m_ElimPlusTrimed);
+		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimMinusTrimed),"3' trimmed",&m_ElimMinusTrimed);
 		}
 	}
 return(eBSFSuccess);
 }
+
+// TrimChimeric
+// Aligned reads marked as vhimeric aligned are left and right flank trimmed so that in subsequent processing these reads are treated as matching over their full length
+int
+CAligner::TrimChimeric(void) // Autotrim back aligned read flanks until there are at least MinFlankExacts exactly matching bases in the flanks
+{
+tsReadHit *pReadHit;
+tsReadHit *pCurReadHit;
+tsReadHit *pNxtReadHit;
+UINT32 TrimLeft;
+UINT32 TrimRight;
+UINT32 NumLeftRightTrimmed;
+UINT32 SeqIdx;
+UINT32 NumTrimmed;
+UINT32 NumLeftTrimmed;
+UINT32 NumRightTrimmed;
+UINT32 MatchLen;
+UINT8 *pSeq;
+UINT8 *pChimericSeq;
+UINT8 *pTo;
+int CopyLen;
+UINT32 NumReads;
+
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Starting chimeric flank sequence trim processing...");
+NumTrimmed = 0;
+NumLeftTrimmed = 0;
+NumRightTrimmed = 0;
+NumLeftRightTrimmed = 0;
+pReadHit = NULL;
+
+pCurReadHit = m_pReadHits;
+pTo = (UINT8 *)pCurReadHit;
+NumReads = 0;
+while(pCurReadHit != NULL) {
+	NumReads += 1;
+	CopyLen = sizeof(tsReadHit) + pCurReadHit->DescrLen + pCurReadHit->ReadLen;
+	if(pCurReadHit->ReadID != m_FinalReadID)
+		pNxtReadHit = (tsReadHit *)((UINT8 *)pCurReadHit + CopyLen);
+	else
+		pNxtReadHit = NULL;
+	pCurReadHit->HitLoci.FlagTR = 0;
+	if(pCurReadHit->NAR != eNARAccepted || pCurReadHit->HitLoci.Hit.FlgChimeric == 0)
+		{
+		if(NumTrimmed > 0)
+			memmove(pTo,pCurReadHit,CopyLen);
+		pTo += CopyLen;
+		pCurReadHit = pNxtReadHit;
+		if(pCurReadHit != NULL)
+			pCurReadHit->PrevSizeOf = CopyLen;
+		continue;
+		}
+
+	TrimLeft = pCurReadHit->HitLoci.Hit.Seg[0].TrimLeft;
+	TrimRight = pCurReadHit->HitLoci.Hit.Seg[0].TrimRight;
+	if(TrimLeft == 0 && TrimRight == 0)	// if accepted as a chimeric then should have had at least one flank to be trimmed, treat as full length match ...
+		{
+		pCurReadHit->HitLoci.Hit.FlgChimeric = 0;
+		if(NumTrimmed > 0)
+			memmove(pTo,pCurReadHit,CopyLen);
+		pTo += CopyLen;
+		pCurReadHit = pNxtReadHit;
+		if(pCurReadHit != NULL)
+			pCurReadHit->PrevSizeOf = CopyLen;
+		continue;
+		}
+	if(TrimLeft > 0)
+		NumLeftTrimmed += 1;
+	if(TrimRight > 0)
+		NumRightTrimmed += 1;
+	if(TrimLeft > 0 && TrimRight > 0)
+		NumLeftRightTrimmed += 1;
+
+	MatchLen = pCurReadHit->ReadLen - (TrimLeft + TrimRight);
+	if(TrimLeft > 0)
+		{
+		pSeq = &pCurReadHit->Read[pCurReadHit->DescrLen+1];
+		pChimericSeq = pSeq + TrimLeft;
+		for(SeqIdx = 0; SeqIdx < MatchLen; SeqIdx++)
+			*pSeq++ = *pChimericSeq++;
+		}
+	pCurReadHit->ReadLen = MatchLen;
+	pCurReadHit->HitLoci.Hit.Seg[0].MatchLen = MatchLen;
+	pCurReadHit->HitLoci.Hit.Seg[0].TrimLeft = 0;
+	pCurReadHit->HitLoci.Hit.Seg[0].TrimRight = 0;
+
+	pCurReadHit->HitLoci.Hit.Seg[0].TrimMismatches = pCurReadHit->HitLoci.Hit.Seg[0].Mismatches;
+
+	CopyLen = sizeof(tsReadHit) + pCurReadHit->DescrLen + pCurReadHit->ReadLen;
+	if(NumTrimmed > 0)
+		memmove(pTo,pCurReadHit,CopyLen);
+	pTo += CopyLen;
+	pCurReadHit = pNxtReadHit;
+	if(pCurReadHit != NULL)
+		pCurReadHit->PrevSizeOf = CopyLen;
+	NumTrimmed += 1;
+	}
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed trimming %u chimeric flanks, %u 5', %u 3', %u both 5' and 3' flanks trimmed",NumTrimmed,NumLeftTrimmed,NumRightTrimmed, NumLeftRightTrimmed);
+return(eBSFSuccess);
+}
+
 
 
 // PCR5PrimerCorrect
@@ -3089,6 +3198,7 @@ char szChromName[128];
 int NumUniques = 0;
 int NumPlusHits = 0;
 int NumNoMatches = 0;
+int NumChimeric = 0;
 int NumMultiMatches = 0;
 int NumHamming = 0;
 tsReadHit *pReadHit = NULL;
@@ -3142,6 +3252,8 @@ while((pReadHit = IterReads(pReadHit))!=NULL)
 				NumPlusHits += 1;
 			if(pReadHit->HitLoci.Hit.FlgInDel)
 				NumIndels += 1;
+			if(pReadHit->HitLoci.Hit.FlgChimeric)
+				NumChimeric += 1;
 			if(pReadHit->HitLoci.Hit.FlgSplice)
 				NumSpliced += 1;
 			if(pReadHit->HitLoci.FlagTR)
@@ -3319,6 +3431,8 @@ if(NumIndels)
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %d contained microInDels", NumIndels);
 if(NumSpliced)
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %d contained splice junctions", NumSpliced);
+if(NumChimeric)
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %d were chimeric", NumChimeric);
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %d multiloci aligned reads could not accepted as hits because they were unresolvable",NumMultiMatches);
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %d aligned reads were not accepted as hits because of insufficient Hamming edit distance",NumHamming);
@@ -3366,6 +3480,7 @@ if(gProcessingID > 0)
 	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumUniques),"AcceptedAligned",&NumUniques);
 	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumPlusHits),"AcceptedSense",&NumPlusHits);
 	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(Cricks),"AcceptedAntisense",&Cricks);
+	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumChimeric),"AcceptedChimeric",&NumChimeric);
 	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumIndels),"AcceptedIndels",&NumIndels);
 	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumSpliced),"AcceptedSpliced",&NumSpliced);
 	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumMultiMatches),"RjctMultiMatches",&NumMultiMatches);
@@ -7812,6 +7927,7 @@ tBSFEntryID CurChromID;				    // current suffix array entry being processed
 UINT32 TotNumReadsProc;					// total number of reads processed
 UINT32 PlusHits;
 UINT32 MinusHits;
+UINT32 ChimericHits;
 
 UINT32 CurReadsAligned;
 UINT32 PrevReadsAligned;
@@ -7854,6 +7970,13 @@ else
 
 
 // load single SfxBlock, expected to contain all chromosomes, and process all reads against that block
+PlusHits = 0;
+MinusHits = 0;
+ChimericHits = 0;
+TotNumReadsProc = 0;
+PrevReadsAligned = 0;
+PrevReadsLoaded = 0;
+
 CurChromID = 0;
 CurBlockID = 1;
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading genome assembly suffix array...");
@@ -7920,6 +8043,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 	WorkerThreads[ThreadIdx].microInDelLen = m_microInDelLen;
 	WorkerThreads[ThreadIdx].SpliceJunctLen = m_SpliceJunctLen;
 	WorkerThreads[ThreadIdx].MaxNumSlides = MaxNumSlides;
+	WorkerThreads[ThreadIdx].MinChimericLen = m_MinChimericLen;			
 	if(m_MLMode == eMLall)
 		WorkerThreads[ThreadIdx].pszOutBuff = &m_pAllocsMultiHitBuff[cReadHitBuffLen * ThreadIdx];
 	else
@@ -7944,11 +8068,6 @@ ApproxNumReadsAligned(&PrevReadsAligned,&PrevReadsLoaded);
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %d loaded",PrevReadsAligned,PrevReadsLoaded);
 
 // wait for all threads to have completed
-PlusHits = 0;
-MinusHits = 0;
-TotNumReadsProc = 0;
-PrevReadsAligned = 0;
-PrevReadsLoaded = 0;
 for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 	{
 #ifdef _WIN32
@@ -7979,6 +8098,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 #endif
 	PlusHits += WorkerThreads[ThreadIdx].PlusHits;
 	MinusHits += WorkerThreads[ThreadIdx].MinusHits;
+	ChimericHits += WorkerThreads[ThreadIdx].ChimericHits;
 	TotNumReadsProc += WorkerThreads[ThreadIdx].NumReadsProc;
 
 	if(WorkerThreads[ThreadIdx].OutBuffIdx != 0)
@@ -8140,6 +8260,7 @@ int MultiHitDist[cMaxMultiHits];		// used to record the multihit distribution
 // assumes that reads will have been sorted by ReadID
 pPars->PlusHits = 0;
 pPars->MinusHits = 0;
+pPars->ChimericHits = 0;
 pPars->NumReadsProc = 0;
 pReadHit = NULL;
 pPrevReadHit = NULL;
@@ -8253,8 +8374,9 @@ while(ThreadedIterReads(&ReadsHitBlock))
 			bProcNorm = true;
 			if(RefExacts > 0)
 				{
-				HitRslt = m_pSfxArray->AlignReads(ExtdProcFlags,					// flags indicating if lower levels need to do any form of extended processing with this specific read...
+				HitRslt = m_pSfxArray->AlignReads(ExtdProcFlags,						// flags indicating if lower levels need to do any form of extended processing with this specific read...
 														pReadHit->ReadID,				// identifies this read
+														pPars->MinChimericLen,			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 														MaxTotMM,						// max number of mismatches allowed
 														CoreLen,						// core window length
 														CoreDelta,						// core window offset increment (1..n)
@@ -8349,6 +8471,7 @@ while(ThreadedIterReads(&ReadsHitBlock))
 				else
 					HitRslt = m_pSfxArray->AlignReads(ExtdProcFlags,					// flags indicating if lower levels need to do any form of extended processing with this specific read...
 														pReadHit->ReadID,				// identifies this read
+														pPars->MinChimericLen,			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 														MaxTotMM,CoreLen,CoreDelta,
 														pPars->MaxNumSlides,
 														pPars->MinEditDist,
@@ -8413,13 +8536,17 @@ while(ThreadedIterReads(&ReadsHitBlock))
 			}
 
 		// ensure that TrimLeft/Right/Mismatches are consistent with the fact that trimming is a post alignment phase
+		// if alignment was the result of a chimeric alignment then accept the flank trimming
 		if(HitRslt == eHRHitInsts ||  HitRslt == eHRhits)
 			{
 			pHit = pPars->pMultiHits;
 			for(HitIdx=0; HitIdx < min(LowHitInstances,m_MaxMLmatches); HitIdx++,pHit++)
 				{
-				pHit->Seg[0].TrimLeft = 0;
-				pHit->Seg[0].TrimRight = 0;
+				if(pHit->FlgChimeric != 1)
+					{
+					pHit->Seg[0].TrimLeft = 0;
+					pHit->Seg[0].TrimRight = 0;
+					}
 				pHit->Seg[0].TrimMismatches = pHit->Seg[0].Mismatches;
 				if(pHit->FlgInDel == 1 || pHit->FlgSplice == 1)
 					{
@@ -8820,8 +8947,9 @@ return(true);
 
 // IterReads
 // use to iterate over reads returning ptr to next read following the current read
+// Reads need not be sorted
 // To start from first read then pass in NULL as pCurReadHit
-// Returns NULL if all read hits have been iterate
+// Returns NULL if all read hits have been iterated
 tsReadHit *
 CAligner::IterReads(tsReadHit *pCurReadHit) // to start from first read then pass in NULL as pCurReadHit
 {
