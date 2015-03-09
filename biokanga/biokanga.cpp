@@ -31,7 +31,7 @@
 
 #include "biokanga.h"
 
-const char *cpszProgVer = "3.7.0";		// increment with each release
+const char *cpszProgVer = "3.7.1";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset";
 
 // Subprocesses 

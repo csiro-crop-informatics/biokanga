@@ -669,9 +669,6 @@ if (!argerrors)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum chimeric length percentage '-c%d' specified outside of range 50..99\n",MinChimericLen);
 		exit(1);
 		}
-	else
-		MinChimericLen = 0;
-
 
 	if(MinChimericLen > 0 && (bSOLiD || bLocateBestMatches))		// chimeric read processing not currently supported for SOLiD colorspace processing or for reporting multiple best matches
 		{
