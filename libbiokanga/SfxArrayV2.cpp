@@ -4955,6 +4955,9 @@ do
 				if(MaxChimericLen > BestChimericLen ||	// if at least as long as any previous match then this is a new unique putative hit
 					(MaxChimericLen == BestChimericLen && MaxChimericMMs < BestMaxChimericMMs))
 					{
+					if(BestChimericLen > 0 && MaxChimericLen > BestChimericLen)
+						LowMMCnt = MaxChimericMMs + MMDelta + 1;
+
 					BestChimericLen = MaxChimericLen;
 					BestTrim5Flank = Trim5Flank;
 					BestTrim3Flank = Trim3Flank;
@@ -4962,8 +4965,10 @@ do
 					BestChimericStrand = CurStrand;
 					pCurHit = pHits;
 					LowHitInstances = 1;
+
 					NxtLowMMCnt = LowMMCnt;
 					LowMMCnt = MaxChimericMMs;
+
 					pEntry = MapChunkHit2Entry(TargSeqLeftIdx + Trim5Flank);
 					pCurHit->FlgChimeric = 1;
 					pCurHit->FlgInDel = 0;
@@ -5027,6 +5032,7 @@ do
 						if(MaxChimericLen == BestChimericLen && MaxChimericMMs < NxtLowMMCnt) // is this an instance with the next fewest mismatches?
 							NxtLowMMCnt = MaxChimericMMs;
 						}
+
 				if(MaxChimericLen == ProbeLen && LowHitInstances > MaxHits && LowMMCnt == 0)
 					break;
 				}
