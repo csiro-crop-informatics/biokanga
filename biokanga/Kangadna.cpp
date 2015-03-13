@@ -584,15 +584,16 @@ pthread_mutex_unlock(&m_hMtxIterNxtProcRead);
 void
 CKangadna::AcquireSerialiseSeqHdr(void)
 {
-int SpinCnt = 5000;
+int SpinCnt = 500;
 int BackoffMS = 5;
+
 #ifdef _WIN32
 while(!TryEnterCriticalSection(&m_hSCritSectSeqHdrs))
 	{
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 2500;
+	SpinCnt = 100;
 	if(BackoffMS < 500)
 		BackoffMS += 5;
 	}
@@ -602,7 +603,7 @@ while(pthread_spin_trylock(&m_hSpinLockSeqHdrs)==EBUSY)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 2500;
+	SpinCnt = 100;
 	if(BackoffMS < 500)
 		BackoffMS += 5;
 	}
@@ -623,9 +624,8 @@ pthread_spin_unlock(&m_hSpinLockSeqHdrs);
 void
 CKangadna::AcquireSerialiseSeqFlags(void)
 {
-int SpinCnt = 5000;
+int SpinCnt = 500;
 int BackoffMS = 5;
-#ifndef NOCAS
 
 #ifdef _WIN32
 while(InterlockedCompareExchange(&CASSeqFlags,0,1)!=0)
@@ -633,9 +633,9 @@ while(InterlockedCompareExchange(&CASSeqFlags,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 2500;
+	SpinCnt = 100;
 	if(BackoffMS < 500)
-		BackoffMS += 5;
+		BackoffMS += 2;
 	}
 #else
 while(__sync_val_compare_and_swap(&CASSeqFlags,0,1)!=0)
@@ -643,49 +643,20 @@ while(__sync_val_compare_and_swap(&CASSeqFlags,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 10000;
-	SpinCnt = 2500;
+	SpinCnt = 100;
 	if(BackoffMS < 500)
-		BackoffMS += 5;
+		BackoffMS += 2;
 	}
-#endif
-
-#else
-#ifdef _WIN32
-while(!TryEnterCriticalSection(&m_hSCritSectSeqFlags))
-	{
-	if(SpinCnt -= 1)
-		continue;
-	SwitchToThread();
-	SpinCnt = 1000;
-	}
-#else
-while(pthread_spin_trylock(&m_hSpinLockSeqFlags)==EBUSY)
-	{
-	if(SpinCnt -= 1)
-		continue;
-	pthread_yield();
-	SpinCnt = 1000;
-	}
-#endif
 #endif
 }
 
 void
 CKangadna::ReleaseSerialiseSeqFlags(void)
 {
-#ifndef NOCAS
 #ifdef _WIN32
-while(InterlockedCompareExchange(&CASSeqFlags,1,0)!=1);
+while(CASSeqFlags != 0 && InterlockedCompareExchange(&CASSeqFlags,1,0)!=1);
 #else
-while(__sync_val_compare_and_swap(&CASSeqFlags,1,0)!=1);
-#endif
-#else
-#ifdef _WIN32
-LeaveCriticalSection(&m_hSCritSectSeqFlags);
-#else
-pthread_spin_unlock(&m_hSpinLockSeqFlags);
-#endif
+while(CASSeqFlags != 0 && __sync_val_compare_and_swap(&CASSeqFlags,1,0)!=1);
 #endif
 }
 
@@ -6858,6 +6829,8 @@ CKangadna::LocateFirstExact(int ElSize,		// sizeof elements in pSfxArray - curre
 {
 void *pEl1;
 void *pEl2;
+tSeqWrd4 El1;
+tSeqWrd4 El2;
 int CmpRslt;
 UINT64 Mark;
 UINT64 TargPsn;
@@ -6876,8 +6849,13 @@ do {
 
 	pEl2 =  &((tSeqWrd4 *)pTarg)[TargIdx];
 
-
-	CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pEl1,(tSeqWrd4 *)pEl2,ProbeLen);
+	if((El1 = *(tSeqWrd4 *)pEl1) < (El2 = *(tSeqWrd4 *)pEl2))  // assuming that the probe and target are both at least 16bp
+		CmpRslt = -1;
+	else
+		if(El1 > El2)
+			CmpRslt = 1;
+		else
+			CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pEl1,(tSeqWrd4 *)pEl2,ProbeLen);
 
 	if(!CmpRslt)	// if a match then may not be the lowest indexed match
 		{
@@ -6904,7 +6882,13 @@ do {
 			pEl2 =  &((tSeqWrd4 *)pTarg)[TargIdx];
 
 			pEl1 = pProbe;
-			CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pEl1,(tSeqWrd4 *)pEl2,ProbeLen);
+			if((El1 = *(tSeqWrd4 *)pEl1) < (El2 = *(tSeqWrd4 *)pEl2))  // assuming that the probe and target are both at least 16bp
+				CmpRslt = -1;
+			else
+				if(El1 > El2)
+					CmpRslt = 1;
+				else
+					CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pEl1,(tSeqWrd4 *)pEl2,ProbeLen);
 			if(CmpRslt == 0)				// 0 if still matching
 				continue;
 			SfxLo = TargPsn + 1;

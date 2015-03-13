@@ -2280,6 +2280,8 @@ UINT32 NumProcessed;
 UINT32 NumOverlapping;
 UINT32 NumOverlapped;
 
+int CurReqSeedOverlap;
+
 tsMultiSeqFlags MultiSeqFlags[cMaxMultiSeqFlags+1];		// allow for 1 extra!
 
 UINT64 SfxWrdIdx;
@@ -2291,6 +2293,10 @@ UINT32 TargLen;
 tSeqWrd4 *pStartSeqWrd;
 
 tSeqWrd4 *pTarg;
+
+UINT64 TargIdx;
+UINT64 TargEl;
+UINT8 *pSfxEls;
 
 gDiagnostics.DiagOut(eDLDebug,gszProcName,"Thread %d startup for overlap identification...",pPars->ThreadIdx);
 
@@ -2312,6 +2318,7 @@ switch(pPars->OvlFlankPhase) {
 		FlgOverlapped = cFlg3Prime;
 		break;
 	}
+
 
 time_t Started = time(0);
 while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
@@ -2375,7 +2382,7 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 		if((ProbeMinOverlap + MinFlankLen) > (int)ProbeLen)			// no point in processing this sequence further if too short to overlap any other sequence with at least 1 base overhang
 			continue;
 
-		MinSeedOverlap = (m_LoadedMinSeqLen * pPars->ProbeMinOverlap) / 100;      // have to have an initial minimum seed overlap which can be then extended ... 
+		MinSeedOverlap = ProbeMinOverlap;							// have to have an initial minimum seed overlap which can be then extended ... 
 
 		// make a copy of probe sequence as will be slicing and dicing when subsequencing...
 		GetSeqWrdSubSeq(0,ProbeLen, pStartSeqWrd, (tSeqWrd4 *)pPars->pOverlapSeq); 
@@ -2387,13 +2394,21 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 		// determine if this read overlaps any other reads by at least ProbeMinOverlap  
 		CmpRslt = 0;
 		ProbOverlapFlags = 0;
+		CurReqSeedOverlap = ((ProbeLen - MinFlankLen) * 90)/100; // allowing for trimmed target sequences to be totally contained within probe sequence
+		if(CurReqSeedOverlap < MinSeedOverlap)
+			CurReqSeedOverlap = MinSeedOverlap;
+		GetSeqWrdSubSeq(MinFlankLen,ProbeLen - MinFlankLen, (tSeqWrd4 *)pPars->pOverlapSeq, (tSeqWrd4 *)pPars->pOverlapFlankSeq);
 		for(SubOfs = MinFlankLen; SubOfs <= ((int)ProbeLen - MinSeedOverlap); SubOfs++)
 			{
-			GetSeqWrdSubSeq(SubOfs,ProbeLen - SubOfs, (tSeqWrd4 *)pPars->pOverlapSeq, (tSeqWrd4 *)pPars->pOverlapFlankSeq); 
-	
+			if(SubOfs > MinFlankLen)
+				ShfLeftPackedSeq(ProbeLen - SubOfs,(tSeqWrd4 *)pPars->pOverlapFlankSeq);
+
+			if((int)ProbeLen - SubOfs < CurReqSeedOverlap)
+				CurReqSeedOverlap = (int)ProbeLen - SubOfs;
+
 			SfxWrdIdx =	LocateFirstExact(m_Sequences.SfxElSize,		// sizeof elements in pSfxArray - currently will be either 4 or 5 bytes
 						pPars->pOverlapFlankSeq,			// pts to probes flank subsequence
-						MinSeedOverlap,						// length (in bases, not tSeqWrd4's), as a minimum to exactly match over
+						CurReqSeedOverlap,					// length (in bases, not tSeqWrd4's), as a minimum to exactly match over
 						m_Sequences.pSeqs2Assemb,			// target sequence
 						(UINT8 *)m_Sequences.pSuffixArray,	// target sequence suffix array
 						0,									// low index in pSfxArray
@@ -2403,9 +2418,14 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 			do  {
 				if(!SfxWrdIdx || SfxWrdIdx > m_Sequences.NumSuffixEls)
 					break;
-				if((pTarg = SfxIdxToFirstSeqWrd(SfxWrdIdx++))==NULL)
-					break;
-
+				TargEl = (SfxWrdIdx - 1) * m_Sequences.SfxElSize;
+				pSfxEls = (UINT8 *)m_Sequences.pSuffixArray;
+				if(m_Sequences.SfxElSize == 4)
+					TargIdx = *(UINT32 *)&pSfxEls[TargEl];
+				else
+					TargIdx = Unpack5(&pSfxEls[TargEl]);
+				pTarg =  &((tSeqWrd4 *)m_Sequences.pSeqs2Assemb)[TargIdx];
+				SfxWrdIdx += 1;
 				MatchTargID = 0;
 				pTarg = GetSeqHeader(pTarg,&MatchTargID,NULL,NULL,&TargLen,false);
 
@@ -2418,9 +2438,10 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 				if(MatchTargID == SeqID)			// if self then try next target sequence
 					continue;
 
-				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,MinSeedOverlap))!=0)
+				if(*(tSeqWrd4 *)pPars->pOverlapFlankSeq != *(tSeqWrd4 *)pTarg)  // is assuming that the probe and target are both at least 16bp
 					break;
-			 
+				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,CurReqSeedOverlap))!=0)
+						break;
 
 				int ReqOverlap;
 				bool bProbeOverlapping;
@@ -2435,7 +2456,7 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 				bProbeOverlapping = false;
 				bTargContained = false;
 				TargOverlapedFlags = 0;
-				if(TargLen <= (ProbeLen - SubOfs))	// if probe could be completely containing the target
+				if(TargLen <= (ProbeLen - SubOfs))	// if probe could potentially be completely containing the target
 					{
 					ReqOverlap = TargMinOverlap = TargLen;
 					TargOverlapedFlags = (cFlg3Prime | cFlg5Prime);
@@ -2446,7 +2467,7 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 					if(bProbeOverlapping)
 						ProbeFlgOvlLen = ((ReqOverlap * 100) / ProbeLen) << 9;
 					}
-				else								// else probe is overlapping onto the target
+				else								// else probe is potentially partially overlapping onto the target
 					{
 					TargMinOverlap = (TargLen * pPars->TargMinOverlap) / 100;
 					ReqOverlap = ProbeLen - SubOfs;
@@ -2464,7 +2485,7 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 						}
 					}
 
-				if((CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,ReqOverlap))!=0)
+				if(TargLen > (UINT32)CurReqSeedOverlap && (CmpRslt = CmpPackedSeqs((tSeqWrd4 *)pPars->pOverlapFlankSeq,pTarg,ReqOverlap))!=0)
 					{
 					CmpRslt = 0;
 					continue;
@@ -2497,6 +2518,7 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 			while(!CmpRslt);
 			}
 
+
 		if(ProbOverlapFlags & FlgOverlapping)		// if any flags set for this sequence then can propagate these to all other identical sequences
 			{
 			MultiSeqFlags[SeqID - StartingSeqID].SetFlags = ProbOverlapFlags | cFlgNoProc;
@@ -2512,8 +2534,16 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 			do {
 				if(!SfxWrdIdx || SfxWrdIdx > m_Sequences.NumSuffixEls)
 					break;
-				if((pTarg = SfxIdxToFirstSeqWrd(SfxWrdIdx++)) == NULL)
-					break;
+
+				TargEl = (SfxWrdIdx - 1) * m_Sequences.SfxElSize;
+				pSfxEls = (UINT8 *)m_Sequences.pSuffixArray;
+
+				if(m_Sequences.SfxElSize == 4)
+					TargIdx = *(UINT32 *)&pSfxEls[TargEl];
+				else
+					TargIdx = Unpack5(&pSfxEls[TargEl]);
+				pTarg =  &((tSeqWrd4 *)m_Sequences.pSeqs2Assemb)[TargIdx];
+				SfxWrdIdx += 1;
 
 				MatchTargID = 0;
 				pTarg = GetSeqHeader(pTarg,&MatchTargID,NULL,NULL,&TargLen,false);
@@ -2525,7 +2555,8 @@ while(GetSeqProcRange(&StartingSeqID,&EndingSeqID,cMaxMultiSeqFlags) > 0)
 
 				if(MatchTargID == SeqID || TargLen != ProbeLen)	// if self, or not same length, then try next matching sequence
 					continue;
-
+				if(*(tSeqWrd4 *)pStartSeqWrd != *(tSeqWrd4 *)pTarg)  // assuming that the probe and target are both at least 16bp
+					break;
 				if((CmpRslt = CmpPackedSeqs(pStartSeqWrd,pTarg,ProbeLen))!=0)
 					break;
 
