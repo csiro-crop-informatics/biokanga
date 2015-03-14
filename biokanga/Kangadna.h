@@ -525,6 +525,8 @@ friend class CPacBio;					// CPacBio requires access to all members of this clas
 	void AcquireSerialiseNxtProcRead(void);
 	void ReleaseSerialiseNxtProcRead(void);
 	void AcquireSerialiseSeqHdr(void);
+	void AcquireSerialiseReadsCtrl(void);
+	void ReleaseSerialiseReadsCtrl(void);
 	void ReleaseSerialiseSeqHdr(void);
 	void AcquireSerialiseSeqFlags(void);
 	void ReleaseSerialiseSeqFlags(void);
@@ -552,7 +554,9 @@ friend class CPacBio;					// CPacBio requires access to all members of this clas
 	pthread_rwlock_t m_hRwLock;
 #endif
 
-	volatile unsigned int CASSeqFlags; // used with synchronous compare and swap (CAS) for serialising access to sequence header flags
+	volatile unsigned int m_CASSeqFlags; // used with synchronous compare and swap (CAS) for serialising access to sequence header flags
+	volatile unsigned int m_CASNxtProcRead; // used with synchronous compare and swap (CAS) for serialising access to next read for loading from file
+	volatile unsigned int m_CASReadsCtrl; // used with synchronous compare and swap (CAS) for serialising access to shared read control when loading from file
 
 	int CreateMutexes(void);
 	void DeleteMutexes(void);

@@ -431,7 +431,9 @@ CKangadna::CreateMutexes(void)
 if(m_bMutexesCreated)
 	return(eBSFSuccess);
 
-CASSeqFlags = 0;
+m_CASSeqFlags = 0;
+m_CASNxtProcRead = 0;
+m_CASReadsCtrl = 0;
 
 #ifdef _WIN32
 InitializeSRWLock(&m_hRwLock);
@@ -564,10 +566,29 @@ pthread_mutex_unlock(&m_hMtxIterReads);
 void
 CKangadna::AcquireSerialiseNxtProcRead(void)
 {
+int SpinCnt = 1000;
+int BackoffMS = 5;
+
 #ifdef _WIN32
-WaitForSingleObject(m_hMtxIterNxtProcRead,INFINITE);
+while(InterlockedCompareExchange(&m_CASNxtProcRead,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 100;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #else
-pthread_mutex_lock(&m_hMtxIterNxtProcRead);
+while(__sync_val_compare_and_swap(&m_CASNxtProcRead,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 100;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
@@ -575,9 +596,48 @@ void
 CKangadna::ReleaseSerialiseNxtProcRead(void)
 {
 #ifdef _WIN32
-ReleaseMutex(m_hMtxIterNxtProcRead);
+InterlockedCompareExchange(&m_CASNxtProcRead,0,1);
 #else
-pthread_mutex_unlock(&m_hMtxIterNxtProcRead);
+__sync_val_compare_and_swap(&m_CASNxtProcRead,1,0);
+#endif
+}
+
+void
+CKangadna::AcquireSerialiseReadsCtrl(void)
+{
+int SpinCnt = 1000;
+int BackoffMS = 5;
+
+#ifdef _WIN32
+while(InterlockedCompareExchange(&m_CASReadsCtrl,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 100;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
+#else
+while(__sync_val_compare_and_swap(&m_CASReadsCtrl,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 100;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
+#endif
+}
+
+void
+CKangadna::ReleaseSerialiseReadsCtrl(void)
+{
+#ifdef _WIN32
+InterlockedCompareExchange(&m_CASReadsCtrl,0,1);
+#else
+__sync_val_compare_and_swap(&m_CASReadsCtrl,1,0);
 #endif
 }
 
@@ -628,7 +688,7 @@ int SpinCnt = 500;
 int BackoffMS = 5;
 
 #ifdef _WIN32
-while(InterlockedCompareExchange(&CASSeqFlags,0,1)!=0)
+while(InterlockedCompareExchange(&m_CASSeqFlags,1,0)!=0)
 	{
 	if(SpinCnt -= 1)
 		continue;
@@ -638,7 +698,7 @@ while(InterlockedCompareExchange(&CASSeqFlags,0,1)!=0)
 		BackoffMS += 2;
 	}
 #else
-while(__sync_val_compare_and_swap(&CASSeqFlags,0,1)!=0)
+while(__sync_val_compare_and_swap(&m_CASSeqFlags,0,1)!=0)
 	{
 	if(SpinCnt -= 1)
 		continue;
@@ -654,9 +714,9 @@ void
 CKangadna::ReleaseSerialiseSeqFlags(void)
 {
 #ifdef _WIN32
-while(CASSeqFlags != 0 && InterlockedCompareExchange(&CASSeqFlags,1,0)!=1);
+InterlockedCompareExchange(&m_CASSeqFlags,0,1);
 #else
-while(CASSeqFlags != 0 && __sync_val_compare_and_swap(&CASSeqFlags,1,0)!=1);
+__sync_val_compare_and_swap(&m_CASSeqFlags,1,0);
 #endif
 }
 
@@ -1431,10 +1491,10 @@ pPars->PE2RawReadsBuff[0] = 0;
 if(pPars == NULL || (pCtrl =  pPars->pProcReadsCtrl) == NULL)
 	return(eBSFerrParams);
 
-AcquireSerialiseNxtProcRead();
+AcquireSerialiseReadsCtrl();
 if((Rslt = pCtrl->Rslt) < eBSFSuccess || pCtrl->bPE1PE2AllReadsProc || pCtrl->pFastaPE1 == NULL)
 	{
-	ReleaseSerialiseNxtProcRead();     
+	ReleaseSerialiseReadsCtrl();     
 	return(eBSFSuccess);		
 	}
 
@@ -1470,7 +1530,7 @@ if((Rslt = (teBSFrsltCodes)(pPars->PE1ReadLen = pCtrl->pFastaPE1->ReadSequence(p
 			if(pCtrl->bProcPE)
 				pCtrl->pFastaPE2->Close();
 			pCtrl->Rslt = eBSFerrParse;
-			ReleaseSerialiseNxtProcRead();
+			ReleaseSerialiseReadsCtrl();
 			return(eBSFerrParse);
 			}
 
@@ -1482,14 +1542,14 @@ if((Rslt = (teBSFrsltCodes)(pPars->PE1ReadLen = pCtrl->pFastaPE1->ReadSequence(p
 			if(pCtrl->bProcPE)
 				pCtrl->pFastaPE2->Close();
 			pCtrl->Rslt = eBSFerrParse;
-			ReleaseSerialiseNxtProcRead();
+			ReleaseSerialiseReadsCtrl();
 			return(eBSFerrParse);
 			}
 
 		if(!pCtrl->bProcPE)
 			{
-			pPars->pProcReadsCtrl->CurTotPE1ReadsParsed += 1;
-			ReleaseSerialiseNxtProcRead();
+			pCtrl->CurTotPE1ReadsParsed += 1;
+			ReleaseSerialiseReadsCtrl();
 			return((teBSFrsltCodes)1);			// returning 1 SE read
 			}
 
@@ -1507,7 +1567,7 @@ if((Rslt = (teBSFrsltCodes)(pPars->PE1ReadLen = pCtrl->pFastaPE1->ReadSequence(p
 			pCtrl->pFastaPE1->Close();
 			pCtrl->pFastaPE2->Close();
 			pCtrl->Rslt = Rslt;
-			ReleaseSerialiseNxtProcRead();
+			ReleaseSerialiseReadsCtrl();
 			return(Rslt);
 			}
 		pPars->NumPE2ParsedReads += 1;
@@ -1536,7 +1596,7 @@ if((Rslt = (teBSFrsltCodes)(pPars->PE1ReadLen = pCtrl->pFastaPE1->ReadSequence(p
 				pCtrl->pFastaPE1->Close();
 				pCtrl->pFastaPE2->Close();
 				pCtrl->Rslt = eBSFerrParse;
-				ReleaseSerialiseNxtProcRead();
+				ReleaseSerialiseReadsCtrl();
 				return(eBSFerrParse);
 				}
 
@@ -1547,7 +1607,7 @@ if((Rslt = (teBSFrsltCodes)(pPars->PE1ReadLen = pCtrl->pFastaPE1->ReadSequence(p
 				pCtrl->pFastaPE1->Close();
 				pCtrl->pFastaPE2->Close();
 				pCtrl->Rslt = eBSFerrParse;
-				ReleaseSerialiseNxtProcRead();
+				ReleaseSerialiseReadsCtrl();
 				return(eBSFerrParse);
 				}
 			}
@@ -1558,17 +1618,17 @@ if((Rslt = (teBSFrsltCodes)(pPars->PE1ReadLen = pCtrl->pFastaPE1->ReadSequence(p
 			pCtrl->pFastaPE1->Close();
 			pCtrl->pFastaPE2->Close();
 			pCtrl->Rslt = eBSFerrParse;
-			ReleaseSerialiseNxtProcRead();
+			ReleaseSerialiseReadsCtrl();
 			return(eBSFerrParse);
 			}
 		}
-	pPars->pProcReadsCtrl->CurTotPE1ReadsParsed += 1;
-	ReleaseSerialiseNxtProcRead();
+	pCtrl->CurTotPE1ReadsParsed += 1;
+	ReleaseSerialiseReadsCtrl();
 	return((teBSFrsltCodes)2);		// returning 2 (PE1 and PE2) reads
 	}
 pCtrl->bPE1PE2AllReadsProc = true;
 pCtrl->Rslt = Rslt;
-ReleaseSerialiseNxtProcRead();
+ReleaseSerialiseReadsCtrl();
 return(Rslt);
 }
 
@@ -1856,9 +1916,11 @@ while((Rslt = GetNxtProcRead(pPars)) > eBSFSuccess)				// < eBSFSuccess if error
 		pPars->NumPE2AcceptedReads += 1;
 		pPars->AcceptedTotSeqLen += pPars->PE2ReadLen;
 		}
-
-	pPars->pProcReadsCtrl->CurTotPE1ReadsAccepted += 1;
 	ReleaseSerialiseNxtProcRead();
+
+	AcquireSerialiseReadsCtrl();
+	pPars->pProcReadsCtrl->CurTotPE1ReadsAccepted += 1;
+	ReleaseSerialiseReadsCtrl();
 
 	if(pPars->Zreads > 0 && pPars->NumPE1AcceptedReads >= pPars->Zreads)
 		{
@@ -2179,10 +2241,10 @@ for(ThreadIdx = 0; ThreadIdx < MaxNumThreads; ThreadIdx++,pCurThread++)
 #ifdef _WIN32
 	while(WAIT_TIMEOUT == WaitForSingleObject(pCurThread->threadHandle, 60000))
 		{
-		AcquireSerialiseNxtProcRead();
+		AcquireSerialiseReadsCtrl();
 		CurNumParsed =  ProcReadsCtrl.CurTotPE1ReadsParsed;
 		CurNumAccepted = ProcReadsCtrl.CurTotPE1ReadsAccepted;
-		ReleaseSerialiseNxtProcRead(); 
+		ReleaseSerialiseReadsCtrl(); 
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u %s sequences parsed, %d accepted",CurNumParsed,m_Sequences.bPESeqs ? "PE" : "SE",CurNumAccepted);
 		}
 	CloseHandle( pCurThread->threadHandle);
@@ -2193,15 +2255,14 @@ for(ThreadIdx = 0; ThreadIdx < MaxNumThreads; ThreadIdx++,pCurThread++)
 	ts.tv_sec += 60;
 	while((JoinRlt = pthread_timedjoin_np(pCurThread->threadID, NULL, &ts)) != 0)
 		{
-		AcquireSerialiseNxtProcRead();
+		AcquireSerialiseReadsCtrl();
 		CurNumParsed =  ProcReadsCtrl.CurTotPE1ReadsParsed;
 		CurNumAccepted = ProcReadsCtrl.CurTotPE1ReadsAccepted;
-		ReleaseSerialiseNxtProcRead(); 
+		ReleaseSerialiseReadsCtrl(); 
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u %s sequences parsed, %d accepted",CurNumParsed,m_Sequences.bPESeqs ? "PE" : "SE",CurNumAccepted);
 		ts.tv_sec += 60;
 		}
 #endif
-	ReleaseSerialiseNxtProcRead(); 
 	NumPE1ParsedReads += pCurThread->NumPE1ParsedReads;
 	NumPE1AcceptedReads += pCurThread->NumPE1AcceptedReads;
 
