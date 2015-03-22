@@ -2963,7 +2963,7 @@ return(0);		// no more hits
 
 
 INT64 
-CSfxArrayV3::IterateExacts(etSeqBase *pProbeSeq,// probe
+CSfxArrayV3::IterateExacts(etSeqBase *pProbeSeq,	// probe
  						 UINT32 ProbeLen,			// probe length
 						 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  						 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
@@ -3094,6 +3094,165 @@ if(!Cmp)
 
 return(0);		// no more hits
 }
+
+const int cMinPacBioSeedCoreLen = 8;							// user can specify seed cores down to this minimum length
+const int cMaxPacBioSeedCoreLen = 25;							// user can specify seed cores up to to this maximum length
+const int cPacBioSeedCoreExtn = 100;							// looking for matches over this length seed core extension
+const int cPacBiokExtnKMerLen = 7;								// matches in seed core extension must be of this length
+const int cPacBioMinKmersExtn = 6;							    // require at least this many cPacBiokExtnKMerLen-mer matches over this length seed core extension
+
+
+INT64						// returned hit idex (1..n) or 0 if no hits
+CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
+ 									UINT32 ProbeLen,			// probe sequence length
+ 									 UINT32 SeedCoreLen,		// using this seed core length
+									 UINT32 SloughEntryID,		// if > 0 then hits to this entry (normally would be the probe sequence entry identifier) are to be sloughed
+									 UINT32 MinTargLen,			// hit target sequences must be at least this length
+									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
+ 									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
+									 UINT32 *pHitLoci)			// if match then where to return loci
+{
+int Cmp;
+bool bFirst;
+tsSfxEntry *pEntry;
+etSeqBase *pEl2;
+UINT32 HitLoci;
+etSeqBase *pTarg;			// target sequence
+void *pSfxArray;			// target sequence suffix array
+INT64 SfxLen;				// number of suffixs in pSfxArray
+INT64 TargLoci;
+int NumKmers;
+int TargKMerLen;
+etSeqBase *pQAnchor;
+etSeqBase *pTAnchor;
+etSeqBase *pQBase;
+etSeqBase *pTBase;
+
+int QAnchorIdx;
+int TAnchorIdx;
+int TMaxAnchorIdx;
+int CurKMerMatchLen;
+
+*pHitLoci = 0;
+*pTargEntryID = 0;
+
+*pTargEntryID = 0;
+*pHitLoci = 0;
+
+// ensure suffix loaded for iteration and prev hit was not the last!
+// also require that the probe length must be at least 100 + SeedCoreLen so matching subseqs can be explored
+if(SeedCoreLen < cMinPacBioSeedCoreLen || SeedCoreLen > cMaxPacBioSeedCoreLen || ProbeLen < (SeedCoreLen + cPacBioSeedCoreExtn) || m_pSfxBlock == NULL || (UINT64)PrevHitIdx >= m_pSfxBlock->ConcatSeqLen)
+	return(0);
+
+pTarg = (etSeqBase *)&m_pSfxBlock->SeqSuffix[0];
+pSfxArray = (void *)&m_pSfxBlock->SeqSuffix[m_pSfxBlock->ConcatSeqLen];
+SfxLen = m_pSfxBlock->ConcatSeqLen;
+bFirst = false;
+if(!PrevHitIdx)	// if locate first exact match using SeedCoreLen
+	{
+	// check if this core sequence over-occurs 
+	if(SeedCoreLen <= cMaxKmerLen && OverOccKMerClas(SeedCoreLen,pProbeSeq) != 1)
+		return(0);
+
+	if((PrevHitIdx = LocateFirstExact(pProbeSeq,SeedCoreLen,pTarg,m_pSfxBlock->SfxElSize,pSfxArray,0,0,SfxLen-1)) == 0)
+		return(0);	// no match
+	TargLoci = SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,PrevHitIdx-1);
+
+	if((pEntry = MapChunkHit2Entry(TargLoci))==NULL)
+		return(0);
+
+	if(!(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen))
+		{
+		HitLoci = (UINT32)(TargLoci - pEntry->StartOfs);
+
+		pEl2 = &pTarg[TargLoci];
+		bFirst = true;
+		}
+	else
+		bFirst = false;
+	}
+
+TargKMerLen = cPacBiokExtnKMerLen;
+while(1)
+	{
+	if(!bFirst)
+		{
+		TargLoci = SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,PrevHitIdx);
+		if((pEntry = MapChunkHit2Entry(TargLoci))==NULL)
+			return(0);
+
+		pEl2 = &pTarg[TargLoci];
+		
+		if((Cmp = CmpProbeTarg(pProbeSeq,pEl2,SeedCoreLen)) != 0)	// only 0 if still matching on the seed core
+			return(0);
+		if(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen)
+			{
+			PrevHitIdx+=1;
+			continue;
+			}
+		HitLoci = (UINT32)(TargLoci - pEntry->StartOfs);
+		}
+
+	if(pEntry->SeqLen < (HitLoci + SeedCoreLen + TargKMerLen + cPacBioSeedCoreExtn + 20))
+		{
+		if(!bFirst)
+			PrevHitIdx += 1;
+		else
+			bFirst = false;
+		continue;
+		}
+
+
+
+	// see if the target sequence, using the initial matching core contains any other exactly matching k-mer
+	NumKmers = 0;
+	pTAnchor = pEl2;
+	pQAnchor = &pProbeSeq[SeedCoreLen];
+	for(QAnchorIdx = SeedCoreLen; QAnchorIdx < cPacBioSeedCoreExtn; QAnchorIdx++,pQAnchor++)
+		{
+		pQBase = pQAnchor;
+		TAnchorIdx = QAnchorIdx - (QAnchorIdx/5);
+		pTBase = 	&pTAnchor[TAnchorIdx];
+		TMaxAnchorIdx = min(cPacBioSeedCoreExtn+20,TargKMerLen + QAnchorIdx + (QAnchorIdx/5));
+		for(CurKMerMatchLen = 0; TAnchorIdx < TMaxAnchorIdx; TAnchorIdx++)
+			{
+			if((*pTBase++ & 0x07) == (*pQBase++ & 0x07))
+				{
+				CurKMerMatchLen += 1;
+				if(CurKMerMatchLen == TargKMerLen)
+					{
+					NumKmers += 1;
+					QAnchorIdx += TargKMerLen/2;
+					pQAnchor += TargKMerLen/2;
+					break;
+					}
+				continue;
+				}
+			if((TMaxAnchorIdx - TAnchorIdx) <= TargKMerLen)
+				break;
+			pQBase = pQAnchor;
+			CurKMerMatchLen = 0;
+			}
+			
+		}
+	if(NumKmers < cPacBioMinKmersExtn)
+		{
+		if(!bFirst)
+			PrevHitIdx += 1;
+		else
+			bFirst = false;
+		continue;
+		}
+
+	*pTargEntryID = pEntry->EntryID;
+	*pHitLoci = HitLoci;
+	return(bFirst ? PrevHitIdx : PrevHitIdx+1);
+	}
+
+
+return(0);		// no more hits
+}
+
 
 int										// number (upto Lim) of non-canonical bases in pSeq 
 CSfxArrayV3::NumNonCanonicals(int Lim, // process for at most this many non-canonical bases

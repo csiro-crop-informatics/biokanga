@@ -601,6 +601,16 @@ public:
 						 UINT32 MaxExtdLen,			// attempt to extend exact match of ProbeLen out to MaxExtdLen and report extended match length in *pHitExtdLen
 						int *pHitExtdLen);			// was able to extend core out to this length
 
+			INT64						// returned hit idex (1..n) or 0 if no hits
+				IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
+ 										UINT32 ProbeLen,		// probe sequence length
+ 									 UINT32 SeedCoreLen,		// using this seed core length
+									 UINT32 SloughEntryID,		// if > 0 then hits to this entry (normally would be the probe sequence entry identifier) are to be sloughed
+									 UINT32 MinTargLen,			// hit target sequences must be at least this length
+									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
+ 									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
+									 UINT32 *pHitLoci);			// if match then where to return loci
+
 			 int									// < 0 if errors, 0 if no matches to any other chroms other than ProbeChromID allowing up to MaxTotMM, 1 if matches to any other chrom
 				MatchesOtherChroms( int ProbeChromID,	// probe is from this chrom
 				    int MaxTotMM,		// allow for at most this number of missmatches

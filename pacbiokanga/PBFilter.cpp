@@ -99,7 +99,7 @@ struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads 
 struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 250, range 0 to 10000)");
 struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 5000, range 1000 to 20000)");
 
-struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file containing PacBio long reads to be filtered");
+struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file(s) containing PacBio long reads to be filtered");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output accepted filtered reads to this file");
 
 struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
@@ -928,6 +928,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 			if(NumTopNPeakMatches > 1)
 				qsort(pPeakMatchesCell,NumTopNPeakMatches,sizeof(tsSSWCell),SortSSWCells);
 
+			int NumSMRTBells = 0;
 			for(PeakIdx = 0; PeakIdx < NumTopNPeakMatches;  PeakIdx++,pPeakMatchesCell++)
 				{
 				if((1 + Trim3AtOfs - Trim5AtOfs)  < m_MinReadLen) // slough if would be underlength after updated end trimming
@@ -967,9 +968,9 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 				pThreadPar->pSW->SetTarg(m_SMRTBellFlankSeqLen,p3Seq);	
 				pPutPeakMatchesCell = pThreadPar->pSW->Align();
 				if((int)pPutPeakMatchesCell->NumExacts >= m_MinRevCplExacts)
-					break;
+					NumSMRTBells += 1;
 				}
-			if(PeakIdx != NumTopNPeakMatches)
+			if(NumSMRTBells > 0)
 				{
 				AcquireLock(true);
 				m_TotRejected += 1;

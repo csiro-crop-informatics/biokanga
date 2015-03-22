@@ -1,10 +1,10 @@
 #pragma once
 #include "./commdefs.h"
 
-typedef unsigned int tConfTrcBckCell;			  // traceback cells are 32 bits
-const unsigned int cConfScoreMsk       = 0x00ffffff;	// score is limited to 2^25-1 (4095) max
+typedef unsigned int tConfTrcBckCell;			  // traceback cells are 32 bits, currently top 4 bits are unused
+const unsigned int cConfScoreMsk       = 0x00ffffff;	// score is clamped to (2^24)-1 (16777215) max
 const unsigned int cConfTrcBckMatchFlg = 0x01000000;    // set if match
-const unsigned int cConfTrcBckMsk      = 0x06000000;	// 2bits to hold traceback direction (0=none,1=diag,2=up,3=left)
+const unsigned int cConfTrcBckMsk      = 0x06000000;	// 2 bits to hold traceback direction (0=none,1=diag,2=up,3=left)
 const unsigned int cConfTrcBckDiag     = 0x02000000;	// traceback diagonally
 const unsigned int cConfTrcBckUp       = 0x04000000;	// traceback up
 const unsigned int cConfTrcBckLeft     = 0x06000000;	// traceback left

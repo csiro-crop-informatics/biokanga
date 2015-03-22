@@ -44,9 +44,12 @@ ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int MinScaffoldLen,			// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
-		char *pszInputFile,			// name of input file containing higher confidence query contig sequences to be aligned and merged into targeted scaffolds
-		char *pszTargFile,			// name of input file containing suffix array indexed targeted lower confidence sequences which are to be used for scaffolding
-		char *pszOutFile,			// where to write merged scaffolded sequences
+		char *pszPacBioSfxFile,		// suffix indexed PacBio sequences
+		int NumPacBioFiles,			// number of input pacbio file specs
+		char *pszPacBioFiles[],		// input pacbio files
+		int NumHiConfFiles,			// number of input hiconfidence file specs
+		char *pszHiConfFiles[],		// input hiconfidence files		
+	    char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads);			// maximum number of worker threads to use
 
 
@@ -66,10 +69,11 @@ CUtility::splitpath((char *)argv[0],NULL,gszProcName);
 int iFileLogLevel;			// level of file diagnostics
 int iScreenLogLevel;		// level of file diagnostics
 char szLogFile[_MAX_PATH];	// write diagnostics to this file
+int Idx;                    // file index 
 int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failure
 
 int PMode;					// processing mode
-int MinSeedCoreLen;				// use seed cores of this length when identifying putative overlapping scaffold sequences
+int MinSeedCoreLen;			// use seed cores of this length when identifying putative overlapping scaffold sequences
 int MinNumSeedCores;        // require at least this many seed cores between overlapping scaffold sequences
 
 int SWMatchScore;			// score for matching bases (0..50)
@@ -80,9 +84,15 @@ int SWProgExtnPenaltyLen;	// progressive gap scoring then only apply gap extensi
 
 int MinScaffoldLen;			// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 int MinScaffOverlap;		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
-char szInputFile[_MAX_PATH]; // name of input file(s) containing higher confidence query contig sequences to be aligned and merged into targeted scaffolds
-char szTargFile[_MAX_PATH];	// name of input file containing suffix array indexed targeted lower confidence sequences which are to be used for scaffolding
-char szOutFile[_MAX_PATH];	// where to write merged scaffolded sequences
+
+char szPacBioSfxFile[_MAX_PATH];		// suffix indexed PacBio sequences
+
+int NumPacBioFiles;						// number of input pacbio file specs
+char *pszPacBioFiles[cMaxInFileSpecs];	// input pacbio files
+int NumHiConfFiles;						// number of input hiconfidence file specs
+char *pszHiConfFiles[cMaxInFileSpecs];	// input hiconfidence files
+
+char szOutFile[_MAX_PATH];				// where to write merged scaffolded sequences
 
 int NumberOfProcessors;		// number of installed CPUs
 int NumThreads;				// number of threads (0 defaults to number of CPUs)
@@ -101,7 +111,7 @@ struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 de
 struct arg_int *minscafflen = arg_int0("l","minscafflen","<int>",	"minimum individual scaffolding sequence length (default 5000, range 1000 to 100000)");
 struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum scaffold overlap required to merge into single scaffold (default 5000, range 1000 to 100000)");
 
-struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping scaffold sequences (default 16, range 12 to 25)");
+struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping scaffold sequences (default 14, range 8 to 25)");
 struct arg_int *minnumseedcores = arg_int0("C","minseedcores","<int>",			"require at least this many seed cores between overlapping scaffold sequences (default 5, range 3 to 25)");
 
 struct arg_int *matchscore = arg_int0("x","matchscore","<int>",						"SW score for matching bases (default 2, range 0 to 50)");
@@ -110,8 +120,9 @@ struct arg_int *gapopenpenalty = arg_int0("y","gapopenpenalty","<int>",				"SW g
 struct arg_int *gapextnpenalty = arg_int0("Y","gapextnpenalty","<int>",				"SW gap extension penalty (default 2, range 0 to 50)");
 struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",		"SW gap extension penalty only applied for gaps of at least this number of bases (default 3, range 0 to 63)");
 
-struct arg_file *inputfile = arg_file1("i","inquery","<file>",		"name of input file containing higher confidence query contig sequences to be aligned and merged into targeted scaffolds");
-struct arg_file *targfile = arg_file1("I","intarg","<file>",		"name of input file containing suffix array indexed targeted lower confidence sequences which are to be used for scaffolding");
+struct arg_file *pacbiosfxfile = arg_file0("I","pacbiosfx","<file>",			"input file containing suffix indexed PacBio sequences");
+struct arg_file *hiconffiles = arg_filen("r","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be aligned and merged into targeted scaffolds");
+struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",0,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be used for scaffolding");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output merged scaffold sequences to this file");
 
 struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
@@ -126,8 +137,8 @@ void *argtable[] = {help,version,FileLogLevel,LogFile,
 					pmode,minseedcorelen,minnumseedcores,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
 					minscafflen,minscaffovl,
-					summrslts,targfile,experimentname,experimentdescr,
-					inputfile,outfile,threads,
+					summrslts,pacbiosfxfile,pacbiofiles,hiconffiles,experimentname,experimentdescr,
+					outfile,threads,
 					end};
 
 char **pAllArgs;
@@ -330,9 +341,92 @@ if (!argerrors)
 		return(1);
 		}
 
-	strcpy(szInputFile,inputfile->filename[0]);
-	strcpy(szTargFile,targfile->filename[0]);
-	strcpy(szOutFile,outfile->filename[0]);
+	if(pacbiosfxfile->count && pacbiofiles->count)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: input PacBio suffix file or PacBio sequences are exclusive, specify one only");
+		return(1);
+		}
+
+	if(!(pacbiosfxfile->count || pacbiofiles->count))
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: either PacBio suffix file or PacBio sequences file must be specified, specify one only");
+		return(1);
+		}
+
+	if(pacbiosfxfile->count)
+		{
+		strncpy(szPacBioSfxFile,pacbiosfxfile->filename[0],sizeof(szPacBioSfxFile));
+		szPacBioSfxFile[sizeof(szPacBioSfxFile)-1] = '\0';
+		CUtility::TrimQuotedWhitespcExtd(szPacBioSfxFile);
+		if(szPacBioSfxFile[0] == '\0')
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input suffix indexed PacBio file specified with '-I<filespec>' option)\n");
+			exit(1);
+			}
+		}
+	else
+		szPacBioSfxFile[0] = '\0';
+
+	if(pacbiofiles->count)
+		{
+		for(NumPacBioFiles=Idx=0;NumPacBioFiles < cMaxInFileSpecs && Idx < pacbiofiles->count; Idx++)
+			{
+			pszPacBioFiles[Idx] = NULL;
+			if(pszPacBioFiles[NumPacBioFiles] == NULL)
+				pszPacBioFiles[NumPacBioFiles] = new char [_MAX_PATH];
+			strncpy(pszPacBioFiles[NumPacBioFiles],pacbiofiles->filename[Idx],_MAX_PATH);
+			pszPacBioFiles[NumPacBioFiles][_MAX_PATH-1] = '\0';
+			CUtility::TrimQuotedWhitespcExtd(pszPacBioFiles[NumPacBioFiles]);
+			if(pszPacBioFiles[NumPacBioFiles][0] != '\0')
+				NumPacBioFiles++;
+			}
+
+		if(!NumPacBioFiles)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input PacBio file(s) specified with '-i<filespec>' option)\n");
+			exit(1);
+			}
+		}
+	else
+		{
+		NumPacBioFiles = 0;
+		pszPacBioFiles[0] = NULL;
+		}
+
+	if(hiconffiles->count)
+		{
+		for(NumHiConfFiles=Idx=0;NumHiConfFiles < cMaxInFileSpecs && Idx < hiconffiles->count; Idx++)
+			{
+			pszHiConfFiles[Idx] = NULL;
+			if(pszHiConfFiles[NumHiConfFiles] == NULL)
+				pszHiConfFiles[NumHiConfFiles] = new char [_MAX_PATH];
+			strncpy(pszHiConfFiles[NumHiConfFiles],hiconffiles->filename[Idx],_MAX_PATH);
+			pszHiConfFiles[NumHiConfFiles][_MAX_PATH-1] = '\0';
+			CUtility::TrimQuotedWhitespcExtd(pszHiConfFiles[NumHiConfFiles]);
+			if(pszHiConfFiles[NumHiConfFiles][0] != '\0')
+				NumHiConfFiles++;
+		}
+
+		if(!NumHiConfFiles)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input high confidence reads file(s) specified with '-r<filespec>' option)\n");
+			exit(1);
+			}
+		}
+	else
+		{
+		NumHiConfFiles = 0;
+		pszHiConfFiles[0] = NULL;
+		}
+
+	strncpy(szOutFile,outfile->filename[0],sizeof(szOutFile));
+	szOutFile[sizeof(szOutFile)-1] = '\0';
+	CUtility::TrimQuotedWhitespcExtd(szOutFile);
+	if(szOutFile[0] == '\0')
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no output file specified with '-o<filespec>' option)\n");
+		exit(1);
+		}
 
 #ifdef _WIN32
 	SYSTEM_INFO SystemInfo;
@@ -374,9 +468,22 @@ if (!argerrors)
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"minimum individual scaffolding sequence length: %dbp",MinScaffoldLen);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"minimum scaffold overlap required to merge into single scaffold: %d",MinScaffOverlap);
 
+	if(NumPacBioFiles)
+		{
+		for(Idx=0; Idx < NumPacBioFiles; Idx++)
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input PacBio sequences file spec: '%s'",pszPacBioFiles[Idx]);
+		}
+	else
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input PacBio suffix array file: '%s'",szPacBioSfxFile);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"input higher confidence query contig sequences file: '%s'",szInputFile);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"input indexed lower confidence target scaffold sequences file: '%s'",szTargFile);
+	if(NumHiConfFiles)
+		{
+		for(Idx=0; Idx < NumHiConfFiles; Idx++)
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input hiconfidence sequences file spec: '%s'",pszHiConfFiles[Idx]);
+		}
+	else
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input hiconfidence sequences file spec: None Specified");
+
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"output merged scaffold sequences file: '%s'",szOutFile);
 
 
@@ -397,9 +504,19 @@ if (!argerrors)
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinScaffoldLen),"minscafflen",&MinScaffoldLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinScaffOverlap),"minscaffovl",&MinScaffOverlap);
+		if(NumHiConfFiles)
+			{
+			for(Idx=0; Idx < NumPacBioFiles; Idx++)
+				ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszPacBioFiles[Idx]),"pacbiofile",pszPacBioFiles[Idx]);
+			}
+		else
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szPacBioSfxFile),"pacbiosfx",szPacBioSfxFile);
+		if(NumHiConfFiles)
+				{
+				for(Idx=0; Idx < NumHiConfFiles; Idx++)
+					ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszHiConfFiles[Idx]),"hiconffile",pszHiConfFiles[Idx]);
+				}
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szInputFile),"inquery",szInputFile);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szTargFile),"intarg",szTargFile);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szOutFile),"out",szOutFile);
 		
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(NumThreads),"threads",&NumThreads);
@@ -415,7 +532,8 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioScaffolds((etPBPMode)PMode,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,MinScaffoldLen,MinScaffOverlap,szInputFile,szTargFile,szOutFile,NumThreads);
+	Rslt = ProcPacBioScaffolds((etPBPMode)PMode,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,MinScaffoldLen,MinScaffOverlap,
+						szPacBioSfxFile,NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -450,8 +568,11 @@ ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int MinScaffoldLen,			// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
-		char *pszInputFile,			// name of input file containing higher confidence query contig sequences to be aligned and merged into targeted scaffolds
-		char *pszTargFile,			// name of input file containing indexed targeted lower confidence sequences which are to be used for scaffolding
+		char *pszPacBioSfxFile,		// suffix indexed PacBio sequences
+		int NumPacBioFiles,			// number of input pacbio file specs
+		char *pszPacBioFiles[],		// input pacbio files
+		int NumHiConfFiles,			// number of input hiconfidence file specs
+		char *pszHiConfFiles[],		// input hiconfidence files		
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads)				// maximum number of worker threads to use
 {
@@ -463,7 +584,8 @@ if((pPacBioer = new CPBScaffold)==NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CPBScaffold");
 	return(eBSFerrObj);
 	}
-Rslt = pPacBioer->Process(PMode,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,MinScaffoldLen,MinScaffOverlap,pszInputFile,pszTargFile,pszOutFile,NumThreads);
+Rslt = pPacBioer->Process(PMode,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,MinScaffoldLen,MinScaffOverlap,
+								pszPacBioSfxFile,NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,NumThreads);
 delete pPacBioer;
 return(Rslt);
 }
@@ -517,6 +639,9 @@ if(m_hScaffDist != -1)
 m_NumPBScaffNodes = 0;
 m_AllocdPBScaffNodes = 0;
 
+m_ProvOverlapped = 0;
+m_ProvContained = 0;
+
 m_PMode = ePBPMOverlaps;
 
 m_MinScaffSeqLen = cDfltMinScaffSeqLen;	
@@ -531,8 +656,12 @@ m_SWGapOpenPenalty = cDfltSWGapOpenPenalty;
 m_SWGapExtnPenalty = cDfltSWGapExtnPenalty;
 m_SWProgExtnPenaltyLen = cDfltSWProgExtnLen;	
  
-m_szInputFile[0] = '\0';
-m_szTargFile[0] = '\0';
+m_NumPacBioFiles = 0;
+m_NumHiConfFiles = 0;
+m_szPacBioSfxFile[0] = '\0';
+memset(m_szPacBioFiles,0,sizeof(m_szPacBioFiles));
+memset(m_szHiConfFiles,0,sizeof(m_szHiConfFiles));
+
 m_szOutFile[0] = '\0';	
 
 m_NumThreads = 0;
@@ -715,14 +844,6 @@ if(FileSize < cMinScaffSeqLen)		// arbitary minimum file size...
 	return(eBSFerrFileAccess);
 	}
 
-if(m_pSfxArray != NULL)
-	delete m_pSfxArray;
-if((m_pSfxArray = new CSfxArrayV3) == NULL)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CSfxArrayV3");
-	return(eBSFerrObj);
-	}
-
 // first try loading as previously generated suffix index over targeted sequences
 if((Rslt = m_pSfxArray->Open(pszTargFile)) < eBSFSuccess)
 	{
@@ -753,7 +874,383 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"target scaffolding sequences suffix ar
 return(eBSFSuccess);
 }
 
+// ProcessBioseqFile
+// Process input biosequence file into suffix file
+int
+CPBScaffold::ProcessBioseqFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
+				 char *pszFile)						// file containing sequences to be parsed and indexed
+{
+CBioSeqFile BioSeqFile;
+etSeqBase *pSeqBuff = NULL;
+UINT32 AllocLen = 0;
+char szSource[cBSFSourceSize];
+char szDescription[cBSFDescriptionSize];
+UINT32 SeqLen;
+int Rslt;
+UINT32 NumSeqsUnderlength;
+tBSFEntryID CurEntryID;
 
+if((Rslt=BioSeqFile.Open(pszFile,cBSFTypeSeq,false))!=eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - error %d %s",Rslt,BioSeqFile.GetErrMsg());
+	return(Rslt);
+	}
+
+CurEntryID = 0;
+NumSeqsUnderlength = 0;
+while((Rslt = CurEntryID = BioSeqFile.Next(CurEntryID)) > eBSFSuccess)
+	{
+	BioSeqFile.GetNameDescription(CurEntryID,cBSFSourceSize-1,(char *)&szSource,
+											cBSFDescriptionSize-1,(char *)&szDescription);
+	SeqLen = BioSeqFile.GetDataLen(CurEntryID);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %s|%s",szSource,szDescription);
+
+	if(SeqLen < (UINT32)MinSeqLen)		// only accept for indexing sequences of at least this length)
+		{
+		NumSeqsUnderlength += 1;
+		continue;
+		}
+
+	if(AllocLen < (SeqLen + 1))
+		{
+		if(pSeqBuff != NULL)
+			delete pSeqBuff;
+		AllocLen = SeqLen;
+		pSeqBuff = new unsigned char [AllocLen];
+		if(pSeqBuff == NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - Unable to alloc %u bytes memory for pSeqBuff",AllocLen);
+			Rslt = eBSFerrMem;
+			break;
+			}
+		}
+
+	if((Rslt = BioSeqFile.GetData(CurEntryID,eSeqBaseType,0,pSeqBuff,SeqLen)) != SeqLen)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - error %d %s",Rslt,BioSeqFile.GetErrMsg());
+		break;
+		}
+
+
+
+	// remove any repeat masking flags so that sorts can actually sort
+	// if run of more than 25 Ns and at least 5 Ns to end of buffer then randomly mutate
+	// every 13th N
+	//	e.g <25Ns>r<12Ns>r<12Ns> where r is a pseudorandom base
+	etSeqBase *pMskBase = pSeqBuff;
+	int SeqNs = 0;
+	for(UINT32 MskIdx = 0; MskIdx < SeqLen; MskIdx++,pMskBase++)
+		{
+		*pMskBase &= ~cRptMskFlg;
+		if(*pMskBase == eBaseN && (MskIdx+5) < SeqLen)
+			{
+			if(++SeqNs > 25 &&
+				pMskBase[1] == eBaseN &&
+				pMskBase[2] == eBaseN &&
+				pMskBase[3] == eBaseN &&
+				pMskBase[4] == eBaseN)
+				{
+				if(!(SeqNs % 13))	// mutate every 13th
+					*pMskBase = rand() % 4;
+				}
+			}
+		else
+			SeqNs = 0;
+		}
+
+	if((Rslt=m_pSfxArray->AddEntry(szSource,pSeqBuff,SeqLen)) < eBSFSuccess)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+		break;
+		}
+	}
+if(Rslt == eBSFerrEntry)
+	Rslt = eBSFSuccess;
+if(pSeqBuff != NULL)
+	delete pSeqBuff;
+BioSeqFile.Close();
+if(NumSeqsUnderlength > 0)
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessBioseqFile - %u sequences not accepted for indexing as length under %dbp ",NumSeqsUnderlength,MinSeqLen);
+return(Rslt);
+}
+
+// ProcessFastaFile
+// Parse input fasta format file into a biosequence suffix array file
+int
+CPBScaffold::ProcessFastaFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
+				char *pszFile)						// file containing sequences
+{
+CFasta Fasta;
+unsigned char *pSeqBuff;
+unsigned char *pMskBase;
+UINT32 MskIdx;
+size_t BuffOfs;
+size_t AllocdBuffSize;
+size_t AvailBuffSize;
+char szName[cBSFSourceSize];
+char szDescription[cBSFDescriptionSize];
+UINT32 SeqLen;
+int Descrlen;
+bool bFirstEntry;
+bool bEntryCreated;
+int Rslt;
+int SeqID;
+int NumSeqsAccepted;
+size_t TotAcceptedLen;
+UINT32 NumSeqsUnderlength;
+
+if((Rslt=Fasta.Open(pszFile,true))!=eBSFSuccess)
+	{
+	if(Rslt != eBSFerrNotFasta)
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile: Unable to open '%s' [%s] %s",pszFile,Fasta.ErrText((teBSFrsltCodes)Rslt),Fasta.GetErrMsg());
+	return(Rslt);
+	}
+
+AllocdBuffSize = (size_t)cMaxAllocBuffChunk * 16;
+// note malloc is used as can then simply realloc to expand as may later be required
+if((pSeqBuff = (unsigned char *)malloc(AllocdBuffSize)) == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile:- Unable to allocate memory (%u bytes) for sequence buffer",(UINT32)AllocdBuffSize);
+	Fasta.Close();
+	return(eBSFerrMem);
+	}
+AvailBuffSize = AllocdBuffSize;
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile:- Adding %s..",pszFile);
+
+bFirstEntry = true;
+bEntryCreated = false;
+SeqID = 0;
+BuffOfs = 0;
+NumSeqsUnderlength = 0;
+NumSeqsAccepted = 0;
+TotAcceptedLen = 0;
+while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffSize,(size_t)cMaxAllocBuffChunk),true,false)) > eBSFSuccess)
+	{
+	if(SeqLen == eBSFFastaDescr)		// just read a descriptor line
+		{
+		SeqID++;
+		if(bEntryCreated)				// add any previous entry
+			{
+			if(BuffOfs < (size_t)MinSeqLen)
+				NumSeqsUnderlength += 1;
+			else
+				if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs)) < eBSFSuccess)
+					{
+					gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+					break;
+					}
+				else
+					{
+					NumSeqsAccepted += 1;
+					TotAcceptedLen += BuffOfs;
+					}
+			Rslt = eBSFSuccess;
+			}
+		Descrlen = Fasta.ReadDescriptor(szDescription,cBSFDescriptionSize);
+		// An assumption - will one day bite real hard - is that the
+		// fasta descriptor line starts with some form of unique identifier.
+		// Use this identifier as the entry name.
+		if(sscanf(szDescription," %s[ ,]",szName)!=1)
+			sprintf(szName,"%s.%d",pszFile,++SeqID);
+
+		bFirstEntry = false;
+		bEntryCreated = true;
+		BuffOfs = 0;
+		continue;
+		}
+	else
+		if(bFirstEntry)	// if there was no descriptor then dummy up one...
+			{
+			SeqID++;
+			sprintf(szName,"%s.%d",pszFile,SeqID);
+			strcpy(szDescription,"No Description provided");
+			bFirstEntry = false;
+			bEntryCreated = true;
+			}
+
+	// remove any repeat masking flags so that sorts can actually sort
+	// if run of more than 25 Ns and at least 5 Ns to end of buffer then randomly mutate
+	// every 13th N
+	//	e.g <25Ns>r<12Ns>r<12Ns> where r is a pseudorandom base
+	pMskBase = &pSeqBuff[BuffOfs];
+	int SeqNs = 0;
+	for(MskIdx = 0; MskIdx < SeqLen; MskIdx++,pMskBase++)
+		{
+		*pMskBase &= ~cRptMskFlg;
+		if(*pMskBase == eBaseN && (MskIdx+5) < SeqLen)
+			{
+			if(++SeqNs > 25 &&
+				pMskBase[1] == eBaseN &&
+				pMskBase[2] == eBaseN &&
+				pMskBase[3] == eBaseN &&
+				pMskBase[4] == eBaseN)
+				{
+				if(!(SeqNs % 13))	// mutate every 13th
+					*pMskBase = rand() % 4;
+				}
+			}
+		else
+			SeqNs = 0;
+		}
+
+	BuffOfs += SeqLen;
+	AvailBuffSize -= SeqLen;
+	if(AvailBuffSize < (size_t)(cMaxAllocBuffChunk / 8))
+		{
+		size_t NewSize = (size_t)cMaxAllocBuffChunk + AllocdBuffSize;
+		unsigned char *pTmp;
+		if((pTmp = (unsigned char *)realloc(pSeqBuff,NewSize))==NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile:- Unable to reallocate memory (%u bytes) for sequence buffer",(UINT32)NewSize);
+			return(eBSFerrMem);
+			}
+		pSeqBuff = pTmp;
+		AllocdBuffSize = NewSize;
+		AvailBuffSize = AllocdBuffSize - BuffOfs;
+		}
+	}
+
+if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// close entry
+	{
+	if(BuffOfs < (size_t)MinSeqLen)
+		{
+		NumSeqsUnderlength += 1;
+		Rslt = eBSFSuccess;
+		}
+	else
+		{
+		if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs)) < eBSFSuccess)
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+		else
+			{
+			Rslt = eBSFSuccess;
+			NumSeqsAccepted += 1;
+			TotAcceptedLen += BuffOfs;
+			}
+		}
+	}
+if(pSeqBuff != NULL)
+	free(pSeqBuff);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - %d parsed, %d accepted, %dbp mean length, %d sequences not accepted for indexing as length under %dbp ",
+					SeqID,NumSeqsAccepted,NumSeqsAccepted == 0 ? 0 :(int)(TotAcceptedLen/NumSeqsAccepted),NumSeqsUnderlength,MinSeqLen);
+return(Rslt);
+}
+
+
+int 
+CPBScaffold::LoadTargetSeqs(int MinSeqLen,int NumTargFiles,char **pszTargFiles)		// parse, and index sequences in these files into in memory suffix array; file expected to contain either fasta or fastq sequences
+{
+int Rslt;
+int Idx;
+int NumGlobs;
+INT64 SumFileSizes;
+UINT32 DupEntries[cMaxDupEntries];
+int NumDupEntries;
+char szDupEntry[100];
+
+
+m_pSfxArray->SetMaxQSortThreads(m_NumThreads);
+
+CSimpleGlob glob(SG_GLOB_FULLSORT);
+
+	// determine crude estimate of total genome size from the sum of file sizes
+for(Idx = 0; Idx < NumTargFiles; Idx++)
+	if (glob.Add(pszTargFiles[Idx]) < SG_SUCCESS)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to glob '%s",pszTargFiles[Idx]);
+		Reset(false);
+		return(eBSFerrOpnFile);
+   		}
+
+
+SumFileSizes = 0;
+for (NumGlobs = 0; NumGlobs < glob.FileCount(); NumGlobs += 1)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Will process in this order: %d '%s", NumGlobs+1,glob.File(NumGlobs));
+#ifdef _WIN32
+	struct _stat64 st;
+	if(!_stat64(glob.File(NumGlobs),&st))
+#else
+	struct stat64 st;
+	if(!stat64(glob.File(NumGlobs),&st))
+#endif
+		SumFileSizes += (INT64)st.st_size;
+	}
+if(NumGlobs == 0)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to locate any input files");
+	Reset(false);
+	return(eBSFerrOpnFile);
+	}
+
+
+Rslt=m_pSfxArray->Open(false,false);
+if(Rslt !=eBSFSuccess)
+	{
+	while(m_pSfxArray->NumErrMsgs())
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,m_pSfxArray->GetErrMsg());
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile, unable to create in-memory suffix array - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+	Reset(false);
+	return(Rslt);
+	}
+
+if((Rslt=m_pSfxArray->SetDescription((char *)"inmem")) != eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set description 'inmem'");
+	Reset(false);
+	return(Rslt);
+	}
+if((Rslt=m_pSfxArray->SetTitle((char *)"inmem")) != eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set title 'inmem'");
+	Reset(false);
+	return(Rslt);
+	}
+
+if((Rslt = m_pSfxArray->SetDatasetName((char *)"inmem")) != eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set dataset name 'inmem'");
+	Reset(false);
+	return(Rslt);
+	}
+m_pSfxArray->SetInitalSfxAllocEls(SumFileSizes);	// just a hint which is used for initial allocations by suffix processing
+
+Rslt = eBSFSuccess;
+
+for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
+	{
+		// try opening as a fasta file, if that fails then try as a bioseq
+	Rslt = ProcessFastaFile(MinSeqLen,glob.File(n));
+	if(Rslt == eBSFerrNotFasta)
+		Rslt = ProcessBioseqFile(MinSeqLen,glob.File(n));
+	if(Rslt < eBSFSuccess)
+		{
+		m_pSfxArray->Close(false);
+		Reset(false);
+		return(Rslt);
+		}
+
+		// check for duplicate entry names
+	if((NumDupEntries = m_pSfxArray->ChkDupEntries(cMaxDupEntries,&DupEntries[0])) > 0)
+		{
+		while(NumDupEntries--)
+			{
+			m_pSfxArray->GetIdentName(DupEntries[NumDupEntries],sizeof(szDupEntry)-1,szDupEntry); // get sequence name for specified entry identifier
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile, duplicate sequence entry name '%s' in file '%s'",szDupEntry,glob.File(n));
+			}
+		m_pSfxArray->Close(false);
+		Reset(false);
+		return(-1);
+		}
+	}
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting suffix array...");
+m_pSfxArray->Finalise();
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting completed");
+return(Rslt);
+
+}
 
 int
 CPBScaffold::Process(etPBPMode PMode,	// processing mode
@@ -766,12 +1263,16 @@ CPBScaffold::Process(etPBPMode PMode,	// processing mode
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		UINT32 MinScaffSeqLen,		// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 		UINT32 MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
-		char *pszInputFile,			// name of input file containing higher confidence query contig sequences to be aligned and merged into targeted scaffolds
-		char *pszTargFile,			// name of input file containing suffix array indexed lower confidence sequences which are to be used for scaffolding
+		char *pszPacBioSfxFile,		// suffix indexed PacBio sequences
+		int NumPacBioFiles,			// number of input pacbio file specs
+		char *pszPacBioFiles[],		// input pacbio files
+		int NumHiConfFiles,			// number of input hiconfidence file specs
+		char *pszHiConfFiles[],		// input hiconfidence files		
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads)				// maximum number of worker threads to use
 {
 int Rslt = eBSFSuccess;
+int Idx;
 UINT32 NumTargSeqs;
 UINT32 CurNodeID;
 UINT32 MaxSeqLen;
@@ -793,10 +1294,28 @@ m_MaxHitsPerSeedCore = cMaxHitsPerSeedCore;
 
 m_MinScaffSeqLen = MinScaffSeqLen;	
 m_MinScaffOverlap = MinScaffOverlap; 
-strncpy(m_szInputFile,pszInputFile,sizeof(m_szInputFile));
-m_szInputFile[sizeof(m_szInputFile)-1] = '\0';	
-strncpy(m_szTargFile,pszTargFile,sizeof(m_szTargFile));
-m_szTargFile[sizeof(m_szTargFile)-1] = '\0';	
+if(pszPacBioSfxFile != NULL && pszPacBioSfxFile[0] != '\0')
+	{
+	strncpy(m_szPacBioSfxFile,pszPacBioSfxFile,sizeof(m_szPacBioSfxFile));
+	m_szPacBioSfxFile[sizeof(m_szPacBioSfxFile)-1] = '\0';	
+	}
+else
+	m_szPacBioSfxFile[0] = '\0';	
+m_NumPacBioFiles = NumPacBioFiles;
+memset(m_szPacBioFiles,0,sizeof(m_szPacBioFiles));
+if(NumPacBioFiles > 0)
+	{
+	for(Idx = 0; Idx < NumPacBioFiles; Idx++)
+		strcpy(m_szPacBioFiles[Idx],pszPacBioFiles[Idx]);
+	}
+m_NumHiConfFiles = NumHiConfFiles;
+memset(m_szHiConfFiles,0,sizeof(m_szHiConfFiles));
+if(NumHiConfFiles > 0)
+	{
+	for(Idx = 0; Idx < NumHiConfFiles; Idx++)
+		strcpy(m_szHiConfFiles[Idx],pszHiConfFiles[Idx]);
+	}	
+
 strncpy(m_szOutFile,pszOutFile,sizeof(m_szOutFile));
 m_szOutFile[sizeof(m_szOutFile)-1] = '\0';	
 
@@ -804,20 +1323,47 @@ strcpy(m_szOutScaffFile,pszOutFile);
 strcat(m_szOutScaffFile,".scaffovrlap.csv");
 
 m_NumThreads = NumThreads;	
-
-if((Rslt = LoadTargetSeqs(pszTargFile)) < eBSFSuccess)
+if(m_pSfxArray != NULL)
+	delete m_pSfxArray;
+if((m_pSfxArray = new CSfxArrayV3) == NULL)
 	{
-	Reset(false);
-	return(Rslt);
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CSfxArrayV3");
+	return(eBSFerrObj);
 	}
+m_pSfxArray->Reset(false);
 
-// get number of sequences loaded as targets to be used for scaffolding
-NumTargSeqs = m_pSfxArray->GetNumEntries();
-if(NumTargSeqs < 1)
+if(pszPacBioSfxFile != NULL && pszPacBioSfxFile[0] != '\0')
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"No targeted scaffold sequences in file '%s'",pszTargFile);
-	Reset(false);
-	return(eBSFerrNoEntries);
+	if((Rslt = LoadTargetSeqs(pszPacBioSfxFile)) < eBSFSuccess)
+		{
+		Reset(false);
+		return(Rslt);
+		}
+
+	// get number of sequences loaded as targets to be used for scaffolding
+	NumTargSeqs = m_pSfxArray->GetNumEntries();
+	if(NumTargSeqs < 1)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"No targeted scaffold sequences in file '%s'",pszPacBioSfxFile);
+		Reset(false);
+		return(eBSFerrNoEntries);
+		}
+	}
+else
+	{
+	if((Rslt = LoadTargetSeqs(MinScaffSeqLen,NumPacBioFiles,pszPacBioFiles)) < eBSFSuccess)
+		{
+		Reset(false);
+		return(Rslt);
+		}
+	// get number of sequences loaded as targets to be used for scaffolding
+	NumTargSeqs = m_pSfxArray->GetNumEntries();
+	if(NumTargSeqs < 1)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"No targeted scaffold sequences in file(s)");
+		Reset(false);
+		return(eBSFerrNoEntries);
+		}
 	}
 
 if(MinSeedCoreLen <= cMaxKmerLen)
@@ -1097,6 +1643,13 @@ if(m_hScaffDist != -1)
 		CUtility::SafeWrite(m_hScaffDist,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 		m_ScaffLineBuffIdx = 0;
 		}
+#ifdef _WIN32
+	_commit(m_hScaffDist);
+#else
+	fsync(m_hScaffDist);
+#endif
+	close(m_hScaffDist);
+	m_hScaffDist = -1;
 	}
 
 return(0);
@@ -1306,18 +1859,12 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	pCurPBScaffNode->flgCurProc = 1;
 	ReleaseLock(false);
 
-	if(!(pCurPBScaffNode->NodeID % 1000))
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Process: Thread: %d Processing probe %d (len: %d) of %d",pThreadPar->ThreadIdx,pCurPBScaffNode->NodeID,pCurPBScaffNode->SeqLen,m_NumPBScaffNodes);
+	if(!(pCurPBScaffNode->NodeID % 50))
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Process: Thread: %d Processing probe %d (len: %d) of %d, Overlapped: %u, Contained: %u",
+					pThreadPar->ThreadIdx,pCurPBScaffNode->NodeID,pCurPBScaffNode->SeqLen,m_NumPBScaffNodes,m_ProvOverlapped,m_ProvContained);
 
-	UINT32 MinCoresPerCluster;
-	UINT32 MinClusterLength;
-
-		MinCoresPerCluster = 10;
-		MinClusterLength = 5000;
-	
-
-		pThreadPar->bRevCpl = false;
-		IdentifyCoreHits(CurNodeID,pThreadPar);
+	pThreadPar->bRevCpl = false;
+	IdentifyCoreHits(CurNodeID,pThreadPar);
 
 	pThreadPar->bRevCpl = true;
 	IdentifyCoreHits(CurNodeID,pThreadPar);
@@ -1337,16 +1884,6 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	UINT32 CurAEntryIDHits;
 	tsPBScaffNode *pHitScaffNode;
 	sPBCoreHitCnts *pSummaryCnts;
-
-//	if(pThreadPar->NumCoreHits > 1)
-//		{
-//		tsCoreHitsClusters FwdClusters;
-//		tsCoreHitsClusters RevClusters;
-//		pThreadPar->bRevCpl = false;
-//		ClusterSpatial(pThreadPar,pCurPBScaffNode->SeqLen,&FwdClusters,MinCoresPerCluster,MinClusterLength);
-//		pThreadPar->bRevCpl = true;
-//		ClusterSpatial(pThreadPar,pCurPBScaffNode->SeqLen,&RevClusters,MinCoresPerCluster,MinClusterLength);
-//		}
 
 	if(pThreadPar->NumCoreHits)
 		{
@@ -1560,14 +2097,14 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 #else
 			pPeakMatchesCell = pThreadPar->pSW->Align();
 #endif
-			if(pPeakMatchesCell != NULL)
+			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= pThreadPar->MinOverlapLen)
 				{
 				PeakMatchesCell = *pPeakMatchesCell;
 				AlignLength = PeakMatchesCell.NumMatches + PeakMatchesCell.NumBasesIns - PeakMatchesCell.NumBasesDel;
 				if(m_hScaffDist != -1)
 					{
 					AcquireSerialise();
-					if(m_ScaffLineBuffIdx)
+					if(m_ScaffLineBuffIdx > (sizeof(m_szScaffLineBuff) - 1000))
 						{
 						CUtility::SafeWrite(m_hScaffDist,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 						m_ScaffLineBuffIdx = 0;
@@ -1613,7 +2150,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				for(int ExactLenIdx = 0; ExactLenIdx < cExactMatchLenDist; ExactLenIdx++)
 					m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",%d",PeakMatchesCell.ExactMatchLenDist[ExactLenIdx]);
 #endif
-
+					m_ProvOverlapped += 1;
 					ReleaseSerialise();
 					}
 					
@@ -1623,6 +2160,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					{
 					AcquireLock(true);
 					pTargNode->flgContained = 1;
+					m_ProvContained += 1;
 					ReleaseLock(true);				
 					}
 				}
@@ -1653,14 +2191,14 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			pPeakMatchesCell = pThreadPar->pSW->Align();
 #endif
 
-			if(pPeakMatchesCell != NULL)
+			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= pThreadPar->MinOverlapLen)
 				{
 				PeakMatchesCell = *pPeakMatchesCell;
 				AlignLength = PeakMatchesCell.NumMatches + PeakMatchesCell.NumBasesIns - PeakMatchesCell.NumBasesDel;
 				if(m_hScaffDist != -1)
 					{
 					AcquireSerialise();
-					if(m_ScaffLineBuffIdx)
+					if(m_ScaffLineBuffIdx > (sizeof(m_szScaffLineBuff) - 1000))
 						{
 						CUtility::SafeWrite(m_hScaffDist,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 						m_ScaffLineBuffIdx = 0;
@@ -1706,6 +2244,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				for(int ExactLenIdx = 0; ExactLenIdx < cExactMatchLenDist; ExactLenIdx++)
 					m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",%d",PeakMatchesCell.ExactMatchLenDist[ExactLenIdx]);
 #endif
+					m_ProvOverlapped += 1;
 					ReleaseSerialise();
 					}
 
@@ -1714,6 +2253,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					{
 					AcquireLock(true);
 					pTargNode->flgContained = 1;
+					m_ProvContained += 1;
 					ReleaseLock(true);				
 					}
 				}
@@ -1725,6 +2265,13 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	pThreadPar->NumTargCoreHitCnts = 0;
 	pThreadPar->NumCoreHits = 0;
 	}
+AcquireSerialise();
+if(m_hScaffDist != -1 && m_ScaffLineBuffIdx > 0)
+	{
+	CUtility::SafeWrite(m_hScaffDist,m_szScaffLineBuff,m_ScaffLineBuffIdx);
+	m_ScaffLineBuffIdx = 0;
+	}
+ReleaseSerialise();
 
 if(pThreadPar->pSW != NULL)
 	{
@@ -1814,11 +2361,10 @@ UINT32 HighHitsThisCore;
 UINT32 TotHitsAllCores;
 UINT32 HitSeqLen;
 UINT32 ProbeOfs;
+int DeltaProbeOfs;
 UINT32 ChkOvrLapCoreProbeOfs;
 UINT32 LastCoreProbeOfs;
-tsCoreHit *pChkOvrLapCore;
 int ChkOvrLapCoreStartIdx;
-int ChkOvrlapIdx;
 
 etSeqBase *pCoreSeq;
 tsPBScaffNode *pProbeNode;
@@ -1831,6 +2377,10 @@ int MaxAcceptHomoCnt;
 if(ProbeNodeID < 1 || ProbeNodeID > m_NumPBScaffNodes)
 	return(eBSFerrParams);
 pProbeNode = &m_pPBScaffNodes[ProbeNodeID-1];
+
+if(pPars->MinOverlapLen > pProbeNode->SeqLen)
+	return(0);
+
 if(pPars->pProbeSeq == NULL || pPars->AllocdProbeSeqSize < (pProbeNode->SeqLen + 10))
 	{
 	if(pPars->pProbeSeq != NULL)
@@ -1852,9 +2402,11 @@ HitsThisCore = 0;
 HighHitsThisCore = 0;
 TotHitsAllCores = 0;
 MaxAcceptHomoCnt = (pPars->CoreSeqLen * cQualCoreHomopolymer) / 100; // if any core contains more than cQualCoreHomopolymer% of the same base then treat as being a near homopolymer core and slough
-for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - pPars->CoreSeqLen); ProbeOfs+=1,pCoreSeq+=1)
+
+DeltaProbeOfs = (pPars->CoreSeqLen+1)/2;
+for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - (pPars->CoreSeqLen + 120)); ProbeOfs+=DeltaProbeOfs,pCoreSeq+=DeltaProbeOfs)
 	{
-	// with PacBio reads most homopolymer runs are actually artefact inserts so don't bother processing for homopolymer cores
+	// with PacBio reads most homopolymer runs are actual artefact inserts so don't bother processing these homopolymer runs for cores
 	if(MaxAcceptHomoCnt > 0)
 		{
 		HomoBaseCnts[0] = HomoBaseCnts[1] = HomoBaseCnts[2] = HomoBaseCnts[3] = 0;
@@ -1866,15 +2418,9 @@ for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - pPars->CoreSeqLen); ProbeOfs+
  
 	PrevHitIdx = 0;
 	HitsThisCore = 0;
-	bool bOverOccKMerClas = false;
-	while((NextHitIdx = m_pSfxArray->IterateExacts(pCoreSeq,pPars->CoreSeqLen,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
+
+    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pProbeNode->SeqLen - ProbeOfs,pPars->CoreSeqLen,pProbeNode->EntryID,pPars->MinScaffSeqLen * 2,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
 		{
-		// at least one hit, check if too many putative hits there are, if too many then slough these hits as would take too long to process and utilise too many resources
-		// How mny is too many??? currently using a limit of 5000 (m_MaxHitsPerSeedCore default)
-		if(bOverOccKMerClas && pPars->CoreSeqLen <= cMaxKmerLen && 
-				m_pSfxArray->OverOccKMerClas(pPars->CoreSeqLen,pCoreSeq) != 1)
-			break;
-		bOverOccKMerClas = true;
 		PrevHitIdx = NextHitIdx;
 		pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
 		HitSeqLen = pTargNode->SeqLen; 
@@ -1889,39 +2435,8 @@ for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - pPars->CoreSeqLen); ProbeOfs+
 			continue;
 			}
 		ReleaseLock(false);
-          
-		if(cChkOverlapGapLen > 0)	// if > 0 then attempt to collapse overlapping core hits down into a single core hit with extended length
-			{
-			if(HitsThisCore == 0 && (ProbeOfs - LastCoreProbeOfs) > cChkOverlapGapLen)	// if gap between cores was more than cChkOverlapGapLen then assume no overlapping cores need extending
-				{
-				ChkOvrLapCoreStartIdx = pPars->NumCoreHits;
-				ChkOvrLapCoreProbeOfs = ProbeOfs;
-				}
-			LastCoreProbeOfs = ProbeOfs;
-			// check if this hit is extending a previous hit onto same target loci
-			// start from most recent probe overlapping cores with at least one hit
-			if(pPars->NumCoreHits && ProbeOfs > ChkOvrLapCoreProbeOfs)
-				{
-				pChkOvrLapCore = &pPars->pCoreHits[ChkOvrLapCoreStartIdx];
-		
-				for(ChkOvrlapIdx = ChkOvrLapCoreStartIdx; (UINT32)ChkOvrlapIdx < pPars->NumCoreHits; ChkOvrlapIdx++, pChkOvrLapCore++)
-					{
-					if(pChkOvrLapCore->ProbeNodeID == ProbeNodeID && pChkOvrLapCore->TargNodeID == pTargNode->NodeID)			// must be on to same target from same probe
-						{
-						if((pChkOvrLapCore->ProbeOfs + pChkOvrLapCore->HitLen) > ProbeOfs &&									// must be overlapping probe core sequence
-							(pChkOvrLapCore->TargOfs + ProbeOfs - (pChkOvrLapCore->ProbeOfs)) == HitLoci)
-							{
-							pChkOvrLapCore->HitLen = pPars->CoreSeqLen + ProbeOfs - pChkOvrLapCore->ProbeOfs;
-							break;
-							}
-						}
-					}
-				if(ChkOvrlapIdx != pPars->NumCoreHits)
-					continue;
-				}
-			}
 
-		AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
+  		AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
 		HitsThisCore += 1;
 		if(HitsThisCore > pPars->MaxHitsPerSeedCore)
 			break;
@@ -1935,7 +2450,8 @@ for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - pPars->CoreSeqLen); ProbeOfs+
 	}
 if(pPars->bRevCpl)
 	CSeqTrans::ReverseComplement(pProbeNode->SeqLen,pPars->pProbeSeq);
-return(TotHitsAllCores);
+
+return(pPars->NumCoreHits);
 }
 
 // SortLenDescending

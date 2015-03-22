@@ -97,7 +97,7 @@ class CSSW
 
 	int m_MaxTopNPeakMatches;		// can identify at most this many top peak matches for current probe vs target
 	int m_NumTopNPeakMatches;		// currently identified this many top peak matches for current probe vs target
-	tsSSWCell m_TopPeakMatches[cMaxTopNPeakMatches];  // used to hold the tp[
+	tsSSWCell m_TopPeakMatches[cMaxTopNPeakMatches];  // used to hold the top peak matches
 
 public:
 	CSSW();

@@ -321,7 +321,7 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 	if(LeftCell.PeakScore != 0)
 		memset(&LeftCell,0,sizeof(tsSSWCell));
 	if(DiagCell.PeakScore != 0)
-		memset(&LeftCell,0,sizeof(tsSSWCell));
+		memset(&DiagCell,0,sizeof(tsSSWCell));
 	for(IdxT = StartIdxT; IdxT < EndIdxT; IdxT++,pCell++)
 		{
 		if(DiagCell.PeakScore != 0 || LeftCell.PeakScore != 0)

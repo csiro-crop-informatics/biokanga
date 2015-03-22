@@ -585,7 +585,7 @@ for(Idx = StartOfs+6; Idx < InSeqLen - cSmartBellAdaptorSeqLen/3 ; Idx++)
 			if((*pQSeq == (*pTSeq & 0x03)) && 
 				(pQSeq[1] == (pTSeq[1] & 0x03)) &&
 				(pQSeq[2] == (pTSeq[2] & 0x03)) &&
-				(pQSeq[5] == (pTSeq[3] & 0x03))) 
+				(pQSeq[3] == (pTSeq[3] & 0x03))) 
 				{
 				QKMers += 1;
 				break;

@@ -1,6 +1,4 @@
 #pragma once
-#pragma once
-
 
 const int cMinL2BlockSize  = 1;						// minimum accepted level 2 block size in 1K increments
 const int cDfltL2BlockSize = 1;						// default level 2 block size in 1K increments

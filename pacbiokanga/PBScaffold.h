@@ -15,6 +15,11 @@
 
 #include "./pacbiocommon.h"
 
+const int cMaxInFileSpecs = 100;			// user can specify upto this many input files
+const int cMinSeqLen = 50;					// minimum sequence length accepted for processing
+const int cMaxDupEntries = 10;				// report 1st 10 duplicate entry names
+const int cMaxAllocBuffChunk = 0x00ffffff;	// buffer for fasta sequences is realloc'd in this sized chunks
+
 typedef enum TAG_ePBPMode {
 	ePBPMOverlaps										// overlap discovery
 	} etPBPMode;
@@ -145,10 +150,16 @@ class CPBScaffold
 	int m_SWGapExtnPenalty;					// SW gap extension penalty (-100..0)
 	int m_SWProgExtnPenaltyLen;				// SW progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 
+	UINT32 m_ProvOverlapped;				// number provisionally overlapped, could be containing, another PacBio read
+	UINT32 m_ProvContained;					// number provisionally contained within another PacBio read
+
 	UINT32 m_MinScaffSeqLen;				// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 	UINT32 m_MinScaffOverlap;				// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
-	char m_szInputFile[_MAX_PATH];			// name of input file containing higher confidence query contig sequences to be aligned and merged into targeted scaffolds
-	char m_szTargFile[_MAX_PATH];			// name of input file containing targeted lower confidence sequences which are to be used for scaffolding
+	int m_NumPacBioFiles;					// number of input pacbio file specs
+	char m_szPacBioFiles[cMaxInFileSpecs][_MAX_PATH];		// input pacbio files
+	int m_NumHiConfFiles;					// number of input hiconfidence file specs
+	char m_szHiConfFiles[cMaxInFileSpecs][_MAX_PATH];		// input hiconfidence files		
+	char m_szPacBioSfxFile[_MAX_PATH];		// name of input file containing suffix indexed pacbio sequences
 	char m_szOutFile[_MAX_PATH];			// where to write merged scaffolded sequences
 
 
@@ -167,7 +178,15 @@ class CPBScaffold
 	CSfxArrayV3 *m_pSfxArray;					// suffix array file (m_szTargFile) is loaded into this
 	void Init(void);							// initialise state to that immediately following construction
 	void Reset(bool bSync);						// reset state, if bSync true then fsync before closing output file handles
-	int LoadTargetSeqs(char *pszTargFile);		// load sequences in this file into in memory suffix array; file may contain preindexed sequences 
+	int LoadTargetSeqs(char *pszTargFile);		// load sequences in this file into in memory suffix array; file expected to contain preindexed sequences 
+
+	int LoadTargetSeqs(int MinSeqLen,int NumTargFiles,char **pszTargFiles);		// parse, and index sequences in this file into in memory suffix array; file expected to contain either fasta or fastq sequences
+
+	int ProcessBioseqFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
+				 char *pszFile);				// file containing sequences
+
+	int ProcessFastaFile(int MinSeqLen,			// only accept for indexing sequences of at least this length
+				char *pszFile);					// file containing sequences
 
 	int IdentifyScaffoldOverlaps(int MaxSeqLen,		// max length sequence to be overlapped
 							int NumOvlpThreads);		// identify all scaffold overlaps using this many threads
@@ -198,6 +217,7 @@ class CPBScaffold
 static int SortLenDescending(const void *arg1, const void *arg2);
 static int SortCoreHitsByTargProbeOfs(const void *arg1, const void *arg2);
 static int SortCoreHitsByProbeTargOfs(const void *arg1, const void *arg2);
+
 
 	bool m_bMutexesCreated;			// will be set true if synchronisation mutexes have been created
 	int CreateMutexes(void);
@@ -241,8 +261,11 @@ public:
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		UINT32 MinScaffSeqLen,		// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 		UINT32 MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
-		char *pszInputFile,			// name of input file containing higher confidence query contig sequences to be aligned and merged into targeted scaffolds
-		char *pszTargFile,			// name of input file containing targeted lower confidence sequences which are to be used for scaffolding
+		char *pszPacBioSfxFile,		// pre-indexed PacBio sequences
+		int NumPacBioFiles,			// number of input pacbio file specs
+		char *pszPacBioFiles[],		// input pacbio files
+		int NumHiConfFiles,			// number of input hiconfidence file specs
+		char *pszHiConfFiles[],		// input hiconfidence files		
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads);			// maximum number of worker threads to use
 
