@@ -1,5 +1,5 @@
-bin_PROGRAMS = filterreads
-filterreads_SOURCES= filterreads.cpp
+bin_PROGRAMS = gencomposition
+gencomposition_SOURCES= gencomposition.cpp
 
 
 # set the include path found by configure

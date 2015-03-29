@@ -418,7 +418,7 @@ m4trace:configure.ac:13: -1- _AM_SUBST_NOTMAKE([am__fastdepCXX_FALSE])
 m4trace:configure.ac:15: -1- AC_CONFIG_FILES([Makefile libbiokanga/Makefile libBKPLPlot/Makefile genhyperconserved/Makefile
 	 genbiobed/Makefile genbiomultialign/Makefile
 	 splitmultifasta/Makefile genelementseq/Makefile psl2csv/Makefile
-	 genhyperdropouts/Makefile
+	 genhyperdropouts/Makefile gencomposition/Makefile
 	 FindShortApproxMatches/Makefile locsfx/Makefile
 	 csvmerge/Makefile csv2bed/Makefile csv2fasta/Makefile csvfilter/Makefile bed2csv/Makefile
 	 FastaToPE/Makefile locseqs/Makefile gensampler/Makefile

@@ -301,16 +301,17 @@ static	unsigned __stdcall ThreadedPrereadBlocks(void * pThreadPars);
 	HANDLE m_JobReqEvent;
 	HANDLE m_JobAckEvent;						// used by background thread to ack the job request when job processed
 	HANDLE m_JobMutex;							// used to serialise access by main and background thread to shared resources
-	CRITICAL_SECTION m_hSCritSectBaseFlags;						// used to serialise updates to base flags
 #else
 	int m_threadRslt;								// result as returned by pthread_create ()
 	pthread_t m_threadID;							// identifier as set by pthread_create ()
 	pthread_mutex_t m_JobMutex;					// used to serialise access by main and background thread to shared resources
-	pthread_spinlock_t m_hSpinLockBaseFlags;	// used to serialise updates to base flags
 	pthread_cond_t m_JobReqEvent;
 	pthread_cond_t m_JobAckEvent;
 static	void *ThreadedPrereadBlocks(void * pThreadPars);
 #endif
+
+	volatile unsigned int m_CASSeqFlags; // used with synchronous compare and swap (CAS) for serialising access to base flags
+
 
 	void SerialiseBaseFlags(void);
 	void ReleaseBaseFlags(void);

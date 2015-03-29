@@ -15,13 +15,15 @@
 
 
 const int cMinSeedCoreLen = 8;							// user can specify seed cores down to this minimum length
-const int cDfltSeedCoreLen = 14;						// default seed cores of this length
+const int cDfltSeedCoreLen = 15;						// default seed cores of this length
 const int cMaxSeedCoreLen = 25;							// user can specify seed cores up to to this maximum length
-const int cMinNumSeedCores = 3;							// user can specify requiring at least this many seed cores between overlapping scaffold sequences
-const int cDfltNumSeedCores = 5;						// default is to require at least this many seed cores between overlapping scaffold sequences
-const int cMaxNumSeedCores = 25;						// user can specify requiring up to many seed cores between overlapping scaffold sequences
+const int cDfltDeltaCoreOfs = 1;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
+const int cDfltMaxSeedCoreDepth = 10000;                // only extend a seed core if there are no more than this number of matching cores in all targeted sequences
+const int cDfltMaxAcceptHitsPerSeedCore = 10000;		// only accept up to this many extended cores at any probe offset 
+const int cMinNumSeedCores = 1;							// user can specify requiring at least this many seed cores between overlapping scaffold sequences
+const int cDfltNumSeedCores = 15;						// default is to require at least this many seed cores between overlapping scaffold sequences
+const int cMaxNumSeedCores = 50;						// user can specify requiring up to many seed cores between overlapping scaffold sequences
 const int cAnchorLen = 10;								// require 5' and 3' end anchors of at least this length for overlap merging
-const int cMaxHitsPerSeedCore = 5000;					// limit number of hits from any seed core onto other sequences to be this
 const int cQualCoreKMerLen = 3;							// using trimers when checking for core downstream shared kmers between probe and target. Note currently a max of 4 would be supported as any more would violate cQualCoreDelta constraint 
 const int cQualCoreDelta = (cQualCoreKMerLen * 2) + 1;	 // looking for matching trimers starting within +/- 7bp of the probe trimer. NOTE must be <= cMinSeedCoreLen
 const int cQualCoreThres = 25;							 // require at least this many kmers to be shared between probe and target before accepting core
@@ -47,8 +49,8 @@ const int cDfltMinOverlapLen = 5000;					 // default minimum putative overlap le
 
 const int cAllocdNumCoreHits = 1000000;					 // each thread preallocs for this many core hits, realloc'd as may be required
 const int cAllocdQuerySeqLen = 500000;					 // each thread preallocs to hold query sequences of this length, realloc'd as may be required
-const int cSummaryTargCoreHitCnts = 10;					 // summary core hit counts on at most this many targets
+const int cSummaryTargCoreHitCnts = 200;				 // summary core hit counts on at most this many targets
 
 const int cChkOverlapGapLen = 20;						 // if gap between probe cores with at least one match > this threhold then set core probe offset at which to check for core extension (set 0 to disable core extensions)
 
-const int cMaxWorkerThreads = 128;			// limiting max number of threads to this many
+const int cMaxWorkerThreads = 128;							// limiting max number of threads to this many

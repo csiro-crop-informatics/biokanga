@@ -15,7 +15,7 @@ AC_PROG_INSTALL
 AC_OUTPUT(Makefile libbiokanga/Makefile libBKPLPlot/Makefile genhyperconserved/Makefile
 	 genbiobed/Makefile genbiomultialign/Makefile
 	 splitmultifasta/Makefile genelementseq/Makefile psl2csv/Makefile
-	 genhyperdropouts/Makefile
+	 genhyperdropouts/Makefile gencomposition/Makefile
 	 FindShortApproxMatches/Makefile locsfx/Makefile
 	 csvmerge/Makefile csv2bed/Makefile csv2fasta/Makefile csvfilter/Makefile bed2csv/Makefile
 	 FastaToPE/Makefile locseqs/Makefile gensampler/Makefile

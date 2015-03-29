@@ -2,7 +2,7 @@ SUBDIRS = libbiokanga libBKPLPlot genhyperconserved genbiobed \
 	  genbiomultialign splitmultifasta genhyperdropouts \
 	  genelementseq psl2csv FindShortApproxMatches locsfx \
 	  csvmerge csv2bed csv2fasta bed2csv csvfilter \
-	  locseqs gensampler \
+	  locseqs gensampler gencomposition \
 	  csv2stats genloci2gene locsw \
 	  fasta2dist fasta2bed FastaToPE quickcount csv2feat genalignstats \
 	  genalignref2relloci genalignloci2core maploci2features \

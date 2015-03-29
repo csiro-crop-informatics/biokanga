@@ -21,7 +21,8 @@ const int cMaxDupEntries = 10;				// report 1st 10 duplicate entry names
 const int cMaxAllocBuffChunk = 0x00ffffff;	// buffer for fasta sequences is realloc'd in this sized chunks
 
 typedef enum TAG_ePBPMode {
-	ePBPMOverlaps										// overlap discovery
+	ePBPMOverlaps,										// overlap discovery mode, generates output overlap loci detail csv file to use as input in subsequent ePBPMScaffold processing mode
+	ePBPMScaffold										// scaffolding mode, uses previously generated overlap loci detail csv file and scaffolds
 	} etPBPMode;
 
 #pragma pack(1)
@@ -74,6 +75,7 @@ typedef struct TAG_sPBOverlaps {
 
 typedef struct TAG_sPBScaffNode {
 	UINT32 NodeID;					// uniquely identifies this node
+	UINT32 VertexID;				// assembly graph vertex identifier
 	UINT32 EntryID;					// suffix array entry identifier for indexed sequence
 	UINT32 SeqLen;					// length in bp of this scaffolding node sequence
 	UINT32 flgCurProc:1;			// sequence is currently being processed
@@ -107,11 +109,13 @@ typedef struct TAG_sThreadPBScaffold {
 
 	UINT32 MinOverlapLen;			// the putative overlap would be of at least this length
 	bool bRevCpl;					// true if probe sequence is to be revcpl when looking for overlaps
+	UINT32 MaxSeedCoreDepth;		// only further extend a seed core if there are no more than this number of matching cores in all targeted sequences
+	UINT32 DeltaCoreOfs;			// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
 	UINT32 CoreSeqLen;				// putative overlaps are explored if there are cores of at least this length in any putative overlap
 	UINT32 MinNumCores;				// and if the putative overlap contains at least this many cores
+	UINT32 MaxAcceptHitsPerSeedCore; // limit accepted hits per seed core to no more this many
 	UINT32 MinScaffSeqLen;			// only process scaffold sequences which are at least this length
 
-	UINT32 MaxHitsPerSeedCore;		// limit number of hits per seed core to this many
 	UINT32 NumTargCoreHitCnts;		// current number of summary target core hit counts in TargCoreHitCnts
 	sPBCoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts]; // top targets by core hit counts
 	UINT32 NumCoreHits;				// currently this many core hits in m_pCoreHits
@@ -140,18 +144,23 @@ typedef struct TAG_sThreadPBScaffold {
 class CPBScaffold
 {
 	etPBPMode m_PMode;						// processing mode
+
+	UINT32 m_DeltaCoreOfs;					// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
+	UINT32 m_MaxSeedCoreDepth;				// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
+
 	UINT32 m_MinSeedCoreLen;				// use seed cores of this length when identifying putative overlapping scaffold sequences
 	UINT32 m_MinNumSeedCores;				// require at least this many seed cores between overlapping scaffold sequences
-	UINT32 m_MaxHitsPerSeedCore;			// limit number of hits per seed core to this many
 
 	int m_SWMatchScore;						// SW score for matching bases (0..100)
 	int m_SWMismatchPenalty;				// SW mismatch penalty (-100..0)
 	int m_SWGapOpenPenalty;					// SW gap opening penalty (-100..0)
 	int m_SWGapExtnPenalty;					// SW gap extension penalty (-100..0)
 	int m_SWProgExtnPenaltyLen;				// SW progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
-
-	UINT32 m_ProvOverlapped;				// number provisionally overlapped, could be containing, another PacBio read
-	UINT32 m_ProvContained;					// number provisionally contained within another PacBio read
+	
+	UINT32 m_NumOverlapProcessed;			// number of PacBio reads processed for overlapping other PacBio reads
+	UINT32 m_ProvOverlapping;               // number of PacBio reads overlapping at least one other PacBio read
+	UINT32 m_ProvOverlapped;				// number of PacBio reads provisionally overlapped, could be containing, another PacBio read
+	UINT32 m_ProvContained;					// number of PacBio readsprovisionally contained within another PacBio read
 
 	UINT32 m_MinScaffSeqLen;				// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 	UINT32 m_MinScaffOverlap;				// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
@@ -176,6 +185,9 @@ class CPBScaffold
 	UINT32 *m_pMapEntryID2NodeIDs;				// used to map from suffix array entry identifiers to the corresponding scaffolding node identifier
 
 	CSfxArrayV3 *m_pSfxArray;					// suffix array file (m_szTargFile) is loaded into this
+
+	CAssembGraph *m_pAssembGraph;				// overlapping sequences are assembled into scaffolds using this class
+
 	void Init(void);							// initialise state to that immediately following construction
 	void Reset(bool bSync);						// reset state, if bSync true then fsync before closing output file handles
 	int LoadTargetSeqs(char *pszTargFile);		// load sequences in this file into in memory suffix array; file expected to contain preindexed sequences 
@@ -247,11 +259,10 @@ public:
 
 	int ThreadIdentScaffOverlaps(tsThreadPBScaffold *pThreadPar);
 
-	int			// number of targets identified having core hits in concordance with probe cores
-		IdentConcordTargs(tsThreadPBScaffold *pThreadPar);
-
 	int
 	Process(etPBPMode PMode,		// processing mode
+		UINT32 DeltaCoreOfs,		// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
+		UINT32 MaxSeedCoreDepth,    // only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		UINT32 MinSeedCoreLen,		// use seed cores of this length when identifying putative overlapping scaffold sequences
 		UINT32 MinNumSeedCores,     // require at least this many seed cores between overlapping scaffold sequences
 		int SWMatchScore,			// score for matching bases (0..100)
@@ -261,6 +272,7 @@ public:
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		UINT32 MinScaffSeqLen,		// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 		UINT32 MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
+		char *pszPacBioOvlps,		// pregenerated PacBio sequence overlap loci details
 		char *pszPacBioSfxFile,		// pre-indexed PacBio sequences
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
@@ -269,9 +281,7 @@ public:
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads);			// maximum number of worker threads to use
 
-	int
-	GenTargIndex(UINT32 MinScaffoldLen,	// individual indexed scaffold sequences must be at least this length
-				 char *pszTargFile);	// load sequences from this file
+	int LoadPacBioOvlps(char *pszPacBioOvlps, bool bValidateOnly = false);	// load pregenerated PacBio sequence overlap loci CSV file
 };
 
 

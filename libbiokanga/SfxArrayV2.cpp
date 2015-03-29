@@ -69,6 +69,7 @@ m_bInMemSfx = false;
 m_MaxQSortThreads = cDfltSortThreads;
 m_MTqsort.SetMaxThreads(m_MaxQSortThreads);
 m_MaxSfxBlockEls = cMaxAllowConcatSeqLen;
+m_CASSeqFlags = 0;
 
 #ifdef _WIN32
 m_threadID = 0;
@@ -96,7 +97,6 @@ if(m_bThreadActive)	// if processing reads against sfx blocks then need to termi
 	pthread_cond_signal(&m_JobReqEvent);
 	pthread_join(m_threadID,NULL);
 	pthread_mutex_destroy(&m_JobMutex);
-	pthread_spin_destroy(&m_hSpinLockBaseFlags);
 	pthread_cond_destroy(&m_JobReqEvent);
 	pthread_cond_destroy(&m_JobAckEvent);
 #endif
@@ -230,7 +230,7 @@ if(m_pOccKMerClas != NULL)
 #endif
 	m_pOccKMerClas = NULL;
 	}
-
+m_CASSeqFlags = 0;
 m_AllocEntriesBlockMem = 0;
 m_AllocSfxBlockMem = 0;
 m_AllocBisulfiteMem = 0;
@@ -1043,17 +1043,7 @@ else // else opening existing file
 		return(eBSFerrInternal);
 		}
 
-#ifdef _WIN32
-if(!InitializeCriticalSectionAndSpinCount(&m_hSCritSectBaseFlags,1000))
-	{
-#else
-if(pthread_spin_init(&m_hSpinLockBaseFlags,PTHREAD_PROCESS_PRIVATE)!=0)
-	{
-#endif
-	AddErrMsg("CSfxArrayV3::Open","Fatal: unable to create m_hSCritSectBaseFlags");
-		Reset(false);			// closes opened file..
-		return(eBSFerrInternal);
-	}
+m_CASSeqFlags = 0;
 
 	// now to create/start the actual background readahead thread
 #ifdef _WIN32
@@ -1854,41 +1844,44 @@ for(Idx = 0; Idx < m_pEntriesBlock->NumEntries; Idx++,pEntry++)
 return(TotLen);
 }
 
-
-// serialise access to base flags in the upper nibble with base in lower 4 bits
-inline void
+void
 CSfxArrayV3::SerialiseBaseFlags(void)
 {
-int SpinCnt = 5000;
+int SpinCnt = 500;
+int BackoffMS = 5;
+
 #ifdef _WIN32
-while(!TryEnterCriticalSection(&m_hSCritSectBaseFlags))
+while(InterlockedCompareExchange(&m_CASSeqFlags,1,0)!=0)
 	{
 	if(SpinCnt -= 1)
 		continue;
-	SwitchToThread();
-	SpinCnt = 500;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 100;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
 	}
 #else
-while(pthread_spin_trylock(&m_hSpinLockBaseFlags)==EBUSY)
+while(__sync_val_compare_and_swap(&m_CASSeqFlags,0,1)!=0)
 	{
 	if(SpinCnt -= 1)
 		continue;
-	pthread_yield();
-	SpinCnt = 500;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 100;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
 	}
 #endif
 }
 
-inline void
+void
 CSfxArrayV3::ReleaseBaseFlags(void)
 {
 #ifdef _WIN32
-LeaveCriticalSection(&m_hSCritSectBaseFlags);
+InterlockedCompareExchange(&m_CASSeqFlags,0,1);
 #else
-pthread_spin_unlock(&m_hSpinLockBaseFlags);
+__sync_val_compare_and_swap(&m_CASSeqFlags,1,0);
 #endif
 }
-
 
 int 
 CSfxArrayV3::GetBaseFlags(UINT32 EntryID,		// identifies sequence containing loci flags to be returned - flags returned are in bits 0..3
@@ -3098,9 +3091,10 @@ return(0);		// no more hits
 const int cMinPacBioSeedCoreLen = 8;							// user can specify seed cores down to this minimum length
 const int cMaxPacBioSeedCoreLen = 25;							// user can specify seed cores up to to this maximum length
 const int cPacBioSeedCoreExtn = 100;							// looking for matches over this length seed core extension
-const int cPacBiokExtnKMerLen = 7;								// matches in seed core extension must be of this length
-const int cPacBioMinKmersExtn = 6;							    // require at least this many cPacBiokExtnKMerLen-mer matches over this length seed core extension
+const int cPacBiokExtnKMerLen = 4;								// matches in seed core extension must be of at least this length
+const int cPacBioMinKmersExtn = 70;							    // require at least this many cPacBiokExtnKMerLen-mer matches over cPacBioSeedCoreExtn core extension
 
+static INT64 NumKMersDist[200];
 
 INT64						// returned hit idex (1..n) or 0 if no hits
 CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
@@ -3121,7 +3115,6 @@ etSeqBase *pTarg;			// target sequence
 void *pSfxArray;			// target sequence suffix array
 INT64 SfxLen;				// number of suffixs in pSfxArray
 INT64 TargLoci;
-int NumKmers;
 int TargKMerLen;
 etSeqBase *pQAnchor;
 etSeqBase *pTAnchor;
@@ -3131,7 +3124,7 @@ etSeqBase *pTBase;
 int QAnchorIdx;
 int TAnchorIdx;
 int TMaxAnchorIdx;
-int CurKMerMatchLen;
+int MatchBaseLen;
 
 *pHitLoci = 0;
 *pTargEntryID = 0;
@@ -3204,38 +3197,60 @@ while(1)
 
 
 
-	// see if the target sequence, using the initial matching core contains any other exactly matching k-mer
-	NumKmers = 0;
-	pTAnchor = pEl2;
-	pQAnchor = &pProbeSeq[SeedCoreLen];
-	for(QAnchorIdx = SeedCoreLen; QAnchorIdx < cPacBioSeedCoreExtn; QAnchorIdx++,pQAnchor++)
+	// see if the target sequence, using the initial matching core can be extended
+	int CurKMerMatchLen;
+	QAnchorIdx = SeedCoreLen;
+	pQAnchor = &pProbeSeq[QAnchorIdx];
+	pTAnchor = &pEl2[QAnchorIdx];
+	for(MatchBaseLen = SeedCoreLen; QAnchorIdx <= cPacBioSeedCoreExtn; QAnchorIdx++,pQAnchor++,pTAnchor++,MatchBaseLen++)
 		{
-		pQBase = pQAnchor;
-		TAnchorIdx = QAnchorIdx - (QAnchorIdx/5);
-		pTBase = 	&pTAnchor[TAnchorIdx];
-		TMaxAnchorIdx = min(cPacBioSeedCoreExtn+20,TargKMerLen + QAnchorIdx + (QAnchorIdx/5));
-		for(CurKMerMatchLen = 0; TAnchorIdx < TMaxAnchorIdx; TAnchorIdx++)
+		if((*pQAnchor & 0x07) != (*pTAnchor & 0x07))
+			break;
+		}
+	if(MatchBaseLen < cPacBioMinKmersExtn)
+		{
+		int SyncIdx = QAnchorIdx;
+		for(TAnchorIdx = QAnchorIdx; QAnchorIdx <= cPacBioSeedCoreExtn; QAnchorIdx++)
 			{
-			if((*pTBase++ & 0x07) == (*pQBase++ & 0x07))
+			pQAnchor = &pProbeSeq[QAnchorIdx];
+			TAnchorIdx = max(SyncIdx,QAnchorIdx - (QAnchorIdx/5));
+			TMaxAnchorIdx = min(cPacBioSeedCoreExtn+20-TargKMerLen,QAnchorIdx + (QAnchorIdx/5));
+			for(CurKMerMatchLen = 0; TAnchorIdx <= TMaxAnchorIdx; TAnchorIdx++)
 				{
-				CurKMerMatchLen += 1;
-				if(CurKMerMatchLen == TargKMerLen)
+				pQBase = pQAnchor;
+				pTBase = 	&pEl2[TAnchorIdx];
+				while((*pTBase++ & 0x07) == (*pQBase++ & 0x07))
 					{
-					NumKmers += 1;
-					QAnchorIdx += TargKMerLen/2;
-					pQAnchor += TargKMerLen/2;
+					CurKMerMatchLen += 1;
+					if(CurKMerMatchLen >= TargKMerLen)
+						{
+						if(CurKMerMatchLen == TargKMerLen)
+							MatchBaseLen += TargKMerLen;
+						else
+							MatchBaseLen += 1;
+						}
+					if((CurKMerMatchLen + TAnchorIdx) < (cPacBioSeedCoreExtn+20))
+						continue;
+					}
+
+				if(CurKMerMatchLen >= TargKMerLen)
+					{
+					QAnchorIdx += CurKMerMatchLen;
+					SyncIdx = TAnchorIdx + CurKMerMatchLen;
 					break;
 					}
-				continue;
+				CurKMerMatchLen = 0;
 				}
-			if((TMaxAnchorIdx - TAnchorIdx) <= TargKMerLen)
-				break;
-			pQBase = pQAnchor;
-			CurKMerMatchLen = 0;
-			}
 			
+			if(MatchBaseLen >= cPacBioMinKmersExtn ||
+				(QAnchorIdx > (cPacBioSeedCoreExtn/4) && ((MatchBaseLen * 2) < (cPacBioMinKmersExtn * QAnchorIdx)/cPacBioSeedCoreExtn)))
+				break;
+			}
 		}
-	if(NumKmers < cPacBioMinKmersExtn)
+
+	NumKMersDist[MatchBaseLen] += 1;
+
+	if(MatchBaseLen < cPacBioMinKmersExtn)
 		{
 		if(!bFirst)
 			PrevHitIdx += 1;

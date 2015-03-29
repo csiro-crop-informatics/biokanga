@@ -12,7 +12,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const unsigned int cProgVer = 103;		// increment with each release
+const unsigned int cProgVer = 106;		// increment with each release
 
 const int cMaxNMerLen = 12;				// maximum length N-Mer (don't change unless code dependencies checked and plenty of memory!)
 const int cDfltNMerLen= 5;				// default N-Mer length
@@ -92,7 +92,7 @@ typedef struct TAG_sProcParams
 	int AllocdSeqLen;			// currently allocated for subsequences
 	etSeqBase *pSeq;			// memory to hold loci subsequence loaded from pBioSeq
 
-	unsigned int *pCntStepCnts;		// array of stats counters organised in [Step] order
+	INT64 *pCntStepCnts;		// array of stats counters organised in [Step] order
 	int NumCntSteps;				// number of steps in pCntStepCnts
 	int NumRegions;					// number of regions per step
 	int CntStepOfs[cMaxNMerLen];	// ofs into pCntStepCnts for each NMer length
@@ -380,7 +380,7 @@ if (!argerrors)
 			}
 		if(iRegionsIn & (cIntronExonSpliceSite | cExonIntronSpliceSite))
 			{
-			printf("Error: Can't specify 5'Splice and 3'Splice to be exclusively retained with '-r%'",szRegionsIn);
+			printf("Error: Can't specify 5'Splice and 3'Splice to be exclusively retained with '-r%s'",szRegionsIn);
 			exit(1);
 			}
 		}
@@ -586,13 +586,13 @@ RsltsFormat2Text(teRsltsFormat Format)
 {
 switch(Format) {
 	case eRsltsFasta:	// all sequences concatenated as single fasta record
-		return("Sequences concatenated into single Fasta record");
+		return((char *)"Sequences concatenated into single Fasta record");
 	case eRsltsMultifasta:	// sequences as multifasta
-		return("Sequences as multiple fasta records");
+		return((char *)"Sequences as multiple fasta records");
 	default:
 		break;
 	}
-return("Unsupported");
+return((char *)"Unsupported");
 }
 
 char *
@@ -600,15 +600,15 @@ CSVFormat2Text(teCSVFormat Format)
 {
 switch(Format) {
 	case eCSVFdefault:
-		return("Default 9+ field loci");
+		return((char *)"Default 9+ field loci");
 	case eCSVFprobe:
-		return("locsfx probe loci");
+		return((char *)"locsfx probe loci");
 	case eCSVFtarget:
-		return("locsfx target loci");
+		return((char *)"locsfx target loci");
 	default:
 		break;
 	}
-return("Unsupported");
+return((char *)"Unsupported");
 }
 
 char *
@@ -616,14 +616,14 @@ ProcMode2Txt(etProcMode ProcMode)
 {
 switch(ProcMode) {
 	case eProcModeNMerDistAllSeqs:
-		return("process N-Mer frequency distribution over all sequences");
+		return((char *)"process N-Mer frequency distribution over all sequences");
 	case eProcModeNMerDistPerSeq:
-		return("process per sequence N-Mer frequency distribution");
+		return((char *)"process per sequence N-Mer frequency distribution");
 
 	default:
 		break;
 	}
-return("Unsupported");
+return((char *)"Unsupported");
 }
 
 // ParseRegions
@@ -685,7 +685,7 @@ Regions2Txt(int Regions)
 {
 static char szRegions[200];
 if(!Regions)
-	return("None specified");
+	return((char *)"None specified");
 if(Regions & cFeatBitIG || Regions == 0)
 	strcpy(szRegions,"Intergenic");
 else
@@ -1197,17 +1197,21 @@ for(Idx = 0; Idx < MaxNMerLen; Idx++)
 	NumCnts += RegionCnts;
 	}
 	
-if((ProcParams.pCntStepCnts = new unsigned int[NumCnts])==NULL)
+if((ProcParams.pCntStepCnts = new INT64[NumCnts])==NULL)
 	{
 	Cleanup(&ProcParams);
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"nUnable to allocate memory (%d bytes) for holding composition statistics",sizeof(int) * NumCnts);
 	return(eBSFerrMem);
 	}
-memset(ProcParams.pCntStepCnts,0,NumCnts * sizeof(unsigned int));
+memset(ProcParams.pCntStepCnts,0,NumCnts * sizeof(INT64));
 ProcParams.NumCntSteps = NumCnts;
 
 if(pszRsltsFile != NULL && pszRsltsFile[0] != '\0')
+#ifdef _WIN32
 	if((ProcParams.hRsltsFile = open(pszRsltsFile, _O_RDWR | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC, _S_IREAD | _S_IWRITE ))==-1)
+#else
+	if((ProcParams.hRsltsFile = open(pszRsltsFile, O_RDWR | O_CREAT | O_TRUNC, S_IREAD | S_IWRITE ))==-1)
+#endif
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to create output results file: %s - %s",pszRsltsFile,strerror(errno));
 		Cleanup(&ProcParams);
@@ -1270,7 +1274,7 @@ int InRefIDs = 0;
 NumElsRead =0;		// number of elements before filtering
 NumElsAccepted =0;	// number of elements accepted after filtering
 NumElsRejected = 0; // number of elements rejected
-memset(pParams->pCntStepCnts,0,pParams->NumCntSteps * sizeof(unsigned int));
+memset(pParams->pCntStepCnts,0,pParams->NumCntSteps * sizeof(INT64));
 while((!bUseCSV && NumSeqEntries) || (bUseCSV && (Rslt=pParams->pCSV->NextLine()) > 0))	// onto next line containing fields
 	{
 	if(bUseCSV)
@@ -1330,7 +1334,7 @@ while((!bUseCSV && NumSeqEntries) || (bUseCSV && (Rslt=pParams->pCSV->NextLine()
 		Len = pParams->pBioseq->GetDataLen(EntryID);
 		pParams->pBioseq->GetName(EntryID,sizeof(szSeqName)-1,szSeqName);
 		pszChrom = szSeqName; 
-		pszType = "seq";
+		pszType = (char *)"seq";
 		pParams->pBioseq->GetTitle(sizeof(szSeqTitle)-1,szSeqTitle);
 		pszSpecies = szSeqTitle;
 		StartLoci = 0;
@@ -1426,7 +1430,7 @@ while((!bUseCSV && NumSeqEntries) || (bUseCSV && (Rslt=pParams->pCSV->NextLine()
 		pParams->CurRegion = Region; 
 
 		if(pParams->ProcMode == eProcModeNMerDistPerSeq) 
-			memset(pParams->pCntStepCnts,0,pParams->NumCntSteps * sizeof(unsigned int));
+			memset(pParams->pCntStepCnts,0,pParams->NumCntSteps * sizeof(INT64));
 		if((Rslt=ProcessSequence(pParams)) < 0)
 			return(Rslt);
 		if(pParams->ProcMode == eProcModeNMerDistPerSeq && 
@@ -1470,7 +1474,7 @@ return(Rslt);
 int
 ProcessSequence(tsProcParams *pParams)
 {
-unsigned int *pCnt;
+INT64 *pCnt;
 int Idx;
 int SeqIdx;
 int CurSeqIdxLen;
@@ -1497,9 +1501,9 @@ int
 OutputResults(tsProcParams *pParams)
 {
 char szLineBuff[cMaxReadLen];
-unsigned int *pCnt;
+INT64 *pCnt;
 
-unsigned int Tot;
+INT64 Tot;
 int Len;
 int NumSteps;
 int StepIdx;
@@ -1526,7 +1530,7 @@ for(Idx = 0; Idx < pParams->MaxNMerLen; Idx++)
 		{
 		if(!*pCnt)
 			continue;
-		Len = sprintf(szLineBuff,"\"%s\",%d,%d,\"%s\",%d,%.10g",
+		Len = sprintf(szLineBuff,"\"%s\",%d,%d,\"%s\",%lld,%.10g",
 			pParams->ProcMode == eProcModeNMerDistAllSeqs ? pParams->pszInLociFile : pParams->pszCurChrom,
 				Idx+1,StepIdx+1,StepIdx2Seq(Idx+1,StepIdx),*pCnt,*pCnt/(double)Tot);
 		Len += sprintf(&szLineBuff[Len],"\n");
