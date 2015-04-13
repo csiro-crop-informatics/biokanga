@@ -67,10 +67,10 @@ protected:
 
 public:
 	CSfxNMerFreq(void);
-	CSfxNMerFreq(bool m_bOverRep,int MinFreqCutoff,int MaxFreqCutoff, int MaxInstances, int NMerLen);
+	CSfxNMerFreq(bool bOverRep,int MinFreqCutoff,int MaxFreqCutoff, int MaxInstances, int NMerLen);
 	~CSfxNMerFreq(void);
 	void Reset(void);
-	int Init(bool m_bOverRep,int MinFreqCutoff,int MaxFreqCutoff, int MaxInstances, int NMerLen);
+	int Init(bool bOverRep,int MinFreqCutoff,int MaxFreqCutoff, int MaxInstances, int NMerLen);
 	int GetNumInstances(void);
 	int GetNMerLen(void);
 };

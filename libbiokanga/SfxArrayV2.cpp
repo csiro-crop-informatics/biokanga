@@ -3229,8 +3229,8 @@ while(1)
 						else
 							MatchBaseLen += 1;
 						}
-					if((CurKMerMatchLen + TAnchorIdx) < (cPacBioSeedCoreExtn+20))
-						continue;
+					if((CurKMerMatchLen + TAnchorIdx) > (cPacBioSeedCoreExtn+20))
+						break;
 					}
 
 				if(CurKMerMatchLen >= TargKMerLen)

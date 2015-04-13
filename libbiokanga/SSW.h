@@ -28,7 +28,7 @@ const int cSSWDfltDlyGapExtn = 2;       // delay applying gap extension penalty 
 const int cSSWDfltProgPenaliseGapExtn = 0; // if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
 
 const int cSSWMinAnchorLen = 3;			// can specify exactly matching anchors down to this length 
-const int cSSWDfltAnchorLen = 10;		// default exactly matching anchors of at least this length to be identified 
+const int cSSWDfltAnchorLen = 8;		// default exactly matching anchors of at least this length to be identified 
 const int cSSWMaxAnchorLen = 1000;      // can specify exactly matching anchors of at most this length  
 
 const int cMaxInitiatePathOfs = 500;    // default is to require SW paths to have started within this many bp on either the probe or target - effectively anchoring the SW
@@ -58,7 +58,8 @@ typedef struct TAG_sSSWCell {
 
 	INT32 PeakScore;			// peak score along path
 	INT32 CurScore;				// current score
-	UINT32 CurGapLen;			// current gap length
+	UINT32 LeftInDelLen;		// current left (insert relative to target) gap length
+	UINT32 DownInDelLen;		// current down (deletion relative to target) gap length
 	UINT32 CurExactLen;			// current exactly matching sequence length
 	
 } tsSSWCell;

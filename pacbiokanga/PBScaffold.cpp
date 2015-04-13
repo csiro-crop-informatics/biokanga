@@ -30,6 +30,7 @@
 
 #include "../libbiokanga/bgzf.h"
 #include "../libbiokanga/SSW.h"
+#include "pacbiocommon.h"
 #include "AssembGraph.h"
 #include "PBScaffold.h"
 
@@ -119,17 +120,17 @@ struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 ge
 struct arg_int *minscafflen = arg_int0("l","minscafflen","<int>",	"minimum individual scaffolding sequence length (default 5000, range 1000 to 100000)");
 struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum scaffold overlap required to merge into single scaffold (default 5000, range 1000 to 100000)");
 
-struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping scaffold sequences (default 15, range 8 to 25)");
-struct arg_int *minnumseedcores = arg_int0("C","minseedcores","<int>",			"require at least this many accepted seed cores between overlapping scaffold sequences (default 15, range 1 to 50)");
+struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping scaffold sequences (default 12, range 10 to 25)");
+struct arg_int *minnumseedcores = arg_int0("C","minseedcores","<int>",			"require at least this many accepted seed cores between overlapping scaffold sequences (default 10, range 1 to 50)");
 
 struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",							"offset cores (default 1, range 1 to 10)");
 struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",							"explore cores of less than this maximum depth (default 10000, range 1000 to 20000)");
 
-struct arg_int *matchscore = arg_int0("x","matchscore","<int>",								"SW score for matching bases (default 2, range 0 to 50)");
-struct arg_int *mismatchpenalty = arg_int0("X","mismatchpenalty","<int>",					"SW mismatch penalty (default 7, range 0 to 50)");
-struct arg_int *gapopenpenalty = arg_int0("y","gapopenpenalty","<int>",						"SW gap opening penalty (default 5, range 0 to 50)");
-struct arg_int *gapextnpenalty = arg_int0("Y","gapextnpenalty","<int>",						"SW gap extension penalty (default 2, range 0 to 50)");
-struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",				"SW gap extension penalty only applied for gaps of at least this number of bases (default 3, range 0 to 63)");
+struct arg_int *matchscore = arg_int0("x","matchscore","<int>",								"SW score for matching bases (default 3, range 1 to 50)");
+struct arg_int *mismatchpenalty = arg_int0("X","mismatchpenalty","<int>",					"SW mismatch penalty (default 7, range 1 to 50)");
+struct arg_int *gapopenpenalty = arg_int0("y","gapopenpenalty","<int>",						"SW gap opening penalty (default 4, range 1 to 50)");
+struct arg_int *gapextnpenalty = arg_int0("Y","gapextnpenalty","<int>",						"SW gap extension penalty (default 1, range 1 to 50)");
+struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",				"SW gap extension penalty only applied for gaps of at least this number of bases (default 2, range 1 to 63)");
 
 struct arg_file *pacbiosovlps = arg_file0("p","pacbiosovlps","<file>",						"input file containing pregenerated PacBio overlap loci detail");
 
@@ -324,33 +325,33 @@ if (!argerrors)
 		}
 
 	SWMatchScore = matchscore->count ? matchscore->ival[0] : cDfltSWMatchScore;
-	if(SWMatchScore < 0 || SWMatchScore > cMaxAllowedSWScore)
+	if(SWMatchScore < 1 || SWMatchScore > cMaxAllowedSWScore)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Match score '-x%d' must be in range 0..%d",SWMatchScore,cMaxAllowedSWScore);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Match score '-x%d' must be in range 1..%d",SWMatchScore,cMaxAllowedSWScore);
 		return(1);
 		}
 	SWMismatchPenalty = mismatchpenalty->count ? mismatchpenalty->ival[0] : abs(cDfltSWMismatchPenalty);
-	if(SWMismatchPenalty < 0 || SWMismatchPenalty > cMaxAllowedSWScore)
+	if(SWMismatchPenalty < 1 || SWMismatchPenalty > cMaxAllowedSWScore)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Mismatch penalty '-X%d' must be in range 0..%d",SWMismatchPenalty,cMaxAllowedSWScore);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Mismatch penalty '-X%d' must be in range 1..%d",SWMismatchPenalty,cMaxAllowedSWScore);
 		return(1);
 		}
 	SWGapOpenPenalty = gapopenpenalty->count ? gapopenpenalty->ival[0] : abs(cDfltSWGapOpenPenalty);
-	if(SWGapOpenPenalty < 0 || SWGapOpenPenalty > cMaxAllowedSWScore)
+	if(SWGapOpenPenalty < 1 || SWGapOpenPenalty > cMaxAllowedSWScore)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap open penalty '-y%d' must be in range 0..%d",SWGapOpenPenalty,cMaxAllowedSWScore);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap open penalty '-y%d' must be in range 1..%d",SWGapOpenPenalty,cMaxAllowedSWScore);
 		return(1);
 		}
 	SWGapExtnPenalty = gapextnpenalty->count ? gapextnpenalty->ival[0] : abs(cDfltSWGapExtnPenalty);
-	if(SWGapExtnPenalty < 0 || SWGapExtnPenalty > cMaxAllowedSWScore)
+	if(SWGapExtnPenalty < 1 || SWGapExtnPenalty > cMaxAllowedSWScore)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap extension penalty '-Y%d' must be in range 0..%d",SWGapExtnPenalty,cMaxAllowedSWScore);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap extension penalty '-Y%d' must be in range 1..%d",SWGapExtnPenalty,cMaxAllowedSWScore);
 		return(1);
 		}
 	SWProgExtnPenaltyLen = progextnpenaltylen->count ? progextnpenaltylen->ival[0] : cDfltSWProgExtnLen;
-	if(SWProgExtnPenaltyLen < 0 || SWProgExtnPenaltyLen > 63)
+	if(SWProgExtnPenaltyLen < 1 || SWProgExtnPenaltyLen > 63)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Apply gap extension progress penalty for gaps at least '-z%d' must be in range 0..%d",SWProgExtnPenaltyLen,63);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Apply gap extension progress penalty for gaps at least '-z%d' must be in range 1..%d",SWProgExtnPenaltyLen,63);
 		return(1);
 		}
 
@@ -512,7 +513,7 @@ if (!argerrors)
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW mismatch penalty: %d",SWMismatchPenalty);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW gap opening penalty: %d",SWGapOpenPenalty);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW gap extension penalty: %d",SWGapExtnPenalty);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW progressive gap extension penalty applied after gap size: %d",SWProgExtnPenaltyLen);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW gap extension penalty only applied for gaps of at least this size: %d",SWProgExtnPenaltyLen);
 
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum individual scaffolding sequence length: %dbp",MinScaffoldLen);
@@ -629,7 +630,7 @@ ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
 		int SWMismatchPenalty,		// mismatch penalty (-50..0)
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
-		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
+		int SWProgExtnPenaltyLen,	// only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int MinScaffoldLen,			// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		char *pszPacBioOvlps,		// pregenerated PacBio sequence overlap loci details
@@ -716,9 +717,12 @@ m_NumOverlapProcessed = 0;
 m_ProvOverlapping = 0;
 m_ProvOverlapped = 0;
 m_ProvContained = 0;
+m_ProvArtefact = 0;
+m_ProvSWchecked = 0;
 
 m_PMode = ePBPMOverlaps;
 
+m_OverlapFloat = cDfltMaxOverlapFloat;
 m_MinScaffSeqLen = cDfltMinScaffSeqLen;	
 m_MinScaffOverlap = cDfltMinOverlapLen;
 
@@ -890,14 +894,14 @@ pthread_rwlock_unlock(&m_hRwLock);
 }
 
 
-int					// returns number of edges added to 
+UINT32												//  returns number of overlaps loaded and accepted, if > cMaxValidID then cast to teBSFrsltCodes for actual error 
 CPBScaffold::LoadPacBioOvlps(char *pszPacBioOvlps,  // load from this pregenerated PacBio sequence overlap loci CSV file
 							 bool bValidateOnly)	// if true then simply parse and validate that the CSV format is as expected
 {
 int Rslt;
 int NumFields;
-int NumElsRead;
-int NumEdges;
+UINT32 NumElsRead;
+UINT32 NumEdges;
 
 char *pszTmp;
 int Class;
@@ -909,8 +913,10 @@ int SeedHits;
 char Sense;
 int ProbeLen;
 int TargLen;
-int	AlignLength;
+int	ProbeAlignLength;
+int	TargAlignLength;
 int	PeakScore;
+int FinalScore;
 int	NumAlignedBases;
 int	NumExactBases;
 int	NumProbeInserts;
@@ -936,7 +942,7 @@ CCSVFile *pCSV = new CCSVFile;
 if(pCSV == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate CCSVfile");
-	return(eBSFerrObj);
+	return((UINT32)eBSFerrObj);
 	}
 
 if((Rslt=pCSV->Open(pszPacBioOvlps))!=eBSFSuccess)
@@ -945,18 +951,18 @@ if((Rslt=pCSV->Open(pszPacBioOvlps))!=eBSFSuccess)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,pCSV->GetErrMsg());
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to open file: %s",pszPacBioOvlps);
 	delete pCSV;
-	return(Rslt);
+	return((UINT32)Rslt);
 	}
 NumElsRead = 0;
 NumEdges = 0;
 while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 	{
-	NumFields = pCSV->GetCurFields();		// PacBio scaffold overlap files contain 25 fields
-	if(NumFields != 25)
+	NumFields = pCSV->GetCurFields();		// PacBio scaffold overlap files contain 27 fields
+	if(NumFields != 27)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Expected PacBio overlaps CSV file number of fields to be 25 in '%s', GetCurFields() returned '%d'",pszPacBioOvlps,NumFields);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Expected PacBio overlaps CSV file number of fields to be 27 in '%s', GetCurFields() returned '%d'",pszPacBioOvlps,NumFields);
 		delete pCSV;
-		return(eBSFerrFieldCnt);
+		return((UINT32)eBSFerrFieldCnt);
 		}
 	if(!NumElsRead && pCSV->IsLikelyHeaderLine())
 		continue;
@@ -966,19 +972,19 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing Class at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		}
 	if((Rslt=pCSV->GetInt(2,&ProbeID)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeID at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 	if((Rslt=pCSV->GetText(3,&pszTmp)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeDescr at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 	strncpy(szProbeDescr,pszTmp,sizeof(szProbeDescr));
 	szProbeDescr[sizeof(szProbeDescr)-1] = '\0';
@@ -986,13 +992,13 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargID at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 	if((Rslt=pCSV->GetText(5,&pszTmp)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargDescr at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 	strncpy(szTargDescr,pszTmp,sizeof(szTargDescr));
 	szTargDescr[sizeof(szTargDescr)-1] = '\0';
@@ -1000,13 +1006,13 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing SeedHits at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 	if((Rslt=pCSV->GetText(7,&pszTmp)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing Sense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 	Sense = pszTmp[0];
 	switch(Sense) {
@@ -1015,153 +1021,167 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		default:
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing Sense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 			delete pCSV;
-			return(eBSFerrParse);
+			return((UINT32)eBSFerrParse);
 		};
 	if((Rslt=pCSV->GetInt(8,&ProbeLen)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeLen at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 	if((Rslt=pCSV->GetInt(9,&TargLen)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargLen at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(10,&AlignLength)) < 0)
+	if((Rslt=pCSV->GetInt(10,&ProbeAlignLength)) < 0)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing AlignLength at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeAlignLength at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(11,&PeakScore)) < 0)
+	if((Rslt=pCSV->GetInt(11,&TargAlignLength)) < 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargAlignLength at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+		delete pCSV;
+		return((UINT32)Rslt);
+		};
+	if((Rslt=pCSV->GetInt(12,&PeakScore)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing PeakScore at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(12,&NumAlignedBases)) < 0)
+	if((Rslt=pCSV->GetInt(13,&FinalScore)) < 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing FinalScore at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+		delete pCSV;
+		return((UINT32)Rslt);
+		};
+	if((Rslt=pCSV->GetInt(14,&NumAlignedBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumAlignedBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(13,&NumExactBases)) < 0)
+	if((Rslt=pCSV->GetInt(15,&NumExactBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumExactBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(14,&NumProbeInserts)) < 0)
+	if((Rslt=pCSV->GetInt(16,&NumProbeInserts)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumProbeInserts at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(15,&NumProbeInsertBases)) < 0)
+	if((Rslt=pCSV->GetInt(17,&NumProbeInsertBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumProbeInsertBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(16,&NumTargInserts)) < 0)
+	if((Rslt=pCSV->GetInt(18,&NumTargInserts)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumTargInserts at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(17,&NumTargInsertBases)) < 0)
+	if((Rslt=pCSV->GetInt(19,&NumTargInsertBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumTargInsertBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(18,&ProbeStartOfs)) < 0)
+	if((Rslt=pCSV->GetInt(20,&ProbeStartOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeStartOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 
-	if((Rslt=pCSV->GetInt(19,&TargStartOfs)) < 0)
+	if((Rslt=pCSV->GetInt(21,&TargStartOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargStartOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(20,&ProbeEndOfs)) < 0)
+	if((Rslt=pCSV->GetInt(22,&ProbeEndOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeEndOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(21,&TargEndOfs)) < 0)
+	if((Rslt=pCSV->GetInt(23,&TargEndOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargEndOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(22,&ProbeOfs5)) < 0)
+	if((Rslt=pCSV->GetInt(24,&ProbeOfs5)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeOfs5 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(23,&TargOfs5)) < 0)
+	if((Rslt=pCSV->GetInt(25,&TargOfs5)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargOfs5 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(24,&ProbeOfs3)) < 0)
+	if((Rslt=pCSV->GetInt(26,&ProbeOfs3)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeOfs3 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(25,&TargOfs3)) < 0)
+	if((Rslt=pCSV->GetInt(27,&TargOfs3)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargOfs3 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return((UINT32)Rslt);
 		};
 
 	// check for consistency in the PacBio read overlaps before edge processing
+	// only accepted as consistent if sequence lengths are in the range of 1000..1000000, alignments are at least 100bp, starts+100 < ends, start/ends within read sequence lengths, and SW scores less than 100000000
+	// note that all offsets are 1 based 
 	if(ProbeID < 1 || TargID < 1 || ProbeID == TargID ||  // not expecting probe to be self overlapping!
-	   PeakScore < 0 || PeakScore > 10000000 ||           // SW peak scores in the millions surely is an error????
+	   PeakScore < 0 || PeakScore > 10000000 ||  FinalScore < 0 || FinalScore > PeakScore ||         // SW scores in the millions surely is an error????
 	   Class < (int)eOLCOverlapping || Class > (int)eOLCartefact ||	// overlap classification expected to be in this range	
-	   ProbeLen < 500 || TargLen < 500 ||                 // allowing for very short PacBio reads!	
-	   ProbeStartOfs < 0 || ProbeStartOfs >= (ProbeLen - 100) ||  // expecting alignments to be at least 100bp
-	   ProbeEndOfs < (ProbeStartOfs + 100) || ProbeEndOfs >= ProbeLen || 
-	   TargStartOfs < 0 || TargStartOfs >= (TargLen - 100) ||  
-	   TargEndOfs < (TargStartOfs + 100) || TargEndOfs >= TargLen ||
+	   ProbeLen < 1000 || ProbeLen > 100000000 || TargLen < 1000 || TargLen > 100000000 ||    // allowing for PacBio reads of 1Kbp upto 100Mbp!	
+	   ProbeStartOfs < 1 || (ProbeStartOfs + 100) > ProbeLen ||  // expecting alignments to be at least 100bp and alignment start/end within the read length
+	   ProbeEndOfs < (ProbeStartOfs + 99) || ProbeEndOfs > ProbeLen || 
+	   TargStartOfs < 1 || (TargStartOfs + 100) > TargLen ||  
+	   TargEndOfs < (TargStartOfs + 99) || TargEndOfs > TargLen ||
 	   !(Sense == 'S' || Sense == 's' || Sense == 'A' || Sense == 'a')) 
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error, inconsistencies in values parsed from line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(eBSFerrParse);
+		return((UINT32)eBSFerrParse);
 		}
 	
-	if(bValidateOnly || Class >= (int)eOLCartefact)
+	if(bValidateOnly || Class > (int)eOLCartefact)
 		{
-		if(Class <  (int)eOLCartefact)
+		if(Class <=  (int)eOLCartefact)
 			NumEdges += 1;
 		continue;
 		}
 
-	UINT32 Score;	// score is dependent on: PeakScore, NumExactBases and AlignLength
-	Score = (UINT32)(((INT64)PeakScore * NumExactBases) / AlignLength);
+	UINT32 Score;	// score is dependent on: PeakScore, NumExactBases and ProbeAlignLength
+	Score = (UINT32)(((INT64)PeakScore * NumExactBases) / ProbeAlignLength);
 	if(Score > 0x07fff)
 		Score = 0x07fff;
 
-	if((Rslt = m_pAssembGraph->AddEdge(ProbeID,TargID,Score,ProbeStartOfs,ProbeEndOfs,TargStartOfs,TargEndOfs,(eOverlapClass)Class,Sense == 's' || Sense == 'S' ? false : true)) < eBSFSuccess)
+	// note that AddEdge() is expecting offsets to be 0 based hence substracting 1
+	if((NumEdges = m_pAssembGraph->AddEdge(ProbeID,TargID,Score,ProbeStartOfs-1,ProbeEndOfs-1,TargStartOfs-1,TargEndOfs-1,(eOverlapClass)Class,Sense == 's' || Sense == 'S' ? false : true)) > cMaxValidID)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge failed at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
-		return(Rslt);
+		return(NumEdges);
 		}
-	NumEdges += 1;
 	}
 
 delete pCSV;
@@ -1617,7 +1637,7 @@ CPBScaffold::Process(etPBPMode PMode,	// processing mode
 		int SWMismatchPenalty,		// mismatch penalty (-50..0)
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
-		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
+		int SWProgExtnPenaltyLen,	// only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		UINT32 MinScaffSeqLen,		// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 		UINT32 MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		char *pszPacBioOvlps,		// pregenerated PacBio sequence overlap loci details
@@ -1654,10 +1674,19 @@ m_MinNumSeedCores = MinNumSeedCores;
 m_MinScaffSeqLen = MinScaffSeqLen;	
 m_MinScaffOverlap = MinScaffOverlap; 
 
-if(PMode == ePBPMScaffold && (Rslt = LoadPacBioOvlps(pszPacBioOvlps, true)) <= 0)
+if(PMode == ePBPMScaffold)
 	{
-	Reset(false);
-	return(Rslt);
+	if((UINT32)(Rslt = (int)LoadPacBioOvlps(pszPacBioOvlps, true)) > cMaxValidID)
+		{
+		Reset(false);
+		return(Rslt);
+		}
+	if(Rslt = 0)
+		{
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadPacBioOvlps: Nothing to do, no overlaps to process");
+		Reset(false);
+		return(Rslt);
+		}
 	}
 
 if(pszPacBioSfxFile != NULL && pszPacBioSfxFile[0] != '\0')
@@ -1772,19 +1801,21 @@ if(PMode == ePBPMOverlaps)
 		}
 	}
 
-if((m_pPBScaffNodes = new tsPBScaffNode [NumTargSeqs]) == NULL)
+if((m_pPBScaffNodes = new tsPBScaffNode [NumTargSeqs + 1]) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d scaffold nodes",NumTargSeqs);
 	Reset(false);
 	return(eBSFerrMem);
 	}
-if((m_pMapEntryID2NodeIDs = new UINT32 [NumTargSeqs]) == NULL)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d scaffold nodes",NumTargSeqs);
-	Reset(false);
-	return(eBSFerrMem);
-	}
+memset(m_pPBScaffNodes,0,sizeof(tsPBScaffNode) * (NumTargSeqs+1));
 m_AllocdPBScaffNodes = NumTargSeqs;
+if((m_pMapEntryID2NodeIDs = new UINT32 [NumTargSeqs + 1]) == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d scaffold nodes",NumTargSeqs);
+	Reset(false);
+	return(eBSFerrMem);
+	}
+memset(m_pMapEntryID2NodeIDs,0,sizeof(UINT32) * (NumTargSeqs+1));
 m_NumPBScaffNodes = 0;
 
 // initialise scaffold nodes
@@ -1798,23 +1829,19 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	{
 	pCurPBScaffNode->SeqLen = m_pSfxArray->GetSeqLen(CurNodeID);
 	pCurPBScaffNode->EntryID = CurNodeID;
-	pCurPBScaffNode->flgContained = 0;
-	pCurPBScaffNode->flgCurProc = 0;
 	pCurPBScaffNode->flgUnderlength = pCurPBScaffNode->SeqLen < m_MinScaffSeqLen ? 1 : 0;
 	if(MaxSeqLen == 0 || pCurPBScaffNode->SeqLen > (UINT32)MaxSeqLen)
 		MaxSeqLen = pCurPBScaffNode->SeqLen;
 
 	if(PMode == ePBPMScaffold)
 		{
-		if((int)(pCurPBScaffNode->VertexID = m_pAssembGraph->AddVertex(pCurPBScaffNode->SeqLen,CurNodeID)) < 0)
+		if((pCurPBScaffNode->VertexID = m_pAssembGraph->AddVertex(pCurPBScaffNode->SeqLen,CurNodeID)) > cMaxValidID)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddVertex failed");
 			Reset(false);
 			return((int)pCurPBScaffNode->VertexID);
 			}
 		}
-	else
-		pCurPBScaffNode->VertexID = 0;
 	}
 m_NumPBScaffNodes = NumTargSeqs;
 if(PMode == ePBPMScaffold)
@@ -1828,7 +1855,7 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d scaffold nodes",NumTargSeqs
 
 if(m_NumPBScaffNodes > 1)
 	{
-	// sort scaffold nodes by sequence length ascending
+	// sort scaffold nodes by sequence length descending
 	m_mtqsort.SetMaxThreads(NumThreads);
 	m_mtqsort.qsort(m_pPBScaffNodes,m_NumPBScaffNodes,sizeof(tsPBScaffNode),SortLenDescending);
 	}
@@ -1848,21 +1875,34 @@ if(PMode == ePBPMOverlaps)
 	return(Rslt);
 	}	
 
-if((Rslt = LoadPacBioOvlps(pszPacBioOvlps)) <= 0)
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading previously generated PacBio sequence overlaps from file '%s' ...",pszPacBioOvlps);
+if((UINT32)(Rslt = LoadPacBioOvlps(pszPacBioOvlps)) > cMaxValidID)
 	return(Rslt);
-											
+if(Rslt == 0)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"No scaffold overlaps");
+	return(Rslt);										
+	}
 
-if((Rslt = m_pAssembGraph->FinaliseEdges()) == 0)
+if((UINT32)(Rslt = m_pAssembGraph->FinaliseEdges())  > cMaxValidID)
 	{
 	Reset(false);
 	return(Rslt);
 	}
+if(Rslt == 0)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"FinaliseEdges: No scaffold overlaps");
+	return(Rslt);										
+	}
 
-UINT32 NumDisconnectedSubGraphs = 0;
-if((NumDisconnectedSubGraphs = m_pAssembGraph->IdentifyDisconnectedSubGraphs())==0)
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted %u overlaps from file '%s' ...",(UINT32)Rslt,pszPacBioOvlps);
+
+
+UINT32 NumDiscComponents = 0;
+if((NumDiscComponents = m_pAssembGraph->IdentifyDiscComponents()) > cMaxValidID)
 	{
 	Reset(false);
-	return(Rslt);
+	return((int)NumDiscComponents);
 	}
 m_pAssembGraph->WriteScaffoldSeqs(pszOutFile);
 
@@ -2002,7 +2042,7 @@ if(m_hScaffDist < 0)
 
 if(m_hScaffDist != -1)
 	{
-	m_ScaffLineBuffIdx=sprintf(m_szScaffLineBuff,"\"Class\",\"ProbeID\",\"ProbDescr\",\"TargID\",\"TargDescr\",\"SeedHits\",\"Sense\",\"ProbeLen\",\"TargLen\",\"AlignLength\",\"PeakScore\",\"NumAlignedBases\",\"NumExactBases\",\"NumProbeInserts\",\"NumProbeInsertBases\",\"NumTargInserts\",\"NumTargInsertBases\",\"ProbeStartOfs\",\"TargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"ProbeOfs5\",\"TargOfs5\",\"ProbeOfs3\",\"TargOfs3\"");
+	m_ScaffLineBuffIdx=sprintf(m_szScaffLineBuff,"\"Class\",\"ProbeID\",\"ProbDescr\",\"TargID\",\"TargDescr\",\"SeedHits\",\"Sense\",\"ProbeLen\",\"TargLen\",\"ProbeAlignLength\",\"TargAlignLength\",\"PeakScore\",\"FinalScore\",\"NumAlignedBases\",\"NumExactBases\",\"NumProbeInserts\",\"NumProbeInsertBases\",\"NumTargInserts\",\"NumTargInsertBases\",\"ProbeStartOfs\",\"TargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"ProbeOfs5\",\"TargOfs5\",\"ProbeOfs3\",\"TargOfs3\"");
 #ifdef _PEAKSCOREACCEPT_
 	m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",\"PSAlignLength\",\"PSPeakScore\",\"PSNumAlignedBases\",\"PSNumExactBases\",\"PSNumProbeInserts\",\"PSNumProbeInsertBases\",\"PSNumTargInserts\",\"PSNumTargInsertBases\",\"PSProbeStartOfs\",\"PSTargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"PSProbeOfs5\",\"PSTargOfs5\",\"PSProbeOfs3\",\"PSTargOfs3\"");
 #endif
@@ -2039,7 +2079,8 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 60000))
 		{
 		AcquireSerialise();
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, Overlapping: %u, Overlapped: %u, Contained: %u",m_NumOverlapProcessed,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
+							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
 		ReleaseSerialise();
 		};
 	CloseHandle(pThreadPar->threadHandle);
@@ -2051,7 +2092,8 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while ((JoinRlt = pthread_timedjoin_np(pThreadPar->threadID, NULL, &ts)) != 0)
 		{
 		AcquireSerialise();
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, Overlapping: %u, Overlapped: %u, Contained: %u",m_NumOverlapProcessed,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
+							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
 		ReleaseSerialise();
 		ts.tv_sec += 60;
 		}
@@ -2081,7 +2123,8 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 	}
 
 delete pThreadPutOvlps;
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, Overlapping: %u, Overlapped: %u, Contained: %u",m_NumOverlapProcessed,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
+							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
 
 if(m_hScaffDist != -1)
 	{
@@ -2301,7 +2344,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	pCurPBScaffNode = &m_pPBScaffNodes[CurNodeID-1];
 	AcquireLock(false);
 	// slough if already processed, perhaps by another thread, or if underlength
-	if(pCurPBScaffNode->flgCurProc == 1 || pCurPBScaffNode->flgContained == 1|| pCurPBScaffNode->flgUnderlength == 1 || pCurPBScaffNode->SeqLen < ((pThreadPar->MinScaffSeqLen + 1) * 2))  
+	if(pCurPBScaffNode->flgCurProc == 1 || pCurPBScaffNode->flgContained == 1|| pCurPBScaffNode->flgUnderlength == 1 || pCurPBScaffNode->SeqLen < ((pThreadPar->MinScaffSeqLen + 1) * 2)) 
        	{
 		ReleaseLock(false);
 		continue;
@@ -2330,13 +2373,19 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	UINT32 ProvOverlapping;
 	UINT32 ProvOverlapped;
 	UINT32 ProvContained;
+	UINT32 ProvArtefact;
+	UINT32 ProvSWchecked;
 
 	tsPBScaffNode *pHitScaffNode;
 	sPBCoreHitCnts *pSummaryCnts;
 	ProvOverlapping = 0;
 	ProvOverlapped = 0;
 	ProvContained = 0;
+	ProvArtefact = 0;
+	ProvSWchecked = 0;
 
+	pThreadPar->NumTargCoreHitCnts = 0;
+	memset(pThreadPar->TargCoreHitCnts,0,sizeof(pThreadPar->TargCoreHitCnts));
 	if(pThreadPar->NumCoreHits)
 		{
 		if(pThreadPar->NumCoreHits > 1)
@@ -2499,13 +2548,20 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			}
 		}
 
+	// can't process, SW over all would be too resource intensive, all targets which meet the minimum number of core hits requested so choose the top 10 as ranked by the number of core hits
+	if(pThreadPar->NumTargCoreHitCnts > 1)
+		{
+		pThreadPar->pmtqsort->qsort(pThreadPar->TargCoreHitCnts,pThreadPar->NumTargCoreHitCnts,sizeof(sPBCoreHitCnts),SortCoreHitsDescending);
+		if(pThreadPar->NumTargCoreHitCnts > 20)
+			pThreadPar->NumTargCoreHitCnts = 20;
+		}
+
 	if(pThreadPar->NumTargCoreHitCnts > 0)
 		{
 		UINT32 CurTargCoreHitCnts;
-		sPBCoreHitCnts *pSummaryCnts;
-		
 		tsPBScaffNode *pTargNode;
-		UINT32 AlignLength;
+		UINT32 ProbeAlignLength;
+		UINT32 TargAlignLength;
 		UINT32 TargSeqLen;
 		UINT32 LongSAligns = 0;
 		UINT32 LongAAligns = 0;
@@ -2520,7 +2576,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			{
 			AcquireSerialise();
 			pThreadPar->pSW = new CSSW;
-			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,m_SWProgExtnPenaltyLen+3,cAnchorLen);
+			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
 			pThreadPar->pSW->PreAllocMaxTargLen(100000);
 			ReleaseSerialise();
 			}
@@ -2551,23 +2607,27 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 #else
 			pPeakMatchesCell = pThreadPar->pSW->Align();
 #endif
+			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= pThreadPar->MinOverlapLen)
 				{
 				ProvOverlapping += 1;
 				PeakMatchesCell = *pPeakMatchesCell;
-				AlignLength = PeakMatchesCell.NumMatches + PeakMatchesCell.NumBasesIns - PeakMatchesCell.NumBasesDel;
+				ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;
+				TargAlignLength = PeakMatchesCell.EndTOfs - PeakMatchesCell.StartTOfs + 1;
 
 				// characterise the overlapped target
 				// eOLCOverlapping if probe accepted as overlapping, either 5' or 3'
 				// eOLCcontaining if both ends of target completely contained within probe
                 // eOLCartefact if target is only partially contained
-				// Note: allowing 500bp float on overlaps to account for the PacBio error profile
 				Class = (int)eOLCOverlapping;		
-				if(PeakMatchesCell.StartTOfs < 500 && (TargSeqLen - PeakMatchesCell.EndTOfs) < 500)
+				if(PeakMatchesCell.StartTOfs < m_OverlapFloat && (TargSeqLen - PeakMatchesCell.EndTOfs) < m_OverlapFloat)
 					Class = (int)eOLCcontaining;
-				if((PeakMatchesCell.StartTOfs >= 500 &&  PeakMatchesCell.StartPOfs >= 500) ||
-					 ((TargSeqLen - PeakMatchesCell.EndTOfs) >= 500 && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) >= 500))
+				if((PeakMatchesCell.StartTOfs >= m_OverlapFloat &&  PeakMatchesCell.StartPOfs >= m_OverlapFloat) ||
+					 ((TargSeqLen - PeakMatchesCell.EndTOfs) >= m_OverlapFloat && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) >= m_OverlapFloat))
+					{
 					Class = (int)eOLCartefact;
+					ProvArtefact += 1;
+					}
 
 				if(Class == (int)eOLCcontaining)
 					{
@@ -2587,10 +2647,12 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 						m_ScaffLineBuffIdx = 0;
 						}
 
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"S\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
+					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"S\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
 							Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,pSummaryCnts->NumSHits,pCurPBScaffNode->SeqLen,TargSeqLen,
-							AlignLength, 
+							ProbeAlignLength, 
+							TargAlignLength,
 							PeakMatchesCell.PeakScore,
+							PeakMatchesCell.CurScore,
 							PeakMatchesCell.NumMatches,
 							PeakMatchesCell.NumExacts,
 							PeakMatchesCell.NumGapsIns,
@@ -2660,24 +2722,27 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 #else
 			pPeakMatchesCell = pThreadPar->pSW->Align();
 #endif
-
+			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= pThreadPar->MinOverlapLen)
 				{
 				ProvOverlapping += 1;
 				PeakMatchesCell = *pPeakMatchesCell;
-				AlignLength = PeakMatchesCell.NumMatches + PeakMatchesCell.NumBasesIns - PeakMatchesCell.NumBasesDel;
+				ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;
+				TargAlignLength = PeakMatchesCell.EndTOfs - PeakMatchesCell.StartTOfs + 1;
 
 				// characterise the overlapped target
 				// eOLCOverlapping if probe accepted as overlapping, either 5' or 3'
 				// eOLCcontaining if both ends of target completely contained within probe
                 // eOLCartefact if target is only partially contained
-				// Note: allowing 500bp float on overlaps to account for the PacBio error profile 
 				Class = (int)eOLCOverlapping;		
-				if(PeakMatchesCell.StartTOfs < 500 && (TargSeqLen - PeakMatchesCell.EndTOfs) < 500)
+				if(PeakMatchesCell.StartTOfs < m_OverlapFloat && (TargSeqLen - PeakMatchesCell.EndTOfs) < m_OverlapFloat)
 					Class = (int)eOLCcontaining;
-				if((PeakMatchesCell.StartTOfs >= 500 &&  PeakMatchesCell.StartPOfs >= 500) ||
-					 ((TargSeqLen - PeakMatchesCell.EndTOfs) >= 500 && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) >= 500))
+				if((PeakMatchesCell.StartTOfs >= m_OverlapFloat &&  PeakMatchesCell.StartPOfs >= m_OverlapFloat) ||
+					 ((TargSeqLen - PeakMatchesCell.EndTOfs) >= m_OverlapFloat && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) >= m_OverlapFloat))
+					{
 					Class = (int)eOLCartefact;
+					ProvArtefact += 1;
+					}
 
 				if(Class == (int)eOLCcontaining)
 					{
@@ -2696,10 +2761,12 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 						CUtility::SafeWrite(m_hScaffDist,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 						m_ScaffLineBuffIdx = 0;
 						}
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"A\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
+					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"A\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
 							Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,pSummaryCnts->NumAHits,pCurPBScaffNode->SeqLen,TargSeqLen,
-							AlignLength, 
+							ProbeAlignLength, 
+							TargAlignLength,
 							PeakMatchesCell.PeakScore,
+							PeakMatchesCell.CurScore,
 							PeakMatchesCell.NumMatches,
 							PeakMatchesCell.NumExacts,
 							PeakMatchesCell.NumGapsIns,
@@ -2752,11 +2819,17 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 		m_ProvOverlapped += ProvOverlapped;
 	if(ProvContained > 0)
 		m_ProvContained += ProvContained;
+	if(ProvArtefact > 0)
+		m_ProvArtefact += ProvArtefact;
+	if(ProvSWchecked > 0)
+		m_ProvSWchecked += ProvSWchecked;
 	m_NumOverlapProcessed += 1;
 	ReleaseSerialise();
 	ProvOverlapping = 0;
 	ProvOverlapped = 0;
 	ProvContained = 0;
+	ProvArtefact = 0;
+	ProvSWchecked = 0;
 	pThreadPar->NumTargCoreHitCnts = 0;
 	pThreadPar->NumCoreHits = 0;
 	}
@@ -2919,6 +2992,7 @@ for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - (pPars->CoreSeqLen + 120)); P
 		pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
 		HitSeqLen = pTargNode->SeqLen; 
 		AcquireLock(false);
+
 		if(pTargNode->flgContained == 1 || 
 				(pPars->bSelfHits ? pTargNode->NodeID != pProbeNode->NodeID : pTargNode->NodeID == pProbeNode->NodeID) || 
 				 pTargNode->flgUnderlength == 1 ||	// not interested in selfhits or underlength targets
@@ -2948,8 +3022,9 @@ if(pPars->bRevCpl)
 return(pPars->NumCoreHits);
 }
 
+
 // SortLenDescending
-// Sort scaffolding nodes by length descending
+// Sort scaffolding nodes by length descending with entry identifiers as tie breaker
 int
 CPBScaffold::SortLenDescending(const void *arg1, const void *arg2)
 {
@@ -2960,7 +3035,7 @@ if(pEl1->SeqLen < pEl2->SeqLen)
 	return(1);
 if(pEl1->SeqLen > pEl2->SeqLen)
 	return(-1);
-if(pEl1->EntryID < pEl2->EntryID)	// use entry identifiers as tie breaker
+if(pEl1->EntryID < pEl2->EntryID)	
 	return(-1);
 if(pEl1->EntryID > pEl2->EntryID)
 	return(1);
@@ -3025,6 +3100,27 @@ if(pEl1->flgRevCpl != pEl2->flgRevCpl)
 	return(1);
 return(0);
 }
+
+// SortCoreHitsDescending
+// Sort target core hits by number of hits descending
+int
+CPBScaffold::SortCoreHitsDescending(const void *arg1, const void *arg2)
+{
+sPBCoreHitCnts *pEl1 = (sPBCoreHitCnts *)arg1;
+sPBCoreHitCnts *pEl2 = (sPBCoreHitCnts *)arg2;
+
+UINT32 El1NumHits;
+UINT32 El2NumHits;
+El1NumHits = max(pEl1->NumSHits,pEl1->NumAHits);
+El2NumHits = max(pEl2->NumSHits,pEl2->NumAHits);
+if(El1NumHits > El2NumHits)
+	return(-1);
+if(El1NumHits < El2NumHits)
+	return(1);
+return(0);
+}
+
+
 
 
 

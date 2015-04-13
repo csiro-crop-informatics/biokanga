@@ -318,28 +318,23 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 	EndIdxT = min(m_TargLen,LastCheckedIdxT+2);
 	pTarg = &m_pTarg[StartIdxT];
 	pCell = m_pAllocdCells;
-	if(LeftCell.PeakScore != 0)
-		memset(&LeftCell,0,sizeof(tsSSWCell));
-	if(DiagCell.PeakScore != 0)
-		memset(&DiagCell,0,sizeof(tsSSWCell));
+
 	for(IdxT = StartIdxT; IdxT < EndIdxT; IdxT++,pCell++)
 		{
-		if(DiagCell.PeakScore != 0 || LeftCell.PeakScore != 0)
-			DiagCell = LeftCell;
-		if(LeftCell.PeakScore != 0 || pCell->PeakScore != 0)
-			LeftCell = *pCell;
-
 		// if m_MaxOverlapStartOfs > 0 then only starting new paths if within that max offset
 		if(m_MaxInitiatePathOfs && IdxT >= (UINT32)m_MaxInitiatePathOfs && IdxP >= (UINT32)m_MaxInitiatePathOfs)
 			{
-			if(LeftCell.PeakScore == 0 && DiagCell.PeakScore == 0 && pCell[-1].PeakScore == 0)
+			if(pCell->PeakScore == 0 && LeftCell.PeakScore == 0 && pCell[-1].PeakScore == 0)
 				{
+				DiagCell = LeftCell;
+				LeftCell = *pCell;
 				pTarg += 1;
 				NumCellsSkipped += 1;
 				continue;
 				}
 			NumCellsChecked += 1;
 			}
+
 		LastCheckedIdxT = IdxT;
 
 		TargBase = *pTarg++ & ~cRptMskFlg;
@@ -347,15 +342,16 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 		LeftInDelLen = 0;
 		DownInDelLen = 0;
 		// calc the 3 scores (DiagScore, LeftScore, DownScore) so can determine which highest scoring path direction to take
-
-		// diagonal is either MatchScore or MismatchScore added to prev diagonal score
+		// DiagScore is either MatchScore or MismatchScore added to prev DiagScore score
 		if(IdxT > 0 && IdxP > 0)
 			{
+			DiagCell = LeftCell;
+			LeftCell = *pCell;
 			PrevScore = DiagCell.CurScore;
 			DiagPeakScore =  DiagCell.PeakScore;
 			MismatchPenalty = m_MismatchPenalty;
 
-			// if a mismatch and part of an exactly matching sequence, then look ahead and reduce penalty to same as for opening a gap if next three bases exactly match
+			// if a mismatch and part of an exactly matching sequence, then look ahead and reduce penalty to same as for opening a gap if at least next three bases exactly match
 			if(!bMatch && m_MismatchPenalty < m_GapOpenPenalty && (IdxP < m_ProbeLen-4) && (IdxT < m_TargLen - 4) && DiagCell.CurExactLen >= 3)
 				{
 				if((*pProbe & ~cRptMskFlg) == (*pTarg & ~cRptMskFlg) && 
@@ -364,15 +360,17 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 					(pProbe[3] & ~cRptMskFlg) == (pTarg[3] & ~cRptMskFlg))
 					MismatchPenalty = max(m_MismatchPenalty,m_GapOpenPenalty);
 				}
+
 			DiagScore = PrevScore + (bMatch ? m_MatchScore : MismatchPenalty);
 
 			if(DiagScore > DiagPeakScore)
 				DiagPeakScore = DiagScore;
 			}
-		else
+		else // else either IdxT or IdxP was zero
 			{
-			if(pCell->PeakScore)
-				memset(pCell,0,sizeof(tsSSWCell));
+			memset(pCell,0,sizeof(tsSSWCell));
+			memset(&LeftCell,0,sizeof(tsSSWCell));
+			memset(&DiagCell,0,sizeof(tsSSWCell));
 			if(bMatch)
 				{
 				pCell->StartPOfs = IdxP+1;
@@ -391,9 +389,9 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 		PrevScore = pPrevCell->CurScore;
 		LeftPeakScore =  pPrevCell->PeakScore;
 		GapExtnPenalty = 0;
-		if(pPrevCell->CurGapLen)  // was there a gap previously opened?
+		if(pPrevCell->LeftInDelLen)  // was there a gap previously opened?
 			{
-			LeftInDelLen =  1 + pPrevCell->CurGapLen; // extending existing gap
+			LeftInDelLen =  1 + pPrevCell->LeftInDelLen; // extending existing gap
 			if(m_GapExtnPenalty < 0 && LeftInDelLen >= m_DlyGapExtn)
 				{
 				if(m_ProgPenaliseGapExtn == 0 || LeftInDelLen < m_ProgPenaliseGapExtn)   
@@ -411,11 +409,7 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 		else
 			{
 			LeftInDelLen = 1;			// opening a gap
-			if(m_DlyGapExtn == 1)
-				GapExtnPenalty = m_GapExtnPenalty;
-			if(m_ProgPenaliseGapExtn == 1)
-				GapExtnPenalty += m_GapExtnPenalty;
-			LeftScore = PrevScore + m_GapOpenPenalty + GapExtnPenalty;
+			LeftScore = PrevScore + m_GapOpenPenalty;
 			}
 		if(LeftScore > LeftPeakScore)
 			LeftPeakScore = LeftScore;
@@ -426,9 +420,9 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 		PrevScore = pPrevCell->CurScore;
 		DownPeakScore =  pPrevCell->PeakScore;
 		GapExtnPenalty = 0;
-		if(pPrevCell->CurGapLen)  // was there a gap previously opened?
+		if(pPrevCell->DownInDelLen)  // was there a gap previously opened?
 			{
-			DownInDelLen =  1 + pPrevCell->CurGapLen; // extending gap
+			DownInDelLen =  1 + pPrevCell->DownInDelLen; // extending gap
 			if(m_GapExtnPenalty < 0 && DownInDelLen >= m_DlyGapExtn)
 				{
 				if(m_ProgPenaliseGapExtn == 0 || DownInDelLen < m_ProgPenaliseGapExtn)   
@@ -446,11 +440,7 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 		else
 			{
 			DownInDelLen = 1;
-			if(m_DlyGapExtn == 1)
-				GapExtnPenalty = m_GapExtnPenalty;
-			if(m_ProgPenaliseGapExtn == 1)
-				GapExtnPenalty += m_GapExtnPenalty;
-			DownScore = PrevScore + m_GapOpenPenalty + GapExtnPenalty;
+			DownScore = PrevScore + m_GapOpenPenalty;
 			}
 		if(DownScore > DownPeakScore)
 			DownPeakScore = DownScore;
@@ -458,19 +448,22 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 		// if no score was > 0 then reset cell, path can't be extended
 		if(DiagScore <= 0 && DownScore <= 0 && LeftScore <= 0)
 			{
+#ifdef USETHISCODe
 			if(pCell->PeakScore != 0)
+#endif
 				memset(pCell,0,sizeof(tsSSWCell));	
 			continue;		
 			}
 
 		// select highest score into cell together with traceback and gap opened flag..
-		if(DiagScore >= DownScore && DiagScore >= LeftScore) // diag score the highest
+		if(DiagScore >= DownScore && DiagScore >= LeftScore) // if diag score at least equal highest then preference matches
 			{
 			*pCell = DiagCell;
 			pCell->CurScore = DiagScore;
 			pCell->PeakScore = DiagPeakScore;
 			pCell->NumMatches += 1;
-			pCell->CurGapLen = 0;
+			pCell->DownInDelLen = 0;
+			pCell->LeftInDelLen = 0;
 			if(bMatch)
 				{
 				if(pCell->StartPOfs == 0)
@@ -495,12 +488,14 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 				pCell->CurExactLen = 0;
 			}
 		else
-			if(DownScore >= LeftScore)						// down score the highest
+			if(DownScore >= LeftScore) // down score at least as high as left score, note this means that insertions into the target are being preferenced
 				{			
 				*pCell = pCell[-1];
 				pCell->CurScore = DownScore;
 				pCell->PeakScore = DownPeakScore;
-				pCell->CurGapLen = DownInDelLen;
+				pCell->DownInDelLen = DownInDelLen;
+				pCell->LeftInDelLen = 0;
+
 				pCell->NumBasesDel += 1;
 				if(DownInDelLen == 1)
 					pCell->NumGapsDel += 1;
@@ -511,7 +506,8 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 				*pCell = LeftCell;							// left score the highest
 				pCell->CurScore = LeftScore;
 				pCell->PeakScore = LeftPeakScore;
-				pCell->CurGapLen = LeftInDelLen;
+				pCell->LeftInDelLen = LeftInDelLen;
+				pCell->DownInDelLen = 0;
 				pCell->NumBasesIns += 1;
 				if(LeftInDelLen == 1)
 					pCell->NumGapsIns += 1;
@@ -520,7 +516,7 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
  
 		if(pCell->NumExacts >= (UINT32)m_MinNumExactMatches)
 			{
-			if(pCell->NumExacts > m_PeakMatchesCell.NumExacts) // using maximally exact matches as the selection discrminate 
+			if(pCell->PeakScore >= m_PeakMatchesCell.PeakScore && pCell->CurScore > ((m_PeakMatchesCell.PeakScore * 95) / 100))
 				{
 				m_PeakMatchesCell = *pCell;
 				m_PeakMatchesCell.EndPOfs = IdxP + 1;

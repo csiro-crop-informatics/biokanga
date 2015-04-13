@@ -2227,7 +2227,7 @@ plSetUsage( const char *program_string, const char *usage_string );
 // here for backward compatibilty.
 
 int
-c_plsetopt( const char *opt, const char *optarg );
+c_plsetopt( const char *opt, const char *opt_arg );
 
 // Process options list using current options info.
 

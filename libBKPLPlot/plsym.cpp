@@ -81,7 +81,7 @@ static void
 pldeco( short int **sym, PLINT *length, const char *text );
 
 static void
-plchar( signed char *xygrid, PLFLT *xform, PLINT base, PLINT oline, PLINT uline,
+plchar( signed char *vxygrid, PLFLT *xform, PLINT base, PLINT oline, PLINT uline,
         PLINT refx, PLINT refy, PLFLT scale, PLFLT xpmm, PLFLT ypmm,
         PLFLT *p_xorg, PLFLT *p_yorg, PLFLT *p_width );
 

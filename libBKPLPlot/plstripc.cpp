@@ -51,12 +51,12 @@ static PLStrip *stripc;                 // current strip chart
 // Generates a complete stripchart plot.
 
 static void
-plstrip_gen( PLStrip *strip );
+plstrip_gen( PLStrip *striploc );
 
 // draw legend
 
 static void
-plstrip_legend( PLStrip *strip, int flag );
+plstrip_legend( PLStrip *stripcloc, int flag );
 
 //--------------------------------------------------------------------------
 // plstripc

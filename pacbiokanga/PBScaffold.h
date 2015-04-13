@@ -20,10 +20,13 @@ const int cMinSeqLen = 50;					// minimum sequence length accepted for processin
 const int cMaxDupEntries = 10;				// report 1st 10 duplicate entry names
 const int cMaxAllocBuffChunk = 0x00ffffff;	// buffer for fasta sequences is realloc'd in this sized chunks
 
+
+
 typedef enum TAG_ePBPMode {
 	ePBPMOverlaps,										// overlap discovery mode, generates output overlap loci detail csv file to use as input in subsequent ePBPMScaffold processing mode
 	ePBPMScaffold										// scaffolding mode, uses previously generated overlap loci detail csv file and scaffolds
 	} etPBPMode;
+
 
 #pragma pack(1)
 
@@ -155,13 +158,16 @@ class CPBScaffold
 	int m_SWMismatchPenalty;				// SW mismatch penalty (-100..0)
 	int m_SWGapOpenPenalty;					// SW gap opening penalty (-100..0)
 	int m_SWGapExtnPenalty;					// SW gap extension penalty (-100..0)
-	int m_SWProgExtnPenaltyLen;				// SW progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
+	int m_SWProgExtnPenaltyLen;				// only apply gap extension penalty if gap at least this length (1..63) - use if aligning PacBio
 	
 	UINT32 m_NumOverlapProcessed;			// number of PacBio reads processed for overlapping other PacBio reads
 	UINT32 m_ProvOverlapping;               // number of PacBio reads overlapping at least one other PacBio read
 	UINT32 m_ProvOverlapped;				// number of PacBio reads provisionally overlapped, could be containing, another PacBio read
-	UINT32 m_ProvContained;					// number of PacBio readsprovisionally contained within another PacBio read
+	UINT32 m_ProvContained;					// number of PacBio reads provisionally contained within another PacBio read
+	UINT32 m_ProvArtefact;					// number of PacBio reads provisionally only partially, likely an alignment artefact, contained within another PacBio read
+	UINT32 m_ProvSWchecked;					// number of times SW used to identify overlaps
 
+	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
 	UINT32 m_MinScaffSeqLen;				// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
 	UINT32 m_MinScaffOverlap;				// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 	int m_NumPacBioFiles;					// number of input pacbio file specs
@@ -186,7 +192,7 @@ class CPBScaffold
 
 	CSfxArrayV3 *m_pSfxArray;					// suffix array file (m_szTargFile) is loaded into this
 
-	CAssembGraph *m_pAssembGraph;				// overlapping sequences are assembled into scaffolds using this class
+	CAssembGraph *m_pAssembGraph;				// used to assemble PacBio overlapping sequences into scaffolds
 
 	void Init(void);							// initialise state to that immediately following construction
 	void Reset(bool bSync);						// reset state, if bSync true then fsync before closing output file handles
@@ -226,10 +232,10 @@ class CPBScaffold
 
 	CMTqsort m_mtqsort;				// muti-threaded qsort
 
-static int SortLenDescending(const void *arg1, const void *arg2);
+static int SortLenDescending(const void *arg1, const void *arg2); // Sort scaffolding nodes by length descending
 static int SortCoreHitsByTargProbeOfs(const void *arg1, const void *arg2);
 static int SortCoreHitsByProbeTargOfs(const void *arg1, const void *arg2);
-
+static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 
 	bool m_bMutexesCreated;			// will be set true if synchronisation mutexes have been created
 	int CreateMutexes(void);
@@ -281,7 +287,8 @@ public:
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads);			// maximum number of worker threads to use
 
-	int LoadPacBioOvlps(char *pszPacBioOvlps, bool bValidateOnly = false);	// load pregenerated PacBio sequence overlap loci CSV file
+	UINT32   //  returns number of overlaps loaded and accepted, if > cMaxValidID then cast to teBSFrsltCodes for actual error 
+		LoadPacBioOvlps(char *pszPacBioOvlps, bool bValidateOnly = false);	// load pregenerated PacBio sequence overlap loci CSV file
 };
 
 

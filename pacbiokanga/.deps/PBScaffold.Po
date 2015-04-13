@@ -96,8 +96,8 @@ PBScaffold.o: PBScaffold.cpp /usr/include/stdc-predef.h stdafx.h \
  ../libbiokanga/././Contaminants.h ../libbiokanga/././ProcRawReads.h \
  ../libbiokanga/././GTFFile.h ../libbiokanga/././GFFFile.h \
  ../libbiokanga/././sqlite3.h pacbiokanga.h SQLiteSummaries.h \
- ../libbiokanga/bgzf.h ../libbiokanga/SSW.h AssembGraph.h PBScaffold.h \
- pacbiocommon.h
+ ../libbiokanga/bgzf.h ../libbiokanga/SSW.h pacbiocommon.h AssembGraph.h \
+ PBScaffold.h
 
 /usr/include/stdc-predef.h:
 
@@ -415,8 +415,8 @@ SQLiteSummaries.h:
 
 ../libbiokanga/SSW.h:
 
+pacbiocommon.h:
+
 AssembGraph.h:
 
 PBScaffold.h:
-
-pacbiocommon.h:

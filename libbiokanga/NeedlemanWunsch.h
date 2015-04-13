@@ -104,10 +104,10 @@ public:
 
 	void Reset(void);
 
-    bool SetScores(int m_MatchScore = cNWDfltMatchScore,		// set scoring
-					int m_MismatchScore = cNWDfltMismatchScore,
-					int m_GapOpenScore = cNWDfltGapOpenScore,
-					int m_GapExtScore = cNWDfltGapExtScore);
+    bool SetScores(int MatchScore = cNWDfltMatchScore,		// set scoring
+					int MismatchScore = cNWDfltMismatchScore,
+					int GapOpenScore = cNWDfltGapOpenScore,
+					int GapExtScore = cNWDfltGapExtScore);
 
 	bool SetProbe(UINT32 Len,etSeqBase *pSeq);
 	bool SetTarg(UINT32 Len,etSeqBase *pSeq);

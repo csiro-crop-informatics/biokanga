@@ -417,7 +417,7 @@ if(!NumSNPBases && pSeq != NULL && m_pSeqBases == NULL)
 
 if(!NumSNPBases && pSeq != NULL && (m_MemUsedSeqBases + Len + 10000)  >= m_MemAllocSeqBases)
 	{
-	size_t memreq = m_MemAllocSeqBases + (cElGrowAllocNum * sizeof(etSeqBase) * 200);
+	memreq = m_MemAllocSeqBases + (cElGrowAllocNum * sizeof(etSeqBase) * 200);
 #ifdef _WIN32
 	pBase = (etSeqBase *) realloc(m_pSeqBases,memreq);
 	if(pBase == NULL)
@@ -477,7 +477,7 @@ if(m_pElements == NULL)
 
 if((m_NumEls + 1000)  >= m_NumElsAllocd)
 	{
-	size_t memreq = m_MemAllocEls + (cElGrowAllocNum * sizeof(tsHyperElement));
+	memreq = m_MemAllocEls + (cElGrowAllocNum * sizeof(tsHyperElement));
 #ifdef _WIN32
 	pEl = (tsHyperElement *) realloc(m_pElements,memreq);
 	if(pEl == NULL)

@@ -5512,8 +5512,9 @@ if(pReadHit->NAR == eNARAccepted)
 		{
 		Flags |= 0x03;				// assumes if PE then both have been mapped
 		Flags |= bIsPE2 ? 0x080 : 0x040;
-		if(!bIsPE2)
-			Flags |= pPEReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? 0x00 : 0x020;
+// although the SAM specification treats templates as linear some toolsets are assuming that the PE2 read references the sense of the PE1 read as being the next in the template in the flags field!!!! 
+//		if(!bIsPE2) // originally pre-3.7.4 was folllowing specification
+		Flags |= pPEReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? 0x00 : 0x020; // post-3.7.4 to enable samtools stats to process sense distributions
 		}
 	}
 else
