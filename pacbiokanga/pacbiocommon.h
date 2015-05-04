@@ -29,7 +29,7 @@ const int cQualCoreDelta = (cQualCoreKMerLen * 2) + 1;	 // looking for matching 
 const int cQualCoreThres = 25;							 // require at least this many kmers to be shared between probe and target before accepting core
 const int cQualCoreHomopolymer = 80;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough
 
-const int cMinScaffSeqLen = 100;						 // allowing for minimum scaffolded sequences to be specified down to this length (could be targeting RNA transcriptome)
+const int cMinScaffSeqLen = 500;						 // allowing for minimum scaffolded sequences to be specified down to this length (could be targeting RNA transcriptome)
 const int cDfltMinScaffSeqLen = 5000;					 // default is to allow for scaffolded sequences down to this minimum length
 const int cMaxMinScaffSeqLen = 100000;					 // allowing for minimum scaffolded sequences to be specified up to this length 
 
@@ -45,7 +45,7 @@ const int cMinSWAlignLen = 50;							// and alignment length of at least this ma
 
 const int cDfltMaxOverlapFloat = 1000;					// allow up to this much float on overlaps to account for the PacBio error profile 
 
-const int cMinOverlapLen = 1000;						 // minimum putative overlap length which can be requested by user
+const int cMinOverlapLen = 250;							 // minimum putative overlap length which can be requested by user
 const int cDfltMinOverlapLen = 5000;					 // default minimum putative overlap length
 
 const int cAllocdNumCoreHits = 1000000;					 // each thread preallocs for this many core hits, realloc'd as may be required

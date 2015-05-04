@@ -1,5 +1,5 @@
 bin_PROGRAMS = pacbiokanga
-pacbiokanga_SOURCES= SQLiteSummaries.cpp SQLiteSummaries.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h PBScaffold.cpp PBScaffold.h pacbiokanga.cpp pacbiokanga.h PBSim.cpp PBSim.h AssembGraph.cpp AssembGraph.h 
+pacbiokanga_SOURCES= SQLiteSummaries.cpp SQLiteSummaries.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h PBScaffold.cpp PBScaffold.h pacbiokanga.cpp pacbiokanga.h PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h AssembGraph.cpp AssembGraph.h 
 
 # set the include path found by configure
 INCLUDES= $(all_includes)

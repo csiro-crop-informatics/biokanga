@@ -172,8 +172,6 @@ class CPBScaffold
 	UINT32 m_MinScaffOverlap;				// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 	int m_NumPacBioFiles;					// number of input pacbio file specs
 	char m_szPacBioFiles[cMaxInFileSpecs][_MAX_PATH];		// input pacbio files
-	int m_NumHiConfFiles;					// number of input hiconfidence file specs
-	char m_szHiConfFiles[cMaxInFileSpecs][_MAX_PATH];		// input hiconfidence files		
 	char m_szPacBioSfxFile[_MAX_PATH];		// name of input file containing suffix indexed pacbio sequences
 	char m_szOutFile[_MAX_PATH];			// where to write merged scaffolded sequences
 
@@ -282,8 +280,6 @@ public:
 		char *pszPacBioSfxFile,		// pre-indexed PacBio sequences
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
-		int NumHiConfFiles,			// number of input hiconfidence file specs
-		char *pszHiConfFiles[],		// input hiconfidence files		
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads);			// maximum number of worker threads to use
 

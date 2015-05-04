@@ -31,12 +31,13 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "0.2.5";		// increment with each release
+const char *cpszProgVer = "0.5.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 
 extern int ProcPBSim(int argc, char* argv[]);
 extern int ProcFilter(int argc, char* argv[]);
+extern int ProcErrCorrect(int argc, char* argv[]);
 extern int ProcScaffold(int argc, char* argv[]);
 
 // inplace text cleaning; any leading/trailing or internal quote characters are removed; excessive whitespace is reduced to single
@@ -70,8 +71,9 @@ return(pszRawText);
 }
 
 tsSubProcess SubProcesses[] = {
-	{"pbsim","Simulate Reads", "Simulate PacBio reads (NOTE: integrated PBSIM module)", ProcPBSim },
+	{"pbsim","Simulate Reads", "Simulate PacBio reads (NOTE: using integrated PBSIM module)", ProcPBSim },
 	{"filter","Filter Reads", "Filter PacBio reads for retained hairpins", ProcFilter },
+	{"errcorrect","Error Correct Reads", "Error correct PacBio reads", ProcErrCorrect },
 	{"scaffold","Scaffold Reads","Scaffold PacBio reads",ProcScaffold}
 };
 const int cNumSubProcesses = (sizeof(SubProcesses) / sizeof(tsSubProcess));

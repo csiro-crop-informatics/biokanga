@@ -52,8 +52,6 @@ ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
 		char *pszPacBioSfxFile,		// suffix indexed PacBio sequences
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
-		int NumHiConfFiles,			// number of input hiconfidence file specs
-		char *pszHiConfFiles[],		// input hiconfidence files		
 	    char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads);			// maximum number of worker threads to use
 
@@ -98,8 +96,6 @@ char szPacBioSfxFile[_MAX_PATH];		// suffix indexed PacBio sequences
 char szPacBioOvlps[_MAX_PATH];			// pregenerated PacBio sequence overlap loci details
 int NumPacBioFiles;						// number of input pacbio file specs
 char *pszPacBioFiles[cMaxInFileSpecs];	// input pacbio files
-int NumHiConfFiles;						// number of input hiconfidence file specs
-char *pszHiConfFiles[cMaxInFileSpecs];	// input hiconfidence files
 
 char szOutFile[_MAX_PATH];				// where to write merged scaffolded sequences
 
@@ -116,9 +112,9 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 generate overlaps, 1 use pregenerated overlap loci details file ");
-struct arg_int *minscafflen = arg_int0("l","minscafflen","<int>",	"minimum individual scaffolding sequence length (default 5000, range 1000 to 100000)");
-struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum scaffold overlap required to merge into single scaffold (default 5000, range 1000 to 100000)");
+struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 generate scaffolds from error corrected sequences, 1 use pregenerated overlap loci details file ");
+struct arg_int *minscafflen = arg_int0("l","minscafflen","<int>",	"minimum individual sequence length (default 5000, range 500 to 100000)");
+struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum scaffold overlap required to merge into single scaffold (default 5000, range 250 to 100000)");
 
 struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping scaffold sequences (default 12, range 10 to 25)");
 struct arg_int *minnumseedcores = arg_int0("C","minseedcores","<int>",			"require at least this many accepted seed cores between overlapping scaffold sequences (default 10, range 1 to 50)");
@@ -131,11 +127,9 @@ struct arg_int *mismatchpenalty = arg_int0("X","mismatchpenalty","<int>",					"S
 struct arg_int *gapopenpenalty = arg_int0("y","gapopenpenalty","<int>",						"SW gap opening penalty (default 4, range 1 to 50)");
 struct arg_int *gapextnpenalty = arg_int0("Y","gapextnpenalty","<int>",						"SW gap extension penalty (default 1, range 1 to 50)");
 struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",				"SW gap extension penalty only applied for gaps of at least this number of bases (default 2, range 1 to 63)");
-
 struct arg_file *pacbiosovlps = arg_file0("p","pacbiosovlps","<file>",						"input file containing pregenerated PacBio overlap loci detail");
 
 struct arg_file *pacbiosfxfile = arg_file0("I","pacbiosfx","<file>",						"input file containing suffix indexed PacBio sequences");
-struct arg_file *hiconffiles = arg_filen("r","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be aligned and merged into targeted scaffolds");
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",0,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be used for scaffolding");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output merged scaffold sequences to this file");
 
@@ -151,7 +145,7 @@ void *argtable[] = {help,version,FileLogLevel,LogFile,
 					pmode,minseedcorelen,minnumseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
 					minscafflen,minscaffovl,
-					summrslts,pacbiosovlps,pacbiosfxfile,pacbiofiles,hiconffiles,experimentname,experimentdescr,
+					summrslts,pacbiosovlps,pacbiosfxfile,pacbiofiles,experimentname,experimentdescr,
 					outfile,threads,
 					end};
 
@@ -421,32 +415,6 @@ if (!argerrors)
 		pszPacBioFiles[0] = NULL;
 		}
 
-	if(hiconffiles->count)
-		{
-		for(NumHiConfFiles=Idx=0;NumHiConfFiles < cMaxInFileSpecs && Idx < hiconffiles->count; Idx++)
-			{
-			pszHiConfFiles[Idx] = NULL;
-			if(pszHiConfFiles[NumHiConfFiles] == NULL)
-				pszHiConfFiles[NumHiConfFiles] = new char [_MAX_PATH];
-			strncpy(pszHiConfFiles[NumHiConfFiles],hiconffiles->filename[Idx],_MAX_PATH);
-			pszHiConfFiles[NumHiConfFiles][_MAX_PATH-1] = '\0';
-			CUtility::TrimQuotedWhitespcExtd(pszHiConfFiles[NumHiConfFiles]);
-			if(pszHiConfFiles[NumHiConfFiles][0] != '\0')
-				NumHiConfFiles++;
-		}
-
-		if(!NumHiConfFiles)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input high confidence reads file(s) specified with '-r<filespec>' option)\n");
-			exit(1);
-			}
-		}
-	else
-		{
-		NumHiConfFiles = 0;
-		pszHiConfFiles[0] = NULL;
-		}
-
 	szPacBioOvlps[0] = '\0';
 	if(PMode == ePBPMScaffold)
 		{
@@ -530,14 +498,6 @@ if (!argerrors)
 	else
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input PacBio suffix array file: '%s'",szPacBioSfxFile);
 
-	if(NumHiConfFiles)
-		{
-		for(Idx=0; Idx < NumHiConfFiles; Idx++)
-			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input hiconfidence sequences file spec: '%s'",pszHiConfFiles[Idx]);
-		}
-	else
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input hiconfidence sequences file spec: None Specified");
-
 	if(PMode == ePBPMScaffold)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output merged scaffold sequences file: '%s'",szOutFile);
 	else
@@ -564,18 +524,13 @@ if (!argerrors)
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinScaffoldLen),"minscafflen",&MinScaffoldLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinScaffOverlap),"minscaffovl",&MinScaffOverlap);
-		if(NumHiConfFiles)
+		if(NumPacBioFiles)
 			{
 			for(Idx=0; Idx < NumPacBioFiles; Idx++)
 				ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszPacBioFiles[Idx]),"pacbiofile",pszPacBioFiles[Idx]);
 			}
 		else
 			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szPacBioSfxFile),"pacbiosfx",szPacBioSfxFile);
-		if(NumHiConfFiles)
-				{
-				for(Idx=0; Idx < NumHiConfFiles; Idx++)
-					ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszHiConfFiles[Idx]),"hiconffile",pszHiConfFiles[Idx]);
-				}
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szOutFile),"out",szOutFile);
 
@@ -596,7 +551,7 @@ if (!argerrors)
 #endif
 	gStopWatch.Start();
 	Rslt = ProcPacBioScaffolds((etPBPMode)PMode,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,MinScaffoldLen,MinScaffOverlap,
-						szPacBioOvlps,szPacBioSfxFile,NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,NumThreads);
+						szPacBioOvlps,szPacBioSfxFile,NumPacBioFiles,pszPacBioFiles,szOutFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -637,8 +592,6 @@ ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
 		char *pszPacBioSfxFile,		// suffix indexed PacBio sequences
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
-		int NumHiConfFiles,			// number of input hiconfidence file specs
-		char *pszHiConfFiles[],		// input hiconfidence files		
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads)				// maximum number of worker threads to use
 {
@@ -650,8 +603,9 @@ if((pPacBioer = new CPBScaffold)==NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CPBScaffold");
 	return(eBSFerrObj);
 	}
+
 Rslt = pPacBioer->Process(PMode,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,MinScaffoldLen,MinScaffOverlap,
-								pszPacBioOvlps,pszPacBioSfxFile,NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,NumThreads);
+								pszPacBioOvlps,pszPacBioSfxFile,NumPacBioFiles,pszPacBioFiles,pszOutFile,NumThreads);
 delete pPacBioer;
 return(Rslt);
 }
@@ -738,10 +692,8 @@ m_SWGapExtnPenalty = cDfltSWGapExtnPenalty;
 m_SWProgExtnPenaltyLen = cDfltSWProgExtnLen;	
  
 m_NumPacBioFiles = 0;
-m_NumHiConfFiles = 0;
 m_szPacBioSfxFile[0] = '\0';
 memset(m_szPacBioFiles,0,sizeof(m_szPacBioFiles));
-memset(m_szHiConfFiles,0,sizeof(m_szHiConfFiles));
 
 m_szOutFile[0] = '\0';	
 
@@ -1619,7 +1571,13 @@ for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 		return(-1);
 		}
 	}
-
+if(m_pSfxArray->GetNumEntries() < 3)		// need at least 3 sequences if attempting to error correct
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Insufficent ( < 3) sequences accepted for processing");
+	m_pSfxArray->Close(false);
+	Reset(false);
+	return(eBSFerrNoEntries);
+	}
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting suffix array...");
 m_pSfxArray->Finalise();
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting completed");
@@ -1644,8 +1602,6 @@ CPBScaffold::Process(etPBPMode PMode,	// processing mode
 		char *pszPacBioSfxFile,		// suffix indexed PacBio sequences
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
-		int NumHiConfFiles,			// number of input hiconfidence file specs
-		char *pszHiConfFiles[],		// input hiconfidence files		
 		char *pszOutFile,			// where to write merged scaffolded sequences
 		int NumThreads)				// maximum number of worker threads to use
 {
@@ -1703,13 +1659,6 @@ if(NumPacBioFiles > 0)
 	for(Idx = 0; Idx < NumPacBioFiles; Idx++)
 		strcpy(m_szPacBioFiles[Idx],pszPacBioFiles[Idx]);
 	}
-m_NumHiConfFiles = NumHiConfFiles;
-memset(m_szHiConfFiles,0,sizeof(m_szHiConfFiles));
-if(NumHiConfFiles > 0)
-	{
-	for(Idx = 0; Idx < NumHiConfFiles; Idx++)
-		strcpy(m_szHiConfFiles[Idx],pszHiConfFiles[Idx]);
-	}	
 
 strncpy(m_szOutFile,pszOutFile,sizeof(m_szOutFile));
 m_szOutFile[sizeof(m_szOutFile)-1] = '\0';	
@@ -2040,6 +1989,7 @@ if(m_hScaffDist < 0)
 	return(eBSFerrCreateFile);
 	}
 
+#ifdef USETHISCODE
 if(m_hScaffDist != -1)
 	{
 	m_ScaffLineBuffIdx=sprintf(m_szScaffLineBuff,"\"Class\",\"ProbeID\",\"ProbDescr\",\"TargID\",\"TargDescr\",\"SeedHits\",\"Sense\",\"ProbeLen\",\"TargLen\",\"ProbeAlignLength\",\"TargAlignLength\",\"PeakScore\",\"FinalScore\",\"NumAlignedBases\",\"NumExactBases\",\"NumProbeInserts\",\"NumProbeInsertBases\",\"NumTargInserts\",\"NumTargInsertBases\",\"ProbeStartOfs\",\"TargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"ProbeOfs5\",\"TargOfs5\",\"ProbeOfs3\",\"TargOfs3\"");
@@ -2053,6 +2003,7 @@ if(m_hScaffDist != -1)
 	CUtility::SafeWrite(m_hScaffDist,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 	m_ScaffLineBuffIdx = 0;
 	}
+#endif
 
 pThreadPar = pThreadPutOvlps;
 for (ThreadIdx = 1; ThreadIdx <= NumOvlpThreads; ThreadIdx++, pThreadPar++)
@@ -2330,6 +2281,28 @@ return(pClusters->NumClusters);
 int
 CPBScaffold::ThreadIdentScaffOverlaps(tsThreadPBScaffold *pThreadPar)
 {
+UINT32 Idx;
+UINT32 CurSummaryHitCnts;
+UINT32 LowestSummaryHitCnts;
+sPBCoreHitCnts *pLowestSummaryHitCnts;
+UINT32 HitIdx;
+int NumHitsFlgMulti;
+tsCoreHit *pCoreHit;
+UINT32 CurTargNodeID;
+UINT32 CurProbeNodeID;
+UINT32 CurProbeOfs;
+UINT32 CurTargOfs;
+UINT32 CurHitLoci;
+UINT32 CurSEntryIDHits;
+UINT32 CurAEntryIDHits;
+UINT32 ProvOverlapping;
+UINT32 ProvOverlapped;
+UINT32 ProvContained;
+UINT32 ProvArtefact;
+UINT32 ProvSWchecked;
+
+tsPBScaffNode *pHitScaffNode;
+sPBCoreHitCnts *pSummaryCnts;
 UINT32 CurNodeID;
 int Class;
 char szTargSeqName[cMaxDatasetSpeciesChrom];
@@ -2344,7 +2317,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	pCurPBScaffNode = &m_pPBScaffNodes[CurNodeID-1];
 	AcquireLock(false);
 	// slough if already processed, perhaps by another thread, or if underlength
-	if(pCurPBScaffNode->flgCurProc == 1 || pCurPBScaffNode->flgContained == 1|| pCurPBScaffNode->flgUnderlength == 1 || pCurPBScaffNode->SeqLen < ((pThreadPar->MinScaffSeqLen + 1) * 2)) 
+	if(pCurPBScaffNode->flgCurProc == 1 || pCurPBScaffNode->flgContained == 1|| pCurPBScaffNode->flgUnderlength == 1 || pCurPBScaffNode->SeqLen < ((pThreadPar->MinOverlapLen * 3)/2)) 
        	{
 		ReleaseLock(false);
 		continue;
@@ -2357,27 +2330,6 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	pThreadPar->bRevCpl = true;
 	IdentifyCoreHits(CurNodeID,pThreadPar);
 
-	UINT32 Idx;
-	UINT32 CurSummaryHitCnts;
-	UINT32 LowestSummaryHitCnts;
-	sPBCoreHitCnts *pLowestSummaryHitCnts;
-	UINT32 HitIdx;
-	tsCoreHit *pCoreHit;
-	UINT32 CurTargNodeID;
-	UINT32 CurProbeNodeID;
-	UINT32 CurProbeOfs;
-	UINT32 CurTargOfs;
-	UINT32 CurHitLoci;
-	UINT32 CurSEntryIDHits;
-	UINT32 CurAEntryIDHits;
-	UINT32 ProvOverlapping;
-	UINT32 ProvOverlapped;
-	UINT32 ProvContained;
-	UINT32 ProvArtefact;
-	UINT32 ProvSWchecked;
-
-	tsPBScaffNode *pHitScaffNode;
-	sPBCoreHitCnts *pSummaryCnts;
 	ProvOverlapping = 0;
 	ProvOverlapped = 0;
 	ProvContained = 0;
@@ -2396,13 +2348,13 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			CurProbeOfs = 0;
 			CurTargNodeID = 0;
 			CurTargOfs = 0;
-			int NumHitsFlgMulti = 0;
+			NumHitsFlgMulti = 0;
 			pCoreHit = pThreadPar->pCoreHits;
 			for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
 				{
 				if(pCoreHit->ProbeNodeID == CurProbeNodeID && 
 					CurTargNodeID == pCoreHit->TargNodeID && 
-					(pCoreHit->ProbeOfs >= CurProbeOfs && (pCoreHit->ProbeOfs <= (CurProbeOfs + (10*pThreadPar->CoreSeqLen))))) // note that probe seeds are clustered into bins of CoreSeqLen * 10
+					(pCoreHit->ProbeOfs >= CurProbeOfs && (pCoreHit->ProbeOfs <= (CurProbeOfs + 50)))) // note that probe seeds are clustered into bins of 50bp
 					{
 					NumHitsFlgMulti += 1;
 					pCoreHit->flgMulti = 1;
@@ -2429,7 +2381,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					continue;
 				if(pCoreHit->ProbeNodeID == CurProbeNodeID && 
 					CurTargNodeID == pCoreHit->TargNodeID && 
-					(pCoreHit->TargOfs >= CurTargOfs && (pCoreHit->TargOfs <= (CurTargOfs + (10*pThreadPar->CoreSeqLen))))) // note that targ seeds are clustered into bins of CoreSeqLen * 10
+					(pCoreHit->TargOfs >= CurTargOfs && (pCoreHit->TargOfs <= (CurTargOfs + 50)))) // note that targ seeds are clustered into bins of 50bp
 					{
 					NumHitsFlgMulti += 1;
 					pCoreHit->flgMulti = 1;
@@ -2548,12 +2500,12 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			}
 		}
 
-	// can't process, SW over all would be too resource intensive, all targets which meet the minimum number of core hits requested so choose the top 10 as ranked by the number of core hits
+	// can't process, SW over all would be too resource intensive, all targets which meet the minimum number of core hits requested so choose the top 30 as ranked by the number of core hits
 	if(pThreadPar->NumTargCoreHitCnts > 1)
 		{
 		pThreadPar->pmtqsort->qsort(pThreadPar->TargCoreHitCnts,pThreadPar->NumTargCoreHitCnts,sizeof(sPBCoreHitCnts),SortCoreHitsDescending);
-		if(pThreadPar->NumTargCoreHitCnts > 20)
-			pThreadPar->NumTargCoreHitCnts = 20;
+		if(pThreadPar->NumTargCoreHitCnts > 30)
+			pThreadPar->NumTargCoreHitCnts = 30;
 		}
 
 	if(pThreadPar->NumTargCoreHitCnts > 0)
@@ -2577,20 +2529,22 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			AcquireSerialise();
 			pThreadPar->pSW = new CSSW;
 			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
-			pThreadPar->pSW->PreAllocMaxTargLen(100000);
+			pThreadPar->pSW->PreAllocMaxTargLen(50000);
 			ReleaseSerialise();
 			}
 
+		if(pThreadPar->NumTargCoreHitCnts >= 2)
+			pThreadPar->pSW->StartMultiAlignments(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts);
 
 		m_pSfxArray->GetIdentName(pCurPBScaffNode->EntryID,sizeof(szProbeSeqName),szProbeSeqName);
 		pThreadPar->pSW->SetProbe(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq);
 		pSummaryCnts = &pThreadPar->TargCoreHitCnts[0];
 		for(CurTargCoreHitCnts = 0; CurTargCoreHitCnts < pThreadPar->NumTargCoreHitCnts; CurTargCoreHitCnts++,pSummaryCnts++)
 			{
-			if(pSummaryCnts->NumSHits < pThreadPar->MinNumCores)
+			if(pSummaryCnts->NumSHits < pThreadPar->MinNumCores && pSummaryCnts->NumAHits < pThreadPar->MinNumCores)
 				continue;
+			bool bTargSense = pSummaryCnts->NumSHits >= pSummaryCnts->NumAHits ? true :  false;
 			pTargNode = &m_pPBScaffNodes[pSummaryCnts->TargNodeID-1];
-
 			TargSeqLen = pTargNode->SeqLen; 
 			if(TargSeqLen + 10 > (UINT32)pThreadPar->AllocdTargSeqSize)
 				{
@@ -2599,6 +2553,8 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				pThreadPar->pTargSeq = new etSeqBase [pThreadPar->AllocdTargSeqSize];
 				}
 			m_pSfxArray->GetSeq(pTargNode->EntryID,0,pThreadPar->pTargSeq,TargSeqLen);
+			if(!bTargSense)
+				CSeqTrans::ReverseComplement(TargSeqLen,pThreadPar->pTargSeq);
 			pThreadPar->pTargSeq[TargSeqLen] = eBaseEOS;
 			
 			pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
@@ -2637,6 +2593,16 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					ProvContained += 1;
 					}
 				
+				if(pThreadPar->NumTargCoreHitCnts >= 2)
+					{
+					pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
+															
+
+					pThreadPar->pSW->AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,pThreadPar->pTargSeq);
+					}
+
 				if(m_hScaffDist != -1)
 					{
 					m_pSfxArray->GetIdentName(pTargNode->EntryID,sizeof(szTargSeqName)-1,szTargSeqName);
@@ -2647,8 +2613,10 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 						m_ScaffLineBuffIdx = 0;
 						}
 
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"S\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
-							Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,pSummaryCnts->NumSHits,pCurPBScaffNode->SeqLen,TargSeqLen,
+					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"%c\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
+							Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,
+																			bTargSense ? pSummaryCnts->NumSHits : pSummaryCnts->NumAHits, bTargSense ? 'S' : 'A',
+																			pCurPBScaffNode->SeqLen,TargSeqLen,
 							ProbeAlignLength, 
 							TargAlignLength,
 							PeakMatchesCell.PeakScore,
@@ -2693,125 +2661,10 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					ReleaseSerialise();
 					ProvOverlapped += 1;
 					}
-					
-
 				}
 			}
-
-		CSeqTrans::ReverseComplement(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq);
-		pThreadPar->pSW->SetProbe(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq);
-
-		pSummaryCnts = &pThreadPar->TargCoreHitCnts[0];
-		for(CurTargCoreHitCnts = 0; CurTargCoreHitCnts < pThreadPar->NumTargCoreHitCnts; CurTargCoreHitCnts++,pSummaryCnts++)
-			{
-			if(pSummaryCnts->NumAHits < pThreadPar->MinNumCores)
-				continue;
-			pTargNode = &m_pPBScaffNodes[pSummaryCnts->TargNodeID-1];
-			TargSeqLen = pTargNode->SeqLen;
-			if(TargSeqLen + 10 > (UINT32)pThreadPar->AllocdTargSeqSize)
-				{
-				delete pThreadPar->pTargSeq;
-				pThreadPar->AllocdTargSeqSize = (TargSeqLen * 150) / 100;
-				pThreadPar->pTargSeq = new etSeqBase [pThreadPar->AllocdTargSeqSize];
-				}
-			m_pSfxArray->GetSeq(pTargNode->EntryID,0,pThreadPar->pTargSeq,TargSeqLen);
-			pThreadPar->pTargSeq[TargSeqLen] = eBaseEOS;
-			pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
-#ifdef _PEAKSCOREACCEPT_
-			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell);
-#else
-			pPeakMatchesCell = pThreadPar->pSW->Align();
-#endif
-			ProvSWchecked += 1;
-			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= pThreadPar->MinOverlapLen)
-				{
-				ProvOverlapping += 1;
-				PeakMatchesCell = *pPeakMatchesCell;
-				ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;
-				TargAlignLength = PeakMatchesCell.EndTOfs - PeakMatchesCell.StartTOfs + 1;
-
-				// characterise the overlapped target
-				// eOLCOverlapping if probe accepted as overlapping, either 5' or 3'
-				// eOLCcontaining if both ends of target completely contained within probe
-                // eOLCartefact if target is only partially contained
-				Class = (int)eOLCOverlapping;		
-				if(PeakMatchesCell.StartTOfs < m_OverlapFloat && (TargSeqLen - PeakMatchesCell.EndTOfs) < m_OverlapFloat)
-					Class = (int)eOLCcontaining;
-				if((PeakMatchesCell.StartTOfs >= m_OverlapFloat &&  PeakMatchesCell.StartPOfs >= m_OverlapFloat) ||
-					 ((TargSeqLen - PeakMatchesCell.EndTOfs) >= m_OverlapFloat && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) >= m_OverlapFloat))
-					{
-					Class = (int)eOLCartefact;
-					ProvArtefact += 1;
-					}
-
-				if(Class == (int)eOLCcontaining)
-					{
-					AcquireLock(true);
-					pTargNode->flgContained = 1;
-					ReleaseLock(true);	
-					ProvContained += 1;			
-					}
-
-				if(m_hScaffDist != -1)
-					{
-					m_pSfxArray->GetIdentName(pTargNode->EntryID,sizeof(szTargSeqName)-1,szTargSeqName);
-					AcquireSerialise();
-					if(m_ScaffLineBuffIdx > (sizeof(m_szScaffLineBuff) - 1000))
-						{
-						CUtility::SafeWrite(m_hScaffDist,m_szScaffLineBuff,m_ScaffLineBuffIdx);
-						m_ScaffLineBuffIdx = 0;
-						}
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"A\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
-							Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,pSummaryCnts->NumAHits,pCurPBScaffNode->SeqLen,TargSeqLen,
-							ProbeAlignLength, 
-							TargAlignLength,
-							PeakMatchesCell.PeakScore,
-							PeakMatchesCell.CurScore,
-							PeakMatchesCell.NumMatches,
-							PeakMatchesCell.NumExacts,
-							PeakMatchesCell.NumGapsIns,
-							PeakMatchesCell.NumBasesIns,
-							PeakMatchesCell.NumGapsDel,
-							PeakMatchesCell.NumBasesDel,
-							PeakMatchesCell.StartPOfs,
-							PeakMatchesCell.StartTOfs,
-							PeakMatchesCell.EndPOfs,
-							PeakMatchesCell.EndTOfs,
-							PeakMatchesCell.PFirstAnchorStartOfs,
-							PeakMatchesCell.TFirstAnchorStartOfs,
-							PeakMatchesCell.PLastAnchorEndOfs,
-							PeakMatchesCell.TLastAnchorEndOfs);
-#ifdef _PEAKSCOREACCEPT_
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], ",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
-							PeakScoreCell.NumMatches + PeakScoreCell.NumBasesIns - PeakScoreCell.NumBasesDel, 
-							PeakScoreCell.PeakScore,
-							PeakScoreCell.NumMatches,
-							PeakScoreCell.NumExacts,
-							PeakScoreCell.NumGapsIns,
-							PeakScoreCell.NumBasesIns,
-							PeakScoreCell.NumGapsDel,
-							PeakScoreCell.NumBasesDel,
-							PeakScoreCell.StartPOfs,
-							PeakScoreCell.StartTOfs,
-							PeakMatchesCell.EndPOfs,
-							PeakMatchesCell.EndTOfs,
-							PeakScoreCell.PFirstAnchorStartOfs,
-							PeakScoreCell.TFirstAnchorStartOfs,
-							PeakScoreCell.PLastAnchorEndOfs,
-							PeakScoreCell.TLastAnchorEndOfs);
-#endif
-#ifdef _EXACTMATCHLENDIST_
-					for(int ExactLenIdx = 0; ExactLenIdx < cExactMatchLenDist; ExactLenIdx++)
-						m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",%d",PeakMatchesCell.ExactMatchLenDist[ExactLenIdx]);
-#endif
-					ReleaseSerialise();
-					ProvOverlapped += 1;
-					}
-				}
-
-			}
-
 		}
+
 	AcquireSerialise();
 	if(ProvOverlapping > 0)
 		m_ProvOverlapping += 1;
@@ -2986,7 +2839,7 @@ for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - (pPars->CoreSeqLen + 120)); P
 	PrevHitIdx = 0;
 	HitsThisCore = 0;
 
-    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pProbeNode->SeqLen - ProbeOfs,pPars->CoreSeqLen,pProbeNode->EntryID,pPars->MinScaffSeqLen * 2,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
+    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pProbeNode->SeqLen - ProbeOfs,pPars->CoreSeqLen,pProbeNode->EntryID,pPars->MinScaffSeqLen,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
 		{
 		PrevHitIdx = NextHitIdx;
 		pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
