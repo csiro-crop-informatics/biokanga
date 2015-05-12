@@ -5747,10 +5747,10 @@ do
 			pCurHit->FlgScored = 0;
 			pCurHit->HiScorePathNextIdx = 0;
 			pCurHit->HiScore = 0;
-			if(NumMatches > MaxHits)
+			if(NumMatches >= MaxHits)
 				break;
 			}
-		if(NumMatches > MaxHits)
+		if(NumMatches >= MaxHits)
 			{
 			Align2Strand = eALSnone;					// can't improve so early exit
 			break;
@@ -5765,7 +5765,7 @@ do
 	else									// either processed both or just the crick strand so no further processing required
 		Align2Strand = eALSnone;			// two passes max - first on the '+' strand with optional 2nd on '-' strand
 	}
-while(!(NumMatches > MaxHits) && Align2Strand != eALSnone);
+while(!(NumMatches >= MaxHits) && Align2Strand != eALSnone);
 
 if(CurStrand == '-')									// restore probe sequence if had started processing '-' strand
 	CSeqTrans::ReverseComplement(ProbeLen,pProbeSeq);

@@ -36,6 +36,9 @@ const int cMinNumExactMatches = 100;    // default is only consider a path as be
 
 const int cMaxTopNPeakMatches = 100;     // can process for at most this many peak matches in any probe vs target SW alignment
 
+const int cDfltConfWind = 50;			// default confidence window is this length
+const int cMaxConfWindSize = 200;		// allowing confidence window length to be at most this length
+
 const int cMaxMAFBlockErrCorLen = 250000;		// allowing for error corrected read sequences of up to this length
 const int cMaxMAFBlockLen = (cMaxMAFBlockErrCorLen * 100);	// allowing for multialignment format block buffering of up to this length
 
@@ -91,7 +94,8 @@ const UINT8 cMACompleted = 0x03;	// alignment completed
 
 const int cMaxMultiAlignSeqs = 200;			// can process at most this number of sequences in a multialignment
 const int cMaxParsimoniousAlignLen = 20;	// only processing for parsimonious multiple alignments for sequences which are no longer than this length
-const UINT32 cMaxAcceptExpCombs = 10000000; // only accepting for parsimonious multiple alignments if the expected number of combinations of InDels over all unique sequences is no more than this threshold
+
+const UINT32 cMaxAcceptExpCombs = 100000000; // only accepting for parsimonious multiple alignments if the expected number of combinations of InDels over all unique sequences is no more than this threshold
 
 typedef struct TAG_sPermInDels {
 	int SeqID;					// identifies this sequence instance within the multialignment
@@ -150,6 +154,9 @@ class CSSW
 	int m_GapExtnPenalty;				// gap extension penalty (-100..0)
 	int m_DlyGapExtn;					// delayed gap penalties, only apply gap extension penalty if gap at least this length
     int m_ProgPenaliseGapExtn;			// if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
+
+	int m_ConfWinSize;					// sequence bases averaged over this sized window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
+
 
 	int m_MaxInitiatePathOfs;			// if non-zero then only allow new paths to start if within that offset (0 to disable) on either probe or target - effectively an anchored SW
 

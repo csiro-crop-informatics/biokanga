@@ -225,21 +225,22 @@ m_AllocdTracebacks = 0;
 m_AllocdTracebacksSize = 0;
 m_MAAlignOps = 0;
 m_AllocdMAAlignOpsSize = 0;  
-m_ProbeAllocd = 0;		// actual m_pProbe alloc'd size (in teSWSeqBases's)
-m_ProbeLen = 0;			// current probe length
-m_TargAllocd = 0;			// actual m_pTarg alloc'd size (in teSWSeqBases's)
-m_TargLen = 0;				// current targ length
+m_ProbeAllocd = 0;		
+m_ProbeLen = 0;			
+m_TargAllocd = 0;			
+m_TargLen = 0;				
 m_MAProbeSeqLen = 0;
-m_MACols = 0;				// actual number of multialignment columns used
-m_MADepth = 0;				// each column supports multialignments of this maximal depth
-m_MAColSize = 0;			// each column is this size
+m_MACols = 0;				
+m_MADepth = 0;				
+m_MAColSize = 0;			
 
-m_AllocMACols = 0;			// this number of columns have been allocated
-m_AllocMAColsSize = 0;	// allocated memory size in bytes to hold multialignment cols
+m_AllocMACols = 0;			
+m_AllocMAColsSize = 0;	
 m_MACoverage = 0;
 
 m_ErrCorSeqID = 0;
 
+m_ConfWinSize = cDfltConfWind;
 m_MatchScore = cSSWDfltMatchScore;			
 m_MismatchPenalty = cSSWDfltMismatchPenalty;		
 m_GapOpenPenalty = cSSWDfltGapOpenPenalty;		
@@ -1043,11 +1044,21 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 				pCell->CurExactLen = 0; 
 				}
  
-		if(pCell->NumExacts >= (UINT32)m_MinNumExactMatches)
+		if(pCell->NumExacts >= (UINT32)m_MinNumExactMatches && pCell->CurExactLen >= 4) // only interested in putative paths which are terminating with at least 4 exact matches at terminal end - paths needed at least 4 exacts to start
 			{
-			if(pCell->PeakScore > m_PeakMatchesCell.PeakScore || 
-				(pCell->PeakScore == m_PeakMatchesCell.PeakScore && pCell->CurScore > m_PeakMatchesCell.CurScore))
+			if(pCell->PeakScore > m_PeakMatchesCell.PeakScore)
 				m_PeakMatchesCell = *pCell;
+			else
+				{
+				if(pCell->PeakScore == m_PeakMatchesCell.PeakScore)   // if this putative path has same peak score as previous best path then may be an extension of previous but has a localised lower score 
+					{
+					if((double)pCell->CurScore >= (m_PeakMatchesCell.PeakScore * 95.0)/100.0)	// allow current score to have dropped by at most ~ 95% of peak score
+						{
+						if((double)pCell->NumExacts >= (m_PeakMatchesCell.NumExacts * 101.0) / 100.0) // provided that the number of exactly matching bases has increased ~ 1.0%
+							m_PeakMatchesCell = *pCell;
+						}
+					}
+				}
 
 			if(m_MaxTopNPeakMatches > 0)
 				{
@@ -1118,11 +1129,9 @@ return(&m_PeakMatchesCell);
 } 
 
 
-
-
 int    // total number of returned chars in pszBuffer for the textual representation of error corrected consensus sequence (could be multiple consensus sequences)
 CSSW::MAlignCols2fasta(UINT32 ProbeID,	// identifies sequence which was used as the probe when determining the multialignments
-					int MinConf,		// sequence bases averaged over a 100bp window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
+					int MinConf,		// sequence bases averaged over a 50bp window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
 				  int MinLen,			// and sequence lengths must be of at least this length 
 				  UINT32 BuffSize,		// buffer allocated to hold at most this many chars
 				  char *pszBuffer)		// output error corrected sequences to this buffer
@@ -1142,7 +1151,7 @@ int DescrLen;
 etSeqBase Base;
 char ChrBase;
 int ConsIdx;
-tsConfBase ConfWin[101];
+tsConfBase ConfWin[cMaxConfWindSize+1];
 
 tsMAlignCol *pCol;
 
@@ -1215,17 +1224,17 @@ while(pCol != NULL)
 			if(MinConf > (int)pCol->ConsConf)					// note offset of last observed low confidence in case mean confidence drops below minimum 
 				BelowMinConfBuffOfs = BuffOfs - 1;              // if mean below minimum then truncate the sequence at this last observed
 
-			if(CurSeqLen > 100)
+			if(CurSeqLen > m_ConfWinSize)
 				ConfWinTot -= ConfWin[ConsIdx].Conf;
 			ConfWin[ConsIdx].Base = Base;
 			ConfWin[ConsIdx++].Conf = (int)pCol->ConsConf;
-			if(ConsIdx == 100)
+			if(ConsIdx == m_ConfWinSize)
 				ConsIdx = 0;	
 			ConfWinTot += pCol->ConsConf;
 
-			if(CurSeqLen >= 100)									// if sequence is at least 100bp then can calculate the mean confidence over the previous 50bp
+			if(CurSeqLen >= m_ConfWinSize)									// if sequence is at least m_ConfWin then can calculate the mean confidence over the previous 50bp
 				{
-				MeanConf = (ConfWinTot+50)/100;
+				MeanConf = (ConfWinTot+(m_ConfWinSize/2))/m_ConfWinSize;
 				if(BelowMinConfBuffOfs > 0 && MinConf > MeanConf)	// check if mean has dropped below the minimum required
 					{
 					CurSeqLen -= BuffOfs - BelowMinConfBuffOfs; 
@@ -1297,7 +1306,7 @@ return(BuffOfs);
 
 int    // total number of returned chars in pszBuffer for the textual representation of error corrected consensus sequence (could be multiple consensus sequences)
 CSSW::ConsConfSeq2Seqs(UINT32 ProbeID,	// identifies sequence which was used as the probe when determining the multialignments
-					int MinConf,		// sequence bases averaged over a 100bp window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
+					int MinConf,		// sequence bases averaged over a m_ConfWin window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
 				  int MinLen)			// and sequence lengths must be of at least this length 
 {
 int CurSeqLen;
@@ -1315,7 +1324,7 @@ int DescrLen;
 etSeqBase Base;
 char ChrBase;
 int ConsIdx;
-tsConfBase ConfWin[101];
+tsConfBase ConfWin[cMaxConfWindSize+1];
 
 tsConfBase *pCol;
 
@@ -1384,17 +1393,17 @@ while((Base = pCol->Base) != eBaseEOS)
 			if(MinConf > (int)pCol->Conf)					// note offset of last observed low confidence in case mean confidence drops below minimum 
 				BelowMinConfBuffOfs = BuffOfs - 1;              // if mean below minimum then truncate the sequence at this last observed
 
-			if(CurSeqLen > 100)
+			if(CurSeqLen > m_ConfWinSize)
 				ConfWinTot -= ConfWin[ConsIdx].Conf;
 			ConfWin[ConsIdx].Base = Base;
 			ConfWin[ConsIdx++].Conf = (int)pCol->Conf;
-			if(ConsIdx == 100)
+			if(ConsIdx == m_ConfWinSize)
 				ConsIdx = 0;	
 			ConfWinTot += (int)pCol->Conf;
 
-			if(CurSeqLen >= 100)									// if sequence is at least 100bp then can calculate the mean confidence over the previous 50bp
+			if(CurSeqLen >= m_ConfWinSize)									// if sequence is at least m_ConfWinSize long then can calculate the mean confidence over the previous m_ConfWinSize bp
 				{
-				MeanConf = (ConfWinTot+50)/100;
+				MeanConf = (ConfWinTot+(m_ConfWinSize/2))/m_ConfWinSize;
 				if(BelowMinConfBuffOfs > 0 && MinConf > MeanConf)	// check if mean has dropped below the minimum required
 					{
 					CurSeqLen -= BuffOfs - BelowMinConfBuffOfs; 
@@ -1705,7 +1714,7 @@ return(0);
 
 int
 CSSW::GenConsensusFromMAF(int MinErrCorrectLen,		// error corrected sequences must be at least this minimum length
-			 int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
+			 int MinConcScore,			// error corrected sequences trimmed until mean m_ConfWin concensus score is at least this threshold
 			char *pszErrCorFile,		// name of file into which write error corrected sequences
 			char *pszMultiAlignFile)	// name of file containing multiple alignments to process
 {
@@ -1872,7 +1881,7 @@ do {
 	// have consensus confidence scores and consensus bases - can now apply new MinConcScore threshold
 	ConsSeqLen =			// total number of returned chars in m_pszConsensusBuff for the textual representation of error corrected consensus sequence (could be multiple consensus sequences)
 		ConsConfSeq2Seqs(CurProbeID,				// identifies sequence which was used as the probe when determining the multialignments
-					     MinConcScore,				// sequence bases averaged over a 100bp window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
+					     MinConcScore,				// sequence bases averaged over a m_ConfWin window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
 						 MinErrCorrectLen);			// and sequence lengths must be of at least this length 
 
 	if(ConsSeqLen > 0)
@@ -1902,6 +1911,11 @@ if(m_gzFile != NULL)
 	m_gzFile = NULL;
 	}
 
+if(NumParsedBlocks == 0)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to parse any multiple alignment blocks from file '%s', is this a multiple alignment file?",pszMultiAlignFile);
+	Rslt = eBSFerrAlignBlk;
+	}
 return(Rslt);
 }
 
@@ -2670,13 +2684,15 @@ static tsExpCombs _ExpCombinations[] = {
 							{0,0,0} // flags end of _ExpCombinations 					
 							};
 
+ 
 double										// parsimony of returned (pSequences) multiple alignment, 0.0 (min) to 1.0 (max) or -1 if no sequences could be processed 
 CSSW::ParsimoniousBasesMultialign(int NumSeqs,	// number of sequences (alignment depth)
 		   int SeqLen,						// each sequence is this length 
 		   etSeqBase *pSequences)			// input: ptr to each sequence concatenated together, sequences may contain eBaseA, eBaseC,eBaseG,eBaseT,eBaseN, eBaseUndef, and eBaseInDel
+											//        NOTE: expectation is that if a sequence contains eBaseUndefs then the complete sequence is eBaseUndefs and if sequence contains any eBaseInDels then these will be at the 3' end of sequence
 											// output: pSequences updated with most parsimonious  				
-
 {
+int TrimSeqLen;
 double PeakParsimonyFactor;
 double CurParsimonyFactor;
 UINT32 NumAllInDels;
@@ -2701,19 +2717,52 @@ etSeqBase *pSrcBase;
 etSeqBase *pParsePermSeq;
 tsExpCombs *pSeqLenCombs;
 int BaseCnts[eBaseEOS+1];
+int NumBases;
+int LongestSeqLen;
+int NxtLongestSeqLen;
 
-if(SeqLen < 1 || SeqLen >  cMaxParsimoniousAlignLen || NumSeqs < 1 || NumSeqs > cMaxMultiAlignSeqs)
+if(SeqLen < 1 || NumSeqs < 2 || NumSeqs > cMaxMultiAlignSeqs)
 	return(-1.0);
 
-if(SeqLen > 10)
-	return(0.0);
+if(SeqLen >= 6)
+	{
+	LongestSeqLen = 0;
+	NxtLongestSeqLen = 0;
+	for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++)
+		{
+		NumBases = 0;
+		pSrcBase = &pSequences[SeqIdx*SeqLen];
+		for(BaseIdx = 0; BaseIdx < SeqLen; BaseIdx++,pSrcBase++)
+			if((*pSrcBase & 0x07) <= eBaseN)
+				NumBases += 1;
+		if(NumBases > 0)
+			{
+			if(NumBases > LongestSeqLen)
+				{
+				NxtLongestSeqLen = LongestSeqLen;
+				LongestSeqLen = NumBases;
+				}
+			else
+				if(NumBases == LongestSeqLen || NumBases > NxtLongestSeqLen)
+					NxtLongestSeqLen = NumBases;
+			}
+		}
+	if(NxtLongestSeqLen == 0 || NxtLongestSeqLen >= cMaxParsimoniousAlignLen)
+		return(-1.0);
 
-if(SeqLen == 1)								// if only a single base then can't permutate so simply calculate parsimony
+	TrimSeqLen = min(cMaxParsimoniousAlignLen,LongestSeqLen);
+	if(NxtLongestSeqLen < TrimSeqLen / 2)
+		TrimSeqLen = NxtLongestSeqLen;
+	}
+else
+	TrimSeqLen = SeqLen;
+
+if(TrimSeqLen == 1)								// if only a single base then can't permutate so simply calculate parsimony
 	{ 
 	NumSeqsNoUndefs = 0;
 	memset(BaseCnts,0,sizeof(BaseCnts));
 	pBase = pSequences;
-	for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pBase++)
+	for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pBase+=SeqLen)
 		if((Base = *pBase & 0x07) != eBaseUndef)
 			{
 			BaseCnts[Base] += 1;
@@ -2740,14 +2789,14 @@ if(SeqLen == 1)								// if only a single base then can't permutate so simply c
 
 // have at least 2 sequences to be permuted
 // iterate each sequence to initialise it's corresponding tsPermInDels
-SeqInDelMsk = ~(0xffffffffffffffff << (UINT64)SeqLen);
+SeqInDelMsk = ~(0xffffffffffffffff << (UINT64)TrimSeqLen);
 pPermInDels = m_PermIndels;
 NumSeqsNoUndefs = 0;
 for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 	{
 	pPermInDels->SeqID = SeqIdx+1;
 	pPermInDels->NxtSeqID = 0;
-	pPermInDels->SeqLen = SeqLen;
+	pPermInDels->SeqLen = TrimSeqLen;
 	pPermInDels->flgUndef = 0;
 	pPermInDels->flgNoPermutate = 0;
 	pPermInDels->flgAllInDels = 0;
@@ -2758,12 +2807,12 @@ for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 	pPermInDels->NumCopies = 0;
 	pPermInDels->NumInDels = 0;
 	pPermInDels->InitialInDelPsns = 0;
-	InDelMsk = (UINT64)0x01 << (SeqLen - 1);
+	InDelMsk = (UINT64)0x01 << (TrimSeqLen - 1);
 	pSrcBase = &pSequences[SeqIdx*SeqLen];
 	pBase = pPermInDels->InPermSeq;
 	pParsePermSeq = pPermInDels->ParsePermSeq;
 	NumSeqsNoUndefs += 1;
-	for(BaseIdx = 0; BaseIdx < SeqLen; BaseIdx++,pSrcBase++,pParsePermSeq++)
+	for(BaseIdx = 0; BaseIdx < TrimSeqLen; BaseIdx++,pSrcBase++,pParsePermSeq++)
 		{
 		Base = *pSrcBase & 0x07;
 		*pParsePermSeq = Base;
@@ -2794,7 +2843,7 @@ for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 
 if(NumSeqsNoUndefs == 0)  // if all bases were undefined then flag as being error
 	return(-1.0);
-if(NumSeqsNoUndefs <= 2)
+if(NumSeqsNoUndefs <= 2)  // if no more than 2 sequences marked as having at least one InDel then don't bother permuting
 	return(0.0);
 
 // need at least 3 sequences to characterise each sequence according to if it contains no InDels, containing all InDels and the number of exactly matching sequences
@@ -2807,7 +2856,7 @@ for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 	if(pPermInDels->flgCharacterised == 1)
 		continue;
 
-	if(pPermInDels->NumInDels == SeqLen)
+	if(pPermInDels->NumInDels == TrimSeqLen)
 		{
 		NumAllInDels += 1;
 		pPermInDels->flgNoPermutate = 1;
@@ -2824,7 +2873,7 @@ for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 	pChkPermInDels = pPermInDels + 1;
 	for(NxtIdx = SeqIdx+1; NxtIdx < NumSeqs; NxtIdx++,pChkPermInDels++)
 		{
-		if(!pChkPermInDels->flgCharacterised && pPermInDels->InPermSeq[0] == pChkPermInDels->InPermSeq[0] && !memcmp(pPermInDels->InPermSeq,pChkPermInDels->InPermSeq,SeqLen))
+		if(!pChkPermInDels->flgCharacterised && pPermInDels->InPermSeq[0] == pChkPermInDels->InPermSeq[0] && !memcmp(pPermInDels->InPermSeq,pChkPermInDels->InPermSeq,TrimSeqLen))
 			{
 			if(pPermInDels->NxtSeqID == 0)
 				pPermInDels->NxtSeqID = pChkPermInDels->SeqID;
@@ -2851,7 +2900,7 @@ if(CurParsimonyFactor >= 0.75)		// if less than 25% of sequences are permutable 
 if(SeqLen >= 4)
 	{
 	pSeqLenCombs = _ExpCombinations;
-	while(pSeqLenCombs->SeqLen != SeqLen && pSeqLenCombs->SeqLen != 0)
+	while(pSeqLenCombs->SeqLen != TrimSeqLen && pSeqLenCombs->SeqLen != 0)
 		pSeqLenCombs += 1;
 	if(pSeqLenCombs->SeqLen == 0)
 		return(CurParsimonyFactor);
@@ -2863,7 +2912,7 @@ if(SeqLen >= 4)
 			continue;
 		ExpTotCombs *= pSeqLenCombs[pPermInDels->NumInDels-1].ExpTotCombs;
 		if(ExpTotCombs > cMaxAcceptExpCombs)
-				return(CurParsimonyFactor);
+			return(CurParsimonyFactor);
 		}
 	}
 
@@ -2872,9 +2921,9 @@ PeakSeqIdx = 0;
 PeakParsimonyFactor = 0.0;
 do {
 	// Check the permutations here and if the current permutation is the most parsimonious then copy the permutated sequence into OutPermSeq
-	// The most parsimonious is that permutation which maximises the the number of loci in which there is a single base is in the majority
+	// The most parsimonious is that permutation which maximises the number of loci for which there is a single majority base
 	CurParsimonyFactor = 1.0;
-	for(BaseIdx = 0; BaseIdx < SeqLen; BaseIdx++)
+	for(BaseIdx = 0; BaseIdx < TrimSeqLen; BaseIdx++)
 		{
 		memset(BaseCnts,0,sizeof(BaseCnts));
 		pPermInDels = m_PermIndels;
@@ -2900,7 +2949,7 @@ do {
 				{
 				pChkPermInDels = pPermInDels;
 				do {
-					memcpy(pChkPermInDels->ParsePermSeq,pPermInDels->InPermSeq,SeqLen);
+					memcpy(pChkPermInDels->ParsePermSeq,pPermInDels->InPermSeq,TrimSeqLen);
 					if(pChkPermInDels->NxtSeqID > 0)
 						pChkPermInDels = &m_PermIndels[pChkPermInDels->NxtSeqID-1];
 					else
@@ -2928,7 +2977,7 @@ while(SeqIdx < NumSeqs);
 pPermInDels = m_PermIndels;
 for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 	{
-	memcpy(pSequences,pPermInDels->ParsePermSeq,SeqLen);
+	memcpy(pSequences,pPermInDels->ParsePermSeq,TrimSeqLen);
 	pSequences+=SeqLen;
 	}
 return(PeakParsimonyFactor);
@@ -2973,7 +3022,6 @@ while(pCol != NULL);
 Score = ParsimoniousBasesMultialign(Depth,NumCols,m_pParsimoniousBuff);
 
 // copy back sequences back into columns
-int ChekMe = 0;
 ColIdx = 0;
 pCol = pInDelStartCol;
 do {

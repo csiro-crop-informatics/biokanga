@@ -1874,7 +1874,7 @@ do {
 		pCurNode = NULL;
 	}
 while(pCurNode != NULL);
-
+m_ReportedPaths += 1;
 ReleaseSerialise();
 if(pCurSeq != NULL)
 	delete pCurSeq;
