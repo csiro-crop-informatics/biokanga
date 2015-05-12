@@ -1,0 +1,133 @@
+biokanga ngsqc NGS quality control assurance, reports duplication rates,
+K-mer, and Phred score distributions
+Version 3.7.6
+===========================
+Released May 11th 2015
+
+Use to identify NGS readsets which may have sequencing or contaminant
+artefacts requiring targeted downstream processing.
+
+Options:
+
+-h, --help
+	This option will display the list of options and brief help as to the
+	function of each of these options together with default values, and
+	then terminates the process
+
+-v, --version, --ver
+	This option displays the Biokanga build version and then
+	terminates
+
+-f, --FileLogLevel=<int>
+	Use this option to control the level of diagnostics written to screen
+	and logfile. Currently most log messages are written at the default
+	level of diagnostics (3)
+
+-F, --log=<file>
+	Use to specify the log file to which diagnostics are to be written.
+	If not specified then diagnostics will be written to screen only
+
+-m, mode=<int>
+	Processing mode:
+		0 - default processing only is currently supported
+
+-S, --strand
+  	Strand specific filtering - reads are processed for duplicates with
+	read orientation - default is for non-strand specific
+
+-y, --trim5=<int>
+  	Trim this number of 5' bases from each input sequence when
+	loaded (default is 0, range 0..50)
+
+-Y, --trim3=<int>
+  	Trim this number of 3' bases from each input sequence when loaded
+	(default is 0, range 0..50)
+
+-s, --seeds=<int>
+	Use at most this number of seed reads for duplicate identification
+	Reads are loaded and duplicate counted, with the first unique
+	instances of any sequence, upto specified maximum <seeds>, used to
+	match other subsequently loaded reads against. Reads are only
+	processed for duplicates/seeds if the individual read has all bases
+	with a Phred score >= 20. The user may request between
+	100,000 and 25,000,000 as the targeted maximum number of seeds with a
+	default of 5,000,000.
+
+-k, --maxkmerlen=<int>
+	Number of occurrences of all K-mers from 1 to <maxkmerlen> are
+	maintained and reported for every base starting from base 1 to the end
+	of each read. The <maxkmerlen> can be specified between 3 and 12,
+	defaulting to 5.
+
+-K, --kmerccc=<int>
+	A K-mer of this length choosen at 1/3rd of the maximum read length is
+	used as a 'gold standard', and the distribution of this K-mer is
+	used to determine the concordance correlation coefficient measure of
+	the same length K-mers starting at all other bases in the readset.
+	The K-mer length can be specified to be in the range 1 to <maxkmerlen>
+	with a default of 3.
+
+-p, --minphred=<int>
+	Only accept reads for duplicate and KMer processing if their minimum
+	Phred score at any base in the read is at least this threshold Phred.
+	To ignor Phred scores then use '-p0'. The default is 20.
+
+-z, --maxcontamsubrate=<int>
+	Specifies maximum allowed contamimant substitution rate (bases per 25bp
+	of contaminant overlap, in 1st 15bp of overlap no subs allowed).
+	Default is 1, range 0 to 3
+
+-Z, --mincontamlen=<int>
+	Contaminant overlaps are only accepted if overlap is of at least this
+	many bases. Default is 5, range 1 to 100.
+
+-c, --contaminants=<file>
+	Optional multifasta file containing putative contaminant sequences
+	(perhaps adaptor or primers) which may be overlapping onto the reads.
+
+-i, --inpe1=<file>
+	Load single ended, or PE1 if paired end, reads from fasta or fastq
+	file(s); if single ended then wildcards are allowed.
+
+-u, --inpe2=file
+	Load PE2 if paired end reads from fasta or fastq file(s), wildcards
+	are not allowed and the PE2 files must be specified in matching order
+	with the corresponding PE1 files.
+
+-o, --out=<file>
+	Distributions are written to CSV files using this output name as the
+	filename prefix. The result specific name suffixes are:
+	.contaminates.csv      Contaminates distributions
+	.duplicatesdist.csv    Duplicated read distributions
+	.kmerdist.csv          K-mer distributions
+	.pearsondist.csv       Pearson concordance corelations
+	.qscoredist.csv        Phred score distributions
+	.readlendist.csv       Read length distributions
+	.errfreedist.csv       Error free reads distributions
+	Additionally, summary graphs are generated as SVG into the following:
+	.duplicatesdist.svg    Duplicated read distributions
+	.acgtdist.svg          a,c,g,t monomer distributions
+	.pearsondist.svg       Pearson concordance corelations
+	.qscoredist.svg        Phred score distributions
+	.readlendist.svg       Read length distributions
+	.errfreedist.svg       Error free reads distributions
+
+-T, --threads=<int>
+	Number of processing threads 0..n (defaults to 0 which sets threads
+	to number of CPU cores, max 64)
+
+-q, --sumrslts=<file>
+	Output results summary to this SQLite3 database file
+
+-w, --experimentname=<str>
+        Specifies experiment name to use in SQLite3 database file
+
+-W, --experimentdescr=<str>
+	Specifies experiment description to use in SQLite3 database file
+
+Note: Options and associated parameters can be entered into an option parameter
+file, one option and it's associated parameter per line.
+To specify usage of this option paramter file to the BioKanga toolkit
+components then precede it's name with '@', e.g. biokanga index @myparams.txt
+
+

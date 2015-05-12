@@ -1,0 +1,133 @@
+biokanga rnade  RNA-seq differential expression analyser with optional
+Pearsons generation
+Version 3.7.6
+===========================
+Released May 11th 2015
+
+-h, --help
+	This option will display the list of options and brief help as to the
+	function of each of these options together with default values, and
+	then terminates the process
+
+-v, --version, --ver
+	This option displays the Biokanga build version and then
+	terminates
+
+-f, --FileLogLevel=<int>
+	Use this option to control the level of diagnostics written to screen
+	and logfile. Currently most log messages are written at the default
+	level of diagnostics (3)
+
+-F, --log=<file>
+	Use to specify the log file to which diagnostics are to be written.
+	If not specified then diagnostics will be written to screen only
+
+-m, --mode=<int>
+	Processing sensitivity:
+		0 - standard sensitivity (default)
+		1 - more sensitive (slower)
+		2 - ultra sensitive (slowest)
+		3 - less sensitive (quicker)
+
+-t, --filetype=<int>
+	Input element file format:
+		0 - auto (default)
+		1 - CSV
+		2 - BED
+		3 - SAM or BAM ('.bam' file extension)
+
+-A, --nonalign
+	Do not report on features which have no aligned reads
+
+-L, --limitaligned=<int>
+	For test/evaluation can limit number of reads parsed to be no more
+	than this number (default 0 for no limit)
+
+-a, --artifactthres=<int>
+	Artifact loci cnt reduction threshold, 0 to disable (1 to 500,
+	defaults to 20)
+
+-s, --alignstrand=<int>
+	Read alignment strand processing:
+		0 - independent (default)
+		1 - sense
+		2 - antisense
+
+-S, --featstrand=<int>
+	Gene or feature strand processing:
+		0 - independent (default)
+		1 - sense
+		2 - antisense
+
+-r, --region=<int>
+	Process region:
+		0 - complete transcript
+		1: Exons  (default)
+		2: Introns
+		3: CDSs
+		4: UTRs
+		5: 5'UTRs
+
+-n, --normcnts=<dbl>
+	Control counts normalisation scale factor
+		0.1 to 10.0 to scale expr counts
+		-0.1 to -10.0 to scale control
+		default is 0 for auto-library size normalisation
+
+-C, --minfeatcnts=<int>
+	Minimum feature count threshold, control or experiment, required (1
+	to 200, defaults to 10)
+
+-z, --minfeatloci=<int>
+	Minimum feature unique start loci, control or experiment, required (1
+	to 200, defaults to 5)
+
+-c, --cowinlen=<int>
+	Counts coalescing window length (1 to 20, defaults to 1 or no
+	coalescence)
+
+-b, --numbins=<int>
+	Bin counts for each gene/feature into this many non-overlapping bins
+	(5 to 200, defaults to 10)
+
+-i, --control=<file>
+	Input control read alignments files (wildcards allowed)
+
+-I, --experiment=<file>
+	Input experiment read alignments file (wildcards allowed)
+
+-o, --out=<file>
+	Output transcript differentials to this file as CSV
+
+-O, --bincounts=<file>
+	Output transcript bin counts to this file as CSV
+
+-g, --ingene=<file>
+	Input gene or feature biobed BED file
+
+-G, --featclass=<file>
+	Input gene or feature classification CSV file
+
+-x, --excludezones=<file>
+	Exclude reads overlaying zone loci specified in this CSV file from
+	any processing
+
+-T, --threads=<int>
+	Number of processing threads 0..n (defaults to 0 which sets threads
+	to number of CPU cores, max 64)
+
+-q, --sumrslts=<file>
+	Output results summary to this SQLite3 database file
+
+-w, --experimentname=<str>
+        Specifies experiment name to use in SQLite3 database file
+
+-W, --experimentdescr=<str>
+	Specifies experiment description to use in SQLite3 database file
+
+Note: Options and associated parameters can be entered into an option parameter
+file, one option and it's associated parameter per line.
+To specify usage of this option paramter file to the BioKanga toolkit
+components then precede it's name with '@', e.g. biokanga index @myparams.txt
+
+
