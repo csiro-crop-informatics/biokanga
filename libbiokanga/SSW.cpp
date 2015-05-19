@@ -30,10 +30,12 @@ m_pTarg = NULL;
 m_pAllocdTracebacks = NULL;
 m_pMACols = NULL;  
 m_pMAAlignOps = NULL;
+m_pAllWinScores = NULL;
 m_pParsimoniousBuff = NULL;
 m_pszMAFAlignBuff = NULL;
 m_pszConsensusBuff = NULL;
 m_pConsConfSeq = NULL;
+
 m_gzFile = NULL;
 m_hMAFFile = -1;
 m_hConsSeqFile = -1;
@@ -92,6 +94,9 @@ if(m_pMAAlignOps != NULL)
 		munmap(m_pMAAlignOps,m_AllocdMAAlignOpsSize);
 #endif
 	}
+
+if(m_pAllWinScores != NULL)
+	delete m_pAllWinScores;
 
 if(m_pProbe != NULL)
 	delete m_pProbe;
@@ -176,6 +181,12 @@ if(m_pParsimoniousBuff != NULL)
 	m_pParsimoniousBuff = NULL;
 	}
 
+if(m_pAllWinScores != NULL)
+	{
+	delete m_pAllWinScores;
+	m_pAllWinScores = NULL;
+	}
+
 if(m_pProbe != NULL)
 	{
 	delete m_pProbe;
@@ -232,8 +243,11 @@ m_TargLen = 0;
 m_MAProbeSeqLen = 0;
 m_MACols = 0;				
 m_MADepth = 0;				
-m_MAColSize = 0;			
-
+m_MAColSize = 0;
+m_ProbeStartRelOfs = 0;			
+m_TargStartRelOfs = 0;			
+m_ProbeRelLen = 0;
+m_TargRelLen = 0;
 m_AllocMACols = 0;			
 m_AllocMAColsSize = 0;	
 m_MACoverage = 0;
@@ -603,7 +617,7 @@ switch(pCur->IdxP & cTrBkFlgsMsk) {
 	}
 if(IdxP == 0 || IdxT == 0)
 	return(NULL);
-int ChkThis = 0;
+
 while((pCur->IdxT & cTrBkIdxMsk) != IdxT || (pCur->IdxP & cTrBkIdxMsk) != IdxP)
 	{
 	if((pCur->IdxP & cTrBkIdxMsk) < IdxP)
@@ -665,6 +679,33 @@ m_UsedTracebacks = NumRetained;
 return(NumRetained);
 } 
 
+int													// NOTE: both probe and target sequences must have been set (SetProbe and SetTarg) before setting the alignment range
+CSSW::SetAlignRange(UINT32 ProbeStartRelOfs,		// when aligning then start SW from this probe sequence relative offset
+					  UINT32 TargStartRelOfs, 	// and SW starting from this target sequence relative offset
+						UINT32 ProbeRelLen,		// and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+						UINT32 TargRelLen)		// and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+{
+if(m_ProbeLen < cSSWMinProbeOrTargLen || m_ProbeLen > cSSWMaxProbeOrTargLen ||  m_TargLen < cSSWMinProbeOrTargLen || m_TargLen > cSSWMaxProbeOrTargLen)
+	return(eBSFerrParams);	
+
+if((ProbeStartRelOfs + cSSWMinProbeOrTargLen) > m_ProbeLen || (TargStartRelOfs + cSSWMinProbeOrTargLen) > m_TargLen)
+	return(eBSFerrParams);	
+
+if(ProbeRelLen == 0)
+	ProbeRelLen = m_ProbeLen - ProbeStartRelOfs;	
+if(TargRelLen == 0)
+	TargRelLen = m_TargLen - ProbeStartRelOfs;
+
+if((ProbeStartRelOfs + ProbeRelLen) > m_ProbeLen || (TargStartRelOfs + TargRelLen) > m_TargLen)
+	return(eBSFerrParams);	
+
+m_ProbeStartRelOfs = ProbeStartRelOfs;
+m_TargStartRelOfs = TargStartRelOfs;
+m_ProbeRelLen = ProbeRelLen;
+m_TargRelLen = TargRelLen;
+return(eBSFSuccess);
+}
+
 tsSSWCell *								// smith-waterman style local alignment, returns highest accumulated exact matches cell
 CSSW::Align(tsSSWCell *pPeakScoreCell,	// optionally also return conventional peak scoring cell
 				bool bNoTracebacks)		// if false then not using tracebacks
@@ -675,6 +716,9 @@ bool bMatch;
 bool bMatchNxt3;
 UINT32 StartIdxT;
 UINT32 EndIdxT;
+
+UINT32 TargRelLen;
+UINT32 ProbeRelLen;
 
 int DiagScore;							// putative diagonal score
 int DiagPeakScore;
@@ -701,10 +745,20 @@ tsSSWTraceback *pTraceback;
 if(m_ProbeLen < cSSWMinProbeOrTargLen || m_ProbeLen > cSSWMaxProbeOrTargLen ||  m_TargLen < cSSWMinProbeOrTargLen || m_TargLen > cSSWMaxProbeOrTargLen)
 	return(NULL);	
 
+if(m_ProbeRelLen == 0)
+	ProbeRelLen = m_ProbeLen - m_ProbeStartRelOfs;	
+else
+	ProbeRelLen = m_ProbeRelLen;
+if(m_TargRelLen == 0)
+	TargRelLen = m_TargLen - m_ProbeStartRelOfs;
+else
+	TargRelLen = m_TargRelLen;
+
 memset(&m_PeakMatchesCell,0,sizeof(m_PeakMatchesCell));
 memset(&m_PeakScoreCell,0,sizeof(m_PeakScoreCell));
 
-if(((m_AllocdCells + 10 < m_TargLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  !PreAllocMaxTargLen(m_TargLen,bNoTracebacks))
+// allocating to hold full length even if relative length a lot shorter to reduce number of reallocations which may be subsequently required
+if(((m_AllocdCells + 10 < TargRelLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  !PreAllocMaxTargLen(m_TargLen,bNoTracebacks))
 	return(NULL);
 
 if(!bNoTracebacks && m_pAllocdTracebacks != NULL)
@@ -716,40 +770,41 @@ if(m_MaxTopNPeakMatches)
 	memset(m_TopPeakMatches,0,sizeof(m_TopPeakMatches));
 	}
 
-m_UsedCells = m_TargLen;
+m_UsedCells = TargRelLen;
 
 // cell defaults are score = 0, no gap extensions ...
-memset(m_pAllocdCells,0,m_TargLen * sizeof(tsSSWCell));
+memset(m_pAllocdCells,0,TargRelLen * sizeof(tsSSWCell));
 
-pProbe = m_pProbe;
+
 memset(&LeftCell,0,sizeof(tsSSWCell));
 memset(&DiagCell,0,sizeof(tsSSWCell));
 UINT32 NumCellsSkipped = 0;
 UINT32 NumCellsChecked = 0;
 UINT32 LastCheckedIdxT;
-LastCheckedIdxT = m_TargLen;
+LastCheckedIdxT = TargRelLen;
 m_UsedTracebacks = 0;
 pTraceback = m_pAllocdTracebacks;						// NOTE: NULL if tracebacks not required
-for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
+pProbe = &m_pProbe[m_ProbeStartRelOfs];
+for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 	{
-	if(m_pAllocdTracebacks != NULL && (m_UsedTracebacks + 10) > (m_AllocdTracebacks - m_TargLen)) // ensure that sufficent memory has been allocated to hold any tracebacks in next sweep over the target
+	if(m_pAllocdTracebacks != NULL && (m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen)) // ensure that sufficent memory has been allocated to hold any tracebacks in next sweep over the target
 		{
 		// try to reduce the number of tracebacks
 		if(m_PeakMatchesCell.PeakScore > 0)  // peak scoring cell's path may have already terminated so mark that independently of those still in m_pAllocdCells[]
 			MarkTracebackPath(cTrBkFlgRetain,m_PeakMatchesCell.EndPOfs,m_PeakMatchesCell.EndTOfs);
 		pCell = m_pAllocdCells;
-		for(IdxT = 0; IdxT < m_TargLen; IdxT++,pCell++)
+		for(IdxT = 0; IdxT < TargRelLen; IdxT++,pCell++)
 			{
 			if(pCell->PeakScore > 0)
 				MarkTracebackPath(cTrBkFlgRetain,pCell->EndPOfs,pCell->EndTOfs);
 			}
 		ReduceTracebacks(cTrBkFlgRetain,cTrBkFlgRetain);
-		if((m_UsedTracebacks + 10) > (m_AllocdTracebacks - m_TargLen))
+		if((m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen))
 			{
 			UINT32 trbsreq;
 			size_t memreq;
 			void *pAllocd;
-			trbsreq = (m_AllocdTracebacks + (m_TargLen * 500));
+			trbsreq = (m_AllocdTracebacks + (TargRelLen * 500));
 			memreq = (size_t)trbsreq * sizeof(tsSSWTraceback);
 
 #ifdef _WIN32
@@ -774,10 +829,10 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 
 	ProbeBase = *pProbe++ & ~cRptMskFlg;
 	StartIdxT = 0;
-	EndIdxT = min(m_TargLen,LastCheckedIdxT+2);
-	pTarg = &m_pTarg[StartIdxT];
+	EndIdxT = min(TargRelLen,LastCheckedIdxT+2);
+	pTarg = &m_pTarg[m_TargStartRelOfs];
 	pCell = m_pAllocdCells;
-	for(IdxT = StartIdxT; IdxT < EndIdxT; IdxT++,pCell++)
+	for(IdxT = 0; IdxT < EndIdxT; IdxT++,pCell++)
 		{
 		// if m_MaxOverlapStartOfs > 0 then only starting new paths if within that max offset
 		// and early terminate low confidence paths; these are paths of longer than 1Kbp with coverage outside of 15% and with mean length of matching subseqs of less than 3.0bp
@@ -790,9 +845,9 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 				int CovRatio;
 				int ScoreRatio;
 				int MeanMatchLen;
-				if((ProbeCovLen = IdxP - pCell->StartPOfs) > 1000 && (TargCovLen = IdxT - pCell->StartTOfs) > 1000)
+				if((ProbeCovLen = (m_ProbeStartRelOfs + IdxP) - pCell->StartPOfs) > 1000 && (TargCovLen = (m_TargStartRelOfs + IdxT) - pCell->StartTOfs) > 1000)
 					{
-					ScoreRatio=(pCell->CurScore * 1000)/pCell->PeakScore;
+					ScoreRatio=(pCell->CurScore * 1000)/pCell->PeakScore; // expecting the score to not have dropped by more than 0.9 from the peak
 					CovRatio = (ProbeCovLen*1000)/TargCovLen;   // expecting the probe and targ coverage lengths to be within 15% of each other
 					MeanMatchLen = (pCell->NumMatches * 1000)/(pCell->NumGapsIns + pCell->NumGapsDel); // expecting the mean lengths of matching subsequences between probe and targ to be at least 3bp
 					if(ScoreRatio < 900 || CovRatio < 850 || CovRatio > 1150 || MeanMatchLen < 3000)
@@ -818,7 +873,7 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 
 		TargBase = *pTarg++ & ~cRptMskFlg;
 		bMatch = ProbeBase == TargBase;
-		bMatchNxt3 = (IdxP < m_ProbeLen-4) && (IdxT < m_TargLen - 4) && 
+		bMatchNxt3 = (IdxP < ProbeRelLen-4) && (IdxT < TargRelLen - 4) && 
 					((*pProbe & ~cRptMskFlg) == (*pTarg & ~cRptMskFlg) && 
 					(pProbe[1] & ~cRptMskFlg) == (pTarg[1] & ~cRptMskFlg) &&
 					(pProbe[2] & ~cRptMskFlg) == (pTarg[2] & ~cRptMskFlg));
@@ -857,18 +912,18 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 			memset(&DiagCell,0,sizeof(tsSSWCell));
 			if(bMatch && bMatchNxt3)
 				{
-				pCell->StartPOfs = IdxP+1;
-				pCell->StartTOfs = IdxT+1;
-				pCell->EndPOfs = IdxP+1;
-				pCell->EndTOfs = IdxT+1;
+				pCell->StartPOfs = m_ProbeStartRelOfs + IdxP + 1;
+				pCell->StartTOfs = m_TargStartRelOfs + IdxT + 1;
+				pCell->EndPOfs = pCell->StartPOfs;
+				pCell->EndTOfs = pCell->StartTOfs;
 				pCell->CurScore = m_MatchScore;
 				pCell->PeakScore = m_MatchScore;
 				pCell->NumMatches = pCell->NumExacts = pCell->CurExactLen = 1;
 				 
 				if(pTraceback != NULL)
 					{
-					pTraceback->IdxP = (IdxP + 1) | cTrBkFlgStart;
-					pTraceback->IdxT = IdxT + 1;
+					pTraceback->IdxP = pCell->StartPOfs | cTrBkFlgStart;
+					pTraceback->IdxT = pCell->StartTOfs;
 					pTraceback += 1;
 					m_UsedTracebacks += 1;
 					}
@@ -959,13 +1014,13 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 			pCell->NumMatches += 1;
 			pCell->DownInDelLen = 0;
 			pCell->LeftInDelLen = 0;
-			pCell->EndPOfs = IdxP+1;
-			pCell->EndTOfs = IdxT+1;
+			pCell->EndPOfs = m_ProbeStartRelOfs + IdxP + 1;
+			pCell->EndTOfs = m_TargStartRelOfs + IdxT + 1;
 
 			if(pTraceback != NULL)
 				{
-				pTraceback->IdxP = IdxP+1;
-				pTraceback->IdxT = IdxT+1;
+				pTraceback->IdxP = pCell->EndPOfs;
+				pTraceback->IdxT = pCell->EndTOfs;
 				if(!bMatch)
 					pTraceback->IdxT |= cTrBkFlgSub; // flags that the match was not exact
 				if(pCell->PeakScore > 0)
@@ -979,19 +1034,19 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 				{
 				if(pCell->StartPOfs == 0)           // starting a new path?
 					{
-					pCell->StartPOfs = IdxP + 1;
-					pCell->StartTOfs = IdxT + 1;
+					pCell->StartPOfs = m_ProbeStartRelOfs + IdxP + 1;
+					pCell->StartTOfs = m_TargStartRelOfs + IdxT + 1;
 					}
 				pCell->NumExacts+=1;
 				pCell->CurExactLen += 1;
 				if(pCell->CurExactLen >= m_AnchorLen)  // succession of exact matches qualify as anchor?
 					{
-					pCell->PLastAnchorEndOfs = IdxP + 1;
-					pCell->TLastAnchorEndOfs = IdxT + 1;
+					pCell->PLastAnchorEndOfs = m_ProbeStartRelOfs + IdxP + 1;
+					pCell->TLastAnchorEndOfs = m_TargStartRelOfs + IdxT + 1;
 					if(pCell->PFirstAnchorStartOfs == 0)
 						{
-						pCell->PFirstAnchorStartOfs = IdxP + 2 - m_AnchorLen;
-						pCell->TFirstAnchorStartOfs = IdxT + 2 - m_AnchorLen;
+						pCell->PFirstAnchorStartOfs = m_ProbeStartRelOfs + IdxP + 2 - m_AnchorLen;
+						pCell->TFirstAnchorStartOfs = m_TargStartRelOfs + IdxT + 2 - m_AnchorLen;
 						}
 					}
 				}
@@ -1006,13 +1061,12 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 				pCell->PeakScore = DownPeakScore;
 				pCell->DownInDelLen = DownInDelLen;
 				pCell->LeftInDelLen = 0;
-				pCell->EndPOfs = IdxP+1;
-				pCell->EndTOfs = IdxT+1;
+				pCell->EndPOfs = m_ProbeStartRelOfs + IdxP + 1;
+				pCell->EndTOfs = m_TargStartRelOfs + IdxT + 1;
 				if(pTraceback != NULL)
 					{
-					pTraceback->IdxP = IdxP+1;
-					pTraceback->IdxT = IdxT+1;
-					pTraceback->IdxP |= cTrBkFlgDel; // down traceback
+					pTraceback->IdxP = pCell->EndPOfs | cTrBkFlgDel;			// down traceback;
+					pTraceback->IdxT = pCell->EndTOfs;
 					pTraceback += 1;
 					m_UsedTracebacks += 1;
 					}
@@ -1023,18 +1077,17 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 				}
 			else
 				{			
-				*pCell = LeftCell;							// left score the highest
+				*pCell = LeftCell;												// left score the highest
 				pCell->CurScore = LeftScore;
 				pCell->PeakScore = LeftPeakScore;
 				pCell->LeftInDelLen = LeftInDelLen;
 				pCell->DownInDelLen = 0;
-				pCell->EndPOfs = IdxP+1;
-				pCell->EndTOfs = IdxT+1;
+				pCell->EndPOfs = m_ProbeStartRelOfs + IdxP + 1;
+				pCell->EndTOfs = m_TargStartRelOfs + IdxT + 1;
 				if(pTraceback != NULL)
 					{
-					pTraceback->IdxP = IdxP+1;
-					pTraceback->IdxT = IdxT+1;
-					pTraceback->IdxP |= cTrBkFlgIns;            // left traceback
+					pTraceback->IdxP = pCell->EndPOfs | cTrBkFlgIns;            // left traceback;
+					pTraceback->IdxT = pCell->EndTOfs;
 					pTraceback += 1;
 					m_UsedTracebacks += 1;
 					}
@@ -1075,8 +1128,8 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 							if(pCell->NumExacts > pTop->NumExacts)
 								{
 								*pTop = *pCell;
-								pTop->EndPOfs = IdxP + 1;
-								pTop->EndTOfs = IdxT + 1;
+								pTop->EndPOfs = m_ProbeStartRelOfs + IdxP + 1;
+								pTop->EndTOfs = m_TargStartRelOfs + IdxT + 1;
 								}
 							break;
 							}
@@ -1088,24 +1141,24 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 						if(m_NumTopNPeakMatches < m_MaxTopNPeakMatches)
 							{
 							*pTop = *pCell;
-							pTop->EndPOfs = IdxP + 1;
-							pTop->EndTOfs = IdxT + 1;
+							pTop->EndPOfs =  m_ProbeStartRelOfs + IdxP + 1;
+							pTop->EndTOfs = m_TargStartRelOfs + IdxT + 1;
 							m_NumTopNPeakMatches += 1;
 							}
 						else
 							if(pCurMinCell != NULL && pCurMinCell->NumExacts < pCell->NumExacts)
 								{
 								*pCurMinCell = *pCell;
-								pCurMinCell->EndPOfs = IdxP + 1;
-								pCurMinCell->EndTOfs = IdxT + 1;
+								pCurMinCell->EndPOfs =  m_ProbeStartRelOfs + IdxP + 1;
+								pCurMinCell->EndTOfs = m_TargStartRelOfs + IdxT + 1;
 								}
 						}
 					}
 				else
 					{
 					*pTop = *pCell;
-					pTop->EndPOfs = IdxP + 1;
-					pTop->EndTOfs = IdxT + 1;
+					pTop->EndPOfs = m_ProbeStartRelOfs + IdxP + 1;
+					pTop->EndTOfs = m_TargStartRelOfs + IdxT + 1;
 					m_NumTopNPeakMatches = 1;
 					}
 				}
@@ -1115,8 +1168,8 @@ for(IdxP = 0; IdxP < m_ProbeLen; IdxP++)
 		if(pPeakScoreCell != NULL && pCell->PeakScore >= m_PeakScoreCell.PeakScore)
 			{
 			m_PeakScoreCell = *pCell;
-			m_PeakScoreCell.EndPOfs = IdxP + 1;
-			m_PeakScoreCell.EndTOfs = IdxT + 1;
+			m_PeakScoreCell.EndPOfs = m_ProbeStartRelOfs + IdxP + 1;
+			m_PeakScoreCell.EndTOfs = m_TargStartRelOfs + IdxT + 1;
 			}
 #endif
 		}
@@ -2131,6 +2184,122 @@ m_bStartedMultiAlignments = true;
 return(eBSFSuccess);
 }
 
+int												// attempting to determine if path is artfact resulting from aligning to a paralogous fragment
+CSSW::ClassifyPath(int MaxArtefactDev,			// classify path as artefactual if sliding window (currently 1Kbp) over any overlap deviates by more than this percentage from the overlap mean
+				    UINT32 ProbeStartOfs,		// alignment starts at this probe sequence offset (1..n)
+					UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset
+					UINT32 TargStartOfs,		// alignment starts at this target sequence offset (1..n)
+					UINT32 TargEndOfs)			// alignment ends at this target sequence offset
+{
+UINT32 TrcBkOp;
+int Score;
+int ProbeOfs;
+bool bGapOpened;
+int TraceBackIdx;
+int m_NumWinScores;
+tsTraceBackScore TraceBackScores[cTraceBackWin+1];
+
+int WindowAlignScore;
+
+tsSSWTraceback *pTraceBack;
+
+if(MaxArtefactDev < 1)							// <= 0 to disable path classification
+	return(0);
+if((ProbeEndOfs - ProbeStartOfs) < cTraceBackWin) // need sufficent overlap to check for window deviations
+	return(0);
+
+if(m_pAllWinScores == NULL)
+	{
+	if((m_pAllWinScores = new int [cMaxMAFBlockErrCorLen+1])==NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: ClassifyPath unable to allocate for windowed traceback scores");
+		return(eBSFerrMem);
+		}
+	}
+m_NumWinScores = 0;
+if(MaxArtefactDev > 25)			// clamp to be in range 1 to 25
+	MaxArtefactDev = 25;
+
+// calculate a score over the path using same scoring as when SW'ing
+// now check for localised significant deviations from the overall rate along the target
+// using a window of 1Kbp and expecting the peak deviation from overall mean to be less than MaxArtefactDev
+Score = 0;
+bGapOpened = false;
+ProbeOfs = 0;
+TraceBackIdx = 0;
+pTraceBack = InitiateTraceback(ProbeEndOfs,TargEndOfs);
+do {
+	switch(TrcBkOp = (pTraceBack->IdxP & cTrBkFlgsMsk)) {
+		case cTrBkFlgStart:							// start of alignment path; process as if cTrBkFlgMatch
+		case cTrBkFlgMatch:							// match - may not be an exact match
+			if(pTraceBack->IdxT & cTrBkFlgSub)
+				Score += m_MismatchPenalty;
+			else
+				Score += m_MatchScore;
+			bGapOpened = false;
+			ProbeOfs += 1;
+			break;	
+		case cTrBkFlgIns:							// base inserted into probe relative to target
+			ProbeOfs += 1;
+		case cTrBkFlgDel:							// base deleted from probe relative to target
+			if(!bGapOpened)
+				Score += m_GapOpenPenalty;
+			else
+				Score += m_GapExtnPenalty;
+			bGapOpened = true;
+		}
+	if(Score < 0)
+		Score = 0;
+	int LatestScoreIdx;
+	int OldestScoreIdx;
+	LatestScoreIdx = TraceBackIdx % cTraceBackWin;
+	TraceBackScores[LatestScoreIdx].Score = Score;
+	TraceBackScores[LatestScoreIdx].ProbeOfs = ProbeOfs;
+	if(TraceBackIdx >= (cTraceBackWin - 1))
+	    {
+		OldestScoreIdx = (LatestScoreIdx + 1) % cTraceBackWin;
+		WindowAlignScore = (1000 * (TraceBackScores[LatestScoreIdx].Score - TraceBackScores[OldestScoreIdx].Score)) / (TraceBackScores[LatestScoreIdx].ProbeOfs - TraceBackScores[OldestScoreIdx].ProbeOfs);
+		if(WindowAlignScore < 0)
+			WindowAlignScore = 0;
+		if(TraceBackIdx < cMaxMAFBlockErrCorLen)
+			m_pAllWinScores[m_NumWinScores++] = WindowAlignScore;
+		}
+	TraceBackIdx += 1;
+	if(TrcBkOp == cTrBkFlgStart || ((pTraceBack->IdxP & cTrBkIdxMsk) == ProbeStartOfs && (pTraceBack->IdxT & cTrBkIdxMsk) == TargStartOfs))
+		break;
+	}
+while(pTraceBack = NxtTraceback(pTraceBack));
+
+if(m_NumWinScores < (cTraceBackWin * 3) / 2)				
+	return(0);
+
+// determine mean and min max scores so can then check for significant variances
+int WinScoreIdx;
+int *pWinScore;
+int CurWinScore;
+int MaxWinScore;
+int MinWinScore;
+int MeanWinScore;
+INT64 SumWinScores;
+ 
+SumWinScores = 0;
+pWinScore = m_pAllWinScores;
+SumWinScores = MaxWinScore = MinWinScore = *pWinScore++;
+for(WinScoreIdx = 1; WinScoreIdx < m_NumWinScores; WinScoreIdx+=1,pWinScore+=1 )
+	{
+	CurWinScore = *pWinScore;
+	SumWinScores += (INT64)CurWinScore;
+	if(CurWinScore > MaxWinScore)
+		MaxWinScore = CurWinScore;
+	if(CurWinScore < MinWinScore)
+		MinWinScore = CurWinScore;
+	}
+MeanWinScore = (int)(SumWinScores / m_NumWinScores);
+if(MaxWinScore > (MeanWinScore * (MaxArtefactDev + 100))/100 || (MinWinScore * (MaxArtefactDev + 100))/100 < MeanWinScore)	
+	return(1);			// classify as being artefact
+return(0);
+}
+
 
 int													// number of alignment ops generated
 CSSW::TracebacksToAlignOps(UINT32 ProbeStartOfs,	// alignment starts at this probe sequence offset (1..n)
@@ -3043,7 +3212,7 @@ const UINT32 cQSWPGap =     0x80000000;      // if set then gap has been opened 
 const UINT32 cQSWTGap =     0x40000000;      // if set then gap has been opened in targ
 const UINT32 cQSWScoreMsk = 0x00ffffff; 
 
-int								// higest score for path anchored at the pProbe[0] and pTarg[0]  
+int								// highest score for path anchored at the pProbe[0] and pTarg[0]  
 CSSW::ChkStartPath(int Scorethres, // looking for a path of at least this SW score
 		  int SeqLen,			// both pProbe and pTarg are at least this length, max of 100 will be processed
 		  etSeqBase *pProbe,	// SW this sequence against

@@ -3090,11 +3090,10 @@ return(0);		// no more hits
 
 const int cMinPacBioSeedCoreLen = 8;							// user can specify seed cores down to this minimum length
 const int cMaxPacBioSeedCoreLen = 25;							// user can specify seed cores up to to this maximum length
+
 const int cPacBioSeedCoreExtn = 100;							// looking for matches over this length seed core extension
 const int cPacBiokExtnKMerLen = 4;								// matches in seed core extension must be of at least this length
 const int cPacBioMinKmersExtn = 70;							    // require at least this many cPacBiokExtnKMerLen-mer matches over cPacBioSeedCoreExtn core extension
-
-static INT64 NumKMersDist[200];
 
 INT64						// returned hit idex (1..n) or 0 if no hits
 CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
@@ -3109,22 +3108,26 @@ CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
 int Cmp;
 bool bFirst;
 tsSfxEntry *pEntry;
-etSeqBase *pEl2;
+
 UINT32 HitLoci;
 etSeqBase *pTarg;			// target sequence
 void *pSfxArray;			// target sequence suffix array
 INT64 SfxLen;				// number of suffixs in pSfxArray
 INT64 TargLoci;
 int TargKMerLen;
+
+
 etSeqBase *pQAnchor;
 etSeqBase *pTAnchor;
 etSeqBase *pQBase;
 etSeqBase *pTBase;
-
-int QAnchorIdx;
 int TAnchorIdx;
 int TMaxAnchorIdx;
 int MatchBaseLen;
+int QAnchorIdx;
+
+etSeqBase *pEl2;
+
 
 *pHitLoci = 0;
 *pTargEntryID = 0;
@@ -3195,8 +3198,6 @@ while(1)
 		continue;
 		}
 
-
-
 	// see if the target sequence, using the initial matching core can be extended
 	int CurKMerMatchLen;
 	QAnchorIdx = SeedCoreLen;
@@ -3247,8 +3248,6 @@ while(1)
 				break;
 			}
 		}
-
-	NumKMersDist[MatchBaseLen] += 1;
 
 	if(MatchBaseLen < cPacBioMinKmersExtn)
 		{

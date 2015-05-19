@@ -16,7 +16,7 @@
 #include "./pacbiocommon.h"
 
 const int cMaxInFileSpecs = 100;			// user can specify upto this many input files
-const int cMinSeqLen = 50;					// minimum sequence length accepted for processing
+const int cMinSeqLen = 1000;				// minimum sequence length accepted for processing
 const int cMaxDupEntries = 10;				// report 1st 10 duplicate entry names
 const int cMaxAllocBuffChunk = 0x00ffffff;	// buffer for fasta sequences is realloc'd in this sized chunks
 

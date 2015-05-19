@@ -16,7 +16,7 @@
 #include "./pacbiocommon.h"
 
 const int cMaxInFileSpecs = 100;			// user can specify upto this many input files
-const int cMinSeqLen = 50;					// minimum sequence length accepted for processing
+const int cMinSeqLen = 500;					// minimum sequence length accepted for processing
 const int cMaxDupEntries = 10;				// report 1st 10 duplicate entry names
 const int cMaxAllocBuffChunk = 0x00ffffff;	// buffer for fasta sequences is realloc'd in this sized chunks
 
@@ -26,8 +26,15 @@ const int cFlgHCSeq = 0x02;					// sequence a high confidence sequence with few 
 const int cDfltMinHCSeqLen = 1000;			// default min high confidence sequence length
 const int cDfltMinHCSeqOverlap = 1000;		// default min high confidence sequence overlap length onto PacBio sequence
 
+const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
+const int cDfltMaxArtefactDev = 20;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
+const int cMaxMaxArtefactDev = 25;			// user can specify up to this maximum 
+
+
 const int cMaxPacBioErrCorLen = 250000;		// allowing for error corrected read sequences of up to this length
 const int cMaxPacBioMAFLen = (cMaxPacBioErrCorLen * 100);	// allowing for multialignment format buffering of up to this length
+
+const int cMaxProbeSWs = 30;				// explore with SW at most this many probe alignments against target sequences
 
 typedef enum TAG_ePBPMode {								// processing mode
 	ePBPMErrCorrect,									// error correct
@@ -97,7 +104,15 @@ typedef struct TAG_sPBScaffNode {
 } tsPBScaffNode;
 
 typedef struct TAG_sPBCoreHitCnts {
-	UINT32 TargNodeID;				// node identifier for hit sequence	
+	UINT32 TargNodeID;				// node identifier for hit target sequence	
+	UINT32	STargStartOfs;			// lowest target offset for any sense hit from probe
+	UINT32	STargEndOfs;			// highest target offset for any sense hit from probe
+	UINT32	ATargStartOfs;			// lowest target offset for any antisense hit from probe
+	UINT32	ATargEndOfs;			// highest target offset for any antisense hit from probe
+	UINT32	SProbeStartOfs;			// lowest probe offset for any sense hit onto target
+	UINT32	SProbeEndOfs;			// highest probe offset for any sense hit onto target
+	UINT32	AProbeStartOfs;			// lowest probe offset for any antisense hit onto target
+	UINT32	AProbeEndOfs;			// highest probe offset for any antisense hit onto target
 	UINT32 NumSHits;				// number of hits onto target sequence from sense probe
 	UINT32 NumAHits;				// number of hits onto target sequence from antisense probe
 } sPBCoreHitCnts;
@@ -126,6 +141,7 @@ typedef struct TAG_sThreadPBErrCorrect {
 	UINT32 DeltaCoreOfs;			// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
 	UINT32 CoreSeqLen;				// putative overlaps are explored if there are cores of at least this length in any putative overlap
 	UINT32 MinNumCores;				// and if the putative overlap contains at least this many cores
+	UINT32 MinPropBinned;			// and if the putative overlap contains at least this proportion (1..100) of 250bp bins binned cores
 	UINT32 MaxAcceptHitsPerSeedCore; // limit accepted hits per seed core to no more this many
 	UINT32 MinPBSeqLen;				// only process PacBio sequences which are at least this length
 
@@ -169,6 +185,9 @@ class CPBErrCorrect
 
 	UINT32 m_MinSeedCoreLen;				// use seed cores of this length when identifying putative overlapping scaffold sequences
 	UINT32 m_MinNumSeedCores;				// require at least this many seed cores between overlapping scaffold sequences
+	UINT32 m_BinClusterSize;				// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
+	UINT32 m_MinPropBinned;					// require that the putative overlap contains at least this proportion (1..100) of m_BinClusterSize clustered binned cores
+
 
 	int m_SWMatchScore;						// SW score for matching bases (0..100)
 	int m_SWMismatchPenalty;				// SW mismatch penalty (-100..0)
@@ -184,9 +203,9 @@ class CPBErrCorrect
 	UINT32 m_ProvSWchecked;					// number of times SW used to identify overlaps
 
 	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
-	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences must be of at least this length (defaults to 5Kbp)
+	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences must be of at least this length
 	UINT32 m_MinPBSeqOverlap;				// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
-
+	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 	UINT32 m_MinHCSeqLen;					// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 	UINT32 m_MinHCSeqOverlap;				// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 
@@ -306,6 +325,7 @@ public:
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 5Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
+		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 		int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length

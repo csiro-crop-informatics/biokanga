@@ -17,7 +17,7 @@
 const int cMinSeedCoreLen = 10;							// user can specify seed cores down to this minimum length
 const int cDfltSeedCoreLen = 12;						// default seed cores of this length
 const int cMaxSeedCoreLen = 25;							// user can specify seed cores up to to this maximum length
-const int cDfltDeltaCoreOfs = 1;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
+const int cDfltDeltaCoreOfs = 2;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 const int cDfltMaxSeedCoreDepth = 10000;                // only extend a seed core if there are no more than this number of matching cores in all targeted sequences
 const int cDfltMaxAcceptHitsPerSeedCore = 10000;		// only accept up to this many extended cores at any probe offset 
 const int cMinNumSeedCores = 1;							// user can specify requiring at least this many seed cores between overlapping scaffold sequences
@@ -29,8 +29,11 @@ const int cQualCoreDelta = (cQualCoreKMerLen * 2) + 1;	 // looking for matching 
 const int cQualCoreThres = 25;							 // require at least this many kmers to be shared between probe and target before accepting core
 const int cQualCoreHomopolymer = 80;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough
 
+const int cDfltBinClusterSize = 250;					// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
+const int cDfltMinPropBinned = 60;						// must be at least this proportion of bins with at least one core hit over putative overlap length 
+
 const int cMinScaffSeqLen = 500;						 // allowing for minimum scaffolded sequences to be specified down to this length (could be targeting RNA transcriptome)
-const int cDfltMinScaffSeqLen = 5000;					 // default is to allow for scaffolded sequences down to this minimum length
+const int cDfltMinScaffSeqLen = 15000;					 // default is to allow for scaffolded sequences down to this minimum length
 const int cMaxMinScaffSeqLen = 100000;					 // allowing for minimum scaffolded sequences to be specified up to this length 
 
 const int cDfltSWMatchScore = 3;						// default SW match score for pacbio alignments
