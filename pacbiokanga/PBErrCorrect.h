@@ -28,6 +28,7 @@ const int cDfltMinHCSeqOverlap = 1000;		// default min high confidence sequence 
 
 const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
 const int cDfltMaxArtefactDev = 20;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
+const int cDfltScaffMaxArtefactDev = 5;		// but when scaffolding with error corrected reads there should be very little percentage deviation from the mean
 const int cMaxMaxArtefactDev = 25;			// user can specify up to this maximum 
 
 
@@ -202,15 +203,21 @@ class CPBErrCorrect
 	UINT32 m_ProvArtefact;					// number of PacBio reads provisionally only partially, likely an alignment artefact, contained within another PacBio read
 	UINT32 m_ProvSWchecked;					// number of times SW used to identify overlaps
 
+	UINT32 m_ExactKmerDists[100];			// accumulates exactly matching K-mer length distributions
+	UINT64 m_TotAlignSeqLen;				// were over this total alignment length
+	UINT32 m_TotAlignSeqs;					// between this number of sequence pairs
+
 	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
 	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences must be of at least this length
 	UINT32 m_MinPBSeqOverlap;				// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
-	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
+	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 	UINT32 m_MinHCSeqLen;					// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 	UINT32 m_MinHCSeqOverlap;				// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 
 	UINT32 m_MinErrCorrectLen;				// error corrected sequences must be at least this minimum length
 	UINT32 m_MinConcScore;					// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
+
+	UINT32 m_SampleRate;					// sample input sequences at this rate (1..100)
 
 	int m_NumPacBioFiles;					// number of input pacbio file specs
 	char m_szPacBioFiles[cMaxInFileSpecs][_MAX_PATH];		// input pacbio files
@@ -314,6 +321,7 @@ public:
 
 	int
 	Process(etPBPMode PMode,		// processing mode
+		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences

@@ -15,9 +15,9 @@
 
 #include "stdafx.h"
 #ifdef _WIN32
-#include "./commhdrs.h"
+#include "../libbiokanga/commhdrs.h"
 #else
-#include "./commhdrs.h"
+#include "../libbiokanga/commhdrs.h"
 #endif
 
 #include "SSW.h"
@@ -390,7 +390,7 @@ bool
 CSSW::PreAllocMaxTargLen( UINT32 MaxTargLen,		// preallocate to process targets of this maximal length
 							bool bNoTracebacks)		// if true then don't preallocate for tracebacks			
 {
-if(m_pAllocdCells != NULL && (m_AllocdCells + 1000 >= MaxTargLen && m_AllocdCells <= MaxTargLen * 2))
+if(m_pAllocdCells != NULL && (MaxTargLen + 1000 < m_AllocdCells))
 	return(true);
 
 if(m_pAllocdCells != NULL)
@@ -758,7 +758,8 @@ memset(&m_PeakMatchesCell,0,sizeof(m_PeakMatchesCell));
 memset(&m_PeakScoreCell,0,sizeof(m_PeakScoreCell));
 
 // allocating to hold full length even if relative length a lot shorter to reduce number of reallocations which may be subsequently required
-if(((m_AllocdCells + 10 < TargRelLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  !PreAllocMaxTargLen(m_TargLen,bNoTracebacks))
+if(((m_AllocdCells + 100 < m_TargLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  
+	!PreAllocMaxTargLen(m_TargLen + 100,bNoTracebacks))
 	return(NULL);
 
 if(!bNoTracebacks && m_pAllocdTracebacks != NULL)
@@ -2184,6 +2185,81 @@ m_bStartedMultiAlignments = true;
 return(eBSFSuccess);
 }
 
+int												
+CSSW::PathKmerCnts(UINT32 MaxKMer,				// characterising for all exactly matching K-mers from 1 up to this maximum length K-mer over the full length path	
+					UINT32 *pKMerCnts,			// returned cnts for all K-mers from 1 up to MaxKMer inclusive
+				    UINT32 ProbeStartOfs,		// alignment starts at this probe sequence offset (1..n)
+					UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset
+					UINT32 TargStartOfs,		// alignment starts at this target sequence offset (1..n)
+					UINT32 TargEndOfs)			// alignment ends at this target sequence offset
+{
+UINT32 TrcBkOp;
+bool bGapOpened;
+UINT32 CurKMerLen;
+UINT32 TotKMers;
+tsSSWTraceback *pTraceBack;
+
+if(MaxKMer < 1 || pKMerCnts == NULL)
+	return(0);
+
+memset(pKMerCnts,0,sizeof(UINT32) * MaxKMer);
+
+if((ProbeEndOfs - ProbeStartOfs) < cTraceBackWin) 
+	return(0);
+
+bGapOpened = false;
+CurKMerLen = 0;
+TotKMers = 0;
+pTraceBack = InitiateTraceback(ProbeEndOfs,TargEndOfs);
+do {
+	switch(TrcBkOp = (pTraceBack->IdxP & cTrBkFlgsMsk)) {
+		case cTrBkFlgStart:							// start of alignment path; process as if cTrBkFlgMatch
+		case cTrBkFlgMatch:							// match - may not be an exact match
+			if(!(pTraceBack->IdxT & cTrBkFlgSub))
+				{
+				if(CurKMerLen == 0)
+					TotKMers += 1;
+				CurKMerLen += 1;
+				}
+			else
+				if(CurKMerLen > 0)
+					{
+					if(CurKMerLen > MaxKMer)
+						CurKMerLen = MaxKMer;
+					pKMerCnts[CurKMerLen-1] += 1;
+					CurKMerLen = 0;
+					}
+			bGapOpened = false;
+			break;	
+		case cTrBkFlgIns:							// base inserted into probe relative to target
+		case cTrBkFlgDel:							// base deleted from probe relative to target
+			if(CurKMerLen > 0)
+				{
+				if(CurKMerLen > MaxKMer)
+					CurKMerLen = MaxKMer;
+				pKMerCnts[CurKMerLen-1] += 1;
+				CurKMerLen = 0;
+				}
+			bGapOpened = true;
+			break;
+		}
+	if(TrcBkOp == cTrBkFlgStart || ((pTraceBack->IdxP & cTrBkIdxMsk) == ProbeStartOfs && (pTraceBack->IdxT & cTrBkIdxMsk) == TargStartOfs))
+		{
+		if(CurKMerLen > 0)
+			{
+			if(CurKMerLen > MaxKMer)
+				CurKMerLen = MaxKMer;
+			pKMerCnts[CurKMerLen-1] += 1;
+			CurKMerLen = 0;
+			}
+		break;
+		}
+	}
+while(pTraceBack = NxtTraceback(pTraceBack));
+
+return(TotKMers);
+}
+
 int												// attempting to determine if path is artfact resulting from aligning to a paralogous fragment
 CSSW::ClassifyPath(int MaxArtefactDev,			// classify path as artefactual if sliding window (currently 1Kbp) over any overlap deviates by more than this percentage from the overlap mean
 				    UINT32 ProbeStartOfs,		// alignment starts at this probe sequence offset (1..n)
@@ -2270,7 +2346,7 @@ do {
 	}
 while(pTraceBack = NxtTraceback(pTraceBack));
 
-if(m_NumWinScores < (cTraceBackWin * 3) / 2)				
+if(m_NumWinScores < (cTraceBackWin * 3) / 2)
 	return(0);
 
 // determine mean and min max scores so can then check for significant variances

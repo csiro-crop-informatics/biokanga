@@ -3088,13 +3088,6 @@ if(!Cmp)
 return(0);		// no more hits
 }
 
-const int cMinPacBioSeedCoreLen = 8;							// user can specify seed cores down to this minimum length
-const int cMaxPacBioSeedCoreLen = 25;							// user can specify seed cores up to to this maximum length
-
-const int cPacBioSeedCoreExtn = 100;							// looking for matches over this length seed core extension
-const int cPacBiokExtnKMerLen = 4;								// matches in seed core extension must be of at least this length
-const int cPacBioMinKmersExtn = 70;							    // require at least this many cPacBiokExtnKMerLen-mer matches over cPacBioSeedCoreExtn core extension
-
 INT64						// returned hit idex (1..n) or 0 if no hits
 CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
  									UINT32 ProbeLen,			// probe sequence length
@@ -3137,13 +3130,35 @@ etSeqBase *pEl2;
 
 // ensure suffix loaded for iteration and prev hit was not the last!
 // also require that the probe length must be at least 100 + SeedCoreLen so matching subseqs can be explored
-if(SeedCoreLen < cMinPacBioSeedCoreLen || SeedCoreLen > cMaxPacBioSeedCoreLen || ProbeLen < (SeedCoreLen + cPacBioSeedCoreExtn) || m_pSfxBlock == NULL || (UINT64)PrevHitIdx >= m_pSfxBlock->ConcatSeqLen)
+if(SeedCoreLen < cMinPacBioSeedCoreLen || SeedCoreLen > cMaxPacBioSeedCoreLen || ProbeLen < SeedCoreLen || m_pSfxBlock == NULL || (UINT64)PrevHitIdx >= m_pSfxBlock->ConcatSeqLen)
+	return(0);
+
+if(SeedCoreLen >= cMaxPacBioSeedExtn)	// no seed extension required?
+	{
+	INT64 NxtHitIdx;
+	while((NxtHitIdx = IterateExacts(pProbeSeq, SeedCoreLen, PrevHitIdx, pTargEntryID,	pHitLoci)) > 0)
+		{
+		if(SloughEntryID != 0 && SloughEntryID == *pTargEntryID)
+			{
+			PrevHitIdx = NxtHitIdx;
+			continue;
+			}
+		return(NxtHitIdx);
+		}	
+	*pTargEntryID = 0;
+	*pHitLoci = 0;
+	return(0);
+	}
+
+// will be seed extending so ensure sufficent sequence to seed extend
+if(ProbeLen < (SeedCoreLen + cPacBioSeedCoreExtn))
 	return(0);
 
 pTarg = (etSeqBase *)&m_pSfxBlock->SeqSuffix[0];
 pSfxArray = (void *)&m_pSfxBlock->SeqSuffix[m_pSfxBlock->ConcatSeqLen];
 SfxLen = m_pSfxBlock->ConcatSeqLen;
 bFirst = false;
+
 if(!PrevHitIdx)	// if locate first exact match using SeedCoreLen
 	{
 	// check if this core sequence over-occurs 

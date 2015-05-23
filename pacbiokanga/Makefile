@@ -90,10 +90,10 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
-am_pacbiokanga_OBJECTS = SQLiteSummaries.$(OBJEXT) PBFilter.$(OBJEXT) \
-	PacBioUtility.$(OBJEXT) PBScaffold.$(OBJEXT) \
-	pacbiokanga.$(OBJEXT) PBSim.$(OBJEXT) PBErrCorrect.$(OBJEXT) \
-	AssembGraph.$(OBJEXT)
+am_pacbiokanga_OBJECTS = SQLiteSummaries.$(OBJEXT) SSW.$(OBJEXT) \
+	PBFilter.$(OBJEXT) PacBioUtility.$(OBJEXT) \
+	PBScaffold.$(OBJEXT) pacbiokanga.$(OBJEXT) PBSim.$(OBJEXT) \
+	PBErrCorrect.$(OBJEXT) AssembGraph.$(OBJEXT)
 pacbiokanga_OBJECTS = $(am_pacbiokanga_OBJECTS)
 pacbiokanga_LDADD = $(LDADD)
 pacbiokanga_DEPENDENCIES = ../libbiokanga/libbiokanga.a \
@@ -255,7 +255,7 @@ target_alias =
 top_build_prefix = ../
 top_builddir = ..
 top_srcdir = ..
-pacbiokanga_SOURCES = SQLiteSummaries.cpp SQLiteSummaries.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h PBScaffold.cpp PBScaffold.h pacbiokanga.cpp pacbiokanga.h PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h AssembGraph.cpp AssembGraph.h 
+pacbiokanga_SOURCES = SQLiteSummaries.cpp SQLiteSummaries.h SSW.cpp SSW.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h PBScaffold.cpp PBScaffold.h pacbiokanga.cpp pacbiokanga.h PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h AssembGraph.cpp AssembGraph.h 
 
 # set the include path found by configure
 INCLUDES = $(all_includes)
@@ -356,6 +356,7 @@ include ./$(DEPDIR)/PBScaffold.Po
 include ./$(DEPDIR)/PBSim.Po
 include ./$(DEPDIR)/PacBioUtility.Po
 include ./$(DEPDIR)/SQLiteSummaries.Po
+include ./$(DEPDIR)/SSW.Po
 include ./$(DEPDIR)/pacbiokanga.Po
 
 .cpp.o:

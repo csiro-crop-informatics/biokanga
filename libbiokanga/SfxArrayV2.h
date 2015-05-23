@@ -38,6 +38,16 @@ const int cScoreInDelOpn = 20;		// score (subtract) opening an InDel as this
 const int cScoreInDelExtn = 1;		// score (subtract) extending an opened InDel as this
 const int cMaxAlignOpcodesLen = 256;  // limit alignment opcodes + length bytes to be at most this length
 
+// PacBio processing
+const int cMinPacBioSeedCoreLen = 8;							// user can specify seed cores down to this minimum length
+const int cMaxPacBioSeedCoreLen = 100;							// user can specify seed cores up to to this maximum length
+const int cMaxPacBioSeedExtn = 25;                              // if seed core < this limit then extend seed matches looking for near matches
+
+const int cPacBioSeedCoreExtn = 100;							// looking for matches over this length seed core extension
+const int cPacBiokExtnKMerLen = 4;								// matches in seed core extension must be of at least this length
+const int cPacBioMinKmersExtn = 70;							    // require at least this many cPacBiokExtnKMerLen-mer matches over cPacBioSeedCoreExtn core extension
+
+
 typedef enum etALStrand {
 	eALSboth,							// align to both the watson and crick strand
 	eALSWatson,							// align to the watson strand only

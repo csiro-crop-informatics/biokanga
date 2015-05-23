@@ -96,8 +96,7 @@ PBFilter.o: PBFilter.cpp /usr/include/stdc-predef.h stdafx.h ../config.h \
  ../libbiokanga/././Contaminants.h ../libbiokanga/././ProcRawReads.h \
  ../libbiokanga/././GTFFile.h ../libbiokanga/././GFFFile.h \
  ../libbiokanga/././sqlite3.h pacbiokanga.h SQLiteSummaries.h \
- ../libbiokanga/bgzf.h ../libbiokanga/SSW.h PBFilter.h pacbiocommon.h \
- PacBioUtility.h
+ ../libbiokanga/bgzf.h SSW.h PBFilter.h pacbiocommon.h PacBioUtility.h
 
 /usr/include/stdc-predef.h:
 
@@ -413,7 +412,7 @@ SQLiteSummaries.h:
 
 ../libbiokanga/bgzf.h:
 
-../libbiokanga/SSW.h:
+SSW.h:
 
 PBFilter.h:
 

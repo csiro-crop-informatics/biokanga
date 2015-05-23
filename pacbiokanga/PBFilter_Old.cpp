@@ -30,7 +30,7 @@
 
 #include "../libbiokanga/bgzf.h"
 //#include "./Kangadna.h"
-#include "../libbiokanga/SSW.h"
+#include "./SSW.h"
 #include "PBFilter.h"
 
 

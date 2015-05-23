@@ -108,7 +108,7 @@ am_libbiokanga_a_OBJECTS = AlignValidate.$(OBJEXT) argtable2.$(OBJEXT) \
 	MAlignFile.$(OBJEXT) Random.$(OBJEXT) SimpleRNG.$(OBJEXT) \
 	RsltsFile.$(OBJEXT) sais.$(OBJEXT) SAMfile.$(OBJEXT) \
 	SeqTrans.$(OBJEXT) SfxArray.$(OBJEXT) SfxArrayV2.$(OBJEXT) \
-	Shuffle.$(OBJEXT) SSW.$(OBJEXT) SmithWaterman.$(OBJEXT) \
+	Shuffle.$(OBJEXT) SmithWaterman.$(OBJEXT) \
 	NeedlemanWunsch.$(OBJEXT) Stats.$(OBJEXT) StopWatch.$(OBJEXT) \
 	Twister.$(OBJEXT) Utility.$(OBJEXT) ProcRawReads.$(OBJEXT) \
 	MTqsort.$(OBJEXT) bgzf.$(OBJEXT) sqlite3.$(OBJEXT)
@@ -277,7 +277,7 @@ libbiokanga_a_SOURCES = AlignValidate.cpp argtable2.cpp BEDfile.cpp BioSeqFile.c
 	FilterLoci.cpp FilterRefIDs.cpp GOAssocs.cpp GOTerms.cpp \
 	HashFile.cpp HyperEls.cpp GFFFile.cpp GTFFile.cpp GOAssocs.cpp GOTerms.cpp Contaminants.cpp \
 	MAlignFile.cpp Random.cpp SimpleRNG.cpp RsltsFile.cpp sais.cpp SAMfile.cpp SeqTrans.cpp SfxArray.cpp SfxArrayV2.cpp Shuffle.cpp \
-	SSW.cpp SSW.h SmithWaterman.cpp NeedlemanWunsch.cpp Stats.cpp StopWatch.cpp Twister.cpp Utility.cpp ProcRawReads.cpp MTqsort.cpp \
+	SmithWaterman.cpp NeedlemanWunsch.cpp Stats.cpp StopWatch.cpp Twister.cpp Utility.cpp ProcRawReads.cpp MTqsort.cpp \
         bgzf.cpp sqlite3.c
 
 
@@ -365,7 +365,6 @@ include ./$(DEPDIR)/ProcRawReads.Po
 include ./$(DEPDIR)/Random.Po
 include ./$(DEPDIR)/RsltsFile.Po
 include ./$(DEPDIR)/SAMfile.Po
-include ./$(DEPDIR)/SSW.Po
 include ./$(DEPDIR)/SeqTrans.Po
 include ./$(DEPDIR)/SfxArray.Po
 include ./$(DEPDIR)/SfxArrayV2.Po

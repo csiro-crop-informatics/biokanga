@@ -14,7 +14,7 @@
 //   Please contact stuart.stephen@csiro.au for support or 
 //   to submit modifications to this source
 
-#include "./commdefs.h"
+#include "../libbiokanga/commdefs.h"
 
 const UINT32 cSSWMinProbeOrTargLen = 5;			// require probe and target lengths to be at least this number of bp
 const UINT32 cSSWMaxProbeOrTargLen = 100000000;  // require either probe or target length to be no longer than this limit
@@ -331,6 +331,14 @@ public:
 					UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset
 					UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
 					UINT32 TargEndOfs);				// alignment ends at this target sequence offset
+
+	int												
+		PathKmerCnts(UINT32 MaxKMer,			// characterising for all exactly matching K-mers from 1 up to this maximum length K-mer over the full length path	
+					UINT32 *pKMerCnts,			// cnts for all K-mers from 1 up to MaxKMer inclusive
+				    UINT32 ProbeStartOfs,		// alignment starts at this probe sequence offset (1..n)
+					UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset
+					UINT32 TargStartOfs,		// alignment starts at this target sequence offset (1..n)
+					UINT32 TargEndOfs);			// alignment ends at this target sequence offset
 
 	int												// number of alignment ops generated
 		TracebacksToAlignOps(UINT32 ProbeStartOfs,	// alignment starts at this probe sequence offset (1..n)

@@ -29,13 +29,14 @@
 #include "pacbiokanga.h"
 
 #include "../libbiokanga/bgzf.h"
-#include "../libbiokanga/SSW.h"
+#include "SSW.h"
 #include "pacbiocommon.h"
 #include "AssembGraph.h"
 #include "PBErrCorrect.h"
 
 int
 ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
+		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -96,7 +97,7 @@ int MinPBSeqLen;			// only accepting PacBio reads of at least this length (defau
 int MinPBSeqOverlap;		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 int MinHCSeqLen;			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 int MinHCSeqOverlap;		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
-int MinConcScore;			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
+int MinConcScore;			// error corrected sequences trimmed until mean 50bp concensus score is at least this threshold
 int MinErrCorrectLen;		// error corrected and sequence trimmed sequences must be of at least this length
 int MaxArtefactDev;			// classify overlaps as artefactual if sliding window of 1000bp over any overlap deviates by more than this percentage from the overlap mean
 
@@ -108,6 +109,7 @@ char *pszHiConfFiles[cMaxInFileSpecs];	// input hiconfidence files
 char szOutFile[_MAX_PATH];				// where to write (ePBPMConsensus or ePBPMErrCorrect) error corrected sequences or (ePBPMOverlapDetail) overlap detail
 char szOutMAFile[_MAX_PATH];			// where to write optional multialignments
 
+int SampleRate;				// sample input sequences at this rate
 int NumberOfProcessors;		// number of installed CPUs
 int NumThreads;				// number of threads (0 defaults to number of CPUs)
 
@@ -123,13 +125,13 @@ struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file"
 
 struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 error correct, 1 consensus sequence only, 2 scaffold overlap detail only");
 struct arg_int *minpbseqlen = arg_int0("l","minpbseqlen","<int>",		"minimum individual PacBio sequence length (default 15000, range 500 to 100000)");
-struct arg_int *minpbseqovl = arg_int0("L","minpbseqovl","<int>",		"minimum PacBio overlap onto PacBio length required (default 5000, range 250 to 100000)");
+struct arg_int *minpbseqovl = arg_int0("L","minpbseqovl","<int>",		"minimum PacBio overlap onto PacBio length required (default 5000, range 500 to 100000)");
 
 struct arg_int *minhcseqlen = arg_int0("p","minhcseqlen","<int>",		"minimum individual high confidence sequence length (default 1000, range 250 to 100000)");
 struct arg_int *minhcseqovl = arg_int0("P","minhcseqovl","<int>",		"minimum high confidence sequence overlap onto PacBio length required (default 500, range 250 to 100000)");
 
-struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 13, range 10 to 25)");
-struct arg_int *minnumseedcores = arg_int0("C","minseedcores","<int>",			"require at least this many accepted seed cores between overlapping sequences to use SW (default 10, range 1 to 50)");
+struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 12, range 10 to 50)");
+struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",			"require at least this many accepted seed cores between overlapping sequences to use SW (default 10, range 1 to 50)");
 
 struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 2, range 1 to 10)");
 struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",				"explore cores of less than this maximum depth (default 10000, range 1000 to 20000)");
@@ -140,15 +142,17 @@ struct arg_int *gapopenpenalty = arg_int0("y","gapopenpenalty","<int>",			"SW ga
 struct arg_int *gapextnpenalty = arg_int0("Y","gapextnpenalty","<int>",			"SW gap extension penalty (default 1, range 1 to 50)");
 struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",	"SW gap extension penalty only applied for gaps of at least this number of bases (default 2, range 1 to 63)");
 
-struct arg_int *minconcscore = arg_int0("s","minconcscore","<int>",			     "error corrected sequences trimmed until mean 50bp concensus score is at least this threshold (default 2, range 0 to 9)");
+struct arg_int *minconcscore = arg_int0("s","minconcscore","<int>",			     "error corrected sequences trimmed until mean 50bp concensus score is at least this threshold (default 3, range 0 to 9)");
 struct arg_int *minerrcorrectlen = arg_int0("S","minerrcorrectlen","<int>",		 "error corrected and trimmed sequences must be at least this minimum length (default 5000, range 500 to 20000)");
-struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 1Kbp window score deviates by more than this percentage from complete overlap mean (0 to disable, defaults 20, range 1 to 25)");
+struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 1Kbp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 25)");
 
 struct arg_file *hiconffiles = arg_filen("I","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be used in error correcton of PacBio reads");
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be error corrected");
 struct arg_file *outfile = arg_file1("o","out","<file>",									"output error corrected PacBio reads to this file");
 struct arg_file *mafile = arg_file0("O","mafile","<file>",						"optional, output multialignments to this file, caution can grow very large");
-struct arg_file *scaffovrlapsfile = arg_file0("e","scaffovrlapsfile","<file>",						"optional, output scaffolding overlap detail to this file");
+struct arg_file *scaffovrlapsfile = arg_file0("e","scaffovrlapsfile","<file>",	"optional, output scaffolding overlap detail to this file");
+
+struct arg_int *samplerate = arg_int0("R","samplerate","<int>",					"sample input sequences at this rate (default 100, range 1 to 100)");
 
 struct arg_int *threads = arg_int0("T","threads","<int>",						"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
@@ -159,11 +163,11 @@ struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"exper
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,minseedcorelen,minnumseedcores,deltacoreofs,maxcoredepth,
+					pmode,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
 					minpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
-					outfile,mafile,scaffovrlapsfile,threads,
+					outfile,mafile,scaffovrlapsfile,samplerate,threads,
 					end};
 
 char **pAllArgs;
@@ -325,6 +329,13 @@ if (!argerrors)
 	NumHiConfFiles = 0;
 	szOutMAFile[0] = '\0';
 
+	SampleRate = samplerate->count ? samplerate->ival[0] : 100;
+	if(SampleRate < 1 || SampleRate > 100)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Input sequence sampling rate '-R%d' must be in range 1..100",SampleRate);
+		return(1);
+		}
+
 	if(PMode == ePBPMErrCorrect)
 		{
 		MinSeedCoreLen = minseedcorelen->count ? minseedcorelen->ival[0] : cDfltSeedCoreLen;
@@ -334,7 +345,7 @@ if (!argerrors)
 			return(1);
 			}
 
-		MinNumSeedCores = minnumseedcores->count ? minnumseedcores->ival[0] : cDfltNumSeedCores;
+		MinNumSeedCores = minseedcores->count ? minseedcores->ival[0] : cDfltNumSeedCores;
 		if(MinNumSeedCores < cMinNumSeedCores || MinNumSeedCores > cMaxNumSeedCores)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum number of accepted seed cores '-C%d' must be in range %d..%d",MinNumSeedCores,cMinNumSeedCores,cMaxNumSeedCores);
@@ -512,7 +523,7 @@ if (!argerrors)
 
 	if(PMode != ePBPMOverlapDetail)
 		{
-		MinConcScore = minconcscore->count ? minconcscore->ival[0] : 2;
+		MinConcScore = minconcscore->count ? minconcscore->ival[0] : 3;
 		if(MinConcScore < 0 || MinConcScore > 9)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: error corrected sequences trimming threshold score '-s%d' must be in range 0..9",MinConcScore);
@@ -529,59 +540,68 @@ if (!argerrors)
 
 	if(PMode == ePBPMOverlapDetail)
 		{
-		MinSeedCoreLen = minseedcorelen->count ? minseedcorelen->ival[0] : 20;
+		MaxArtefactDev = maxartefactdev->count ? maxartefactdev->ival[0] : cDfltScaffMaxArtefactDev;
+		if(MaxArtefactDev <= 0 || MaxArtefactDev > cMaxMaxArtefactDev)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Max overlap artefactual deviation '-a%d' must be either 0 or in range %d..%d",MaxArtefactDev,cMinMaxArtefactDev,cMaxMaxArtefactDev);
+			return(1);
+			}
+		if(MaxArtefactDev < 0)
+			MaxArtefactDev = 0;
+
+		MinSeedCoreLen = minseedcorelen->count ? minseedcorelen->ival[0] : cDfltScaffSeedCoreLen;
 		if(MinSeedCoreLen < cMinSeedCoreLen || MinSeedCoreLen > cMaxSeedCoreLen)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: seed core length '-c%d' must be in range %d..%d",MinSeedCoreLen,cMinSeedCoreLen,cMaxSeedCoreLen);
 			return(1);
 			}
 
-		MinNumSeedCores = minnumseedcores->count ? minnumseedcores->ival[0] : 20;
+		MinNumSeedCores = minseedcores->count ? minseedcores->ival[0] : 10;
 		if(MinNumSeedCores < cMinNumSeedCores || MinNumSeedCores > cMaxNumSeedCores)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum number of accepted seed cores '-C%d' must be in range %d..%d",MinNumSeedCores,cMinNumSeedCores,cMaxNumSeedCores);
 			return(1);
 			}
 
-		DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : 15;
-		if(DeltaCoreOfs < 1 || DeltaCoreOfs > 20)
+		DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : 10;
+		if(DeltaCoreOfs < 1 || DeltaCoreOfs > 10)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..20",DeltaCoreOfs);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..10",DeltaCoreOfs);
 			return(1);
 			}
 
 		MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxSeedCoreDepth;
-		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > 20000)
+		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > 25000)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..25000",MaxSeedCoreDepth);
 			return(1);
 			}
 
-		SWMatchScore = matchscore->count ? matchscore->ival[0] : 2;
+		SWMatchScore = matchscore->count ? matchscore->ival[0] : 1;
 		if(SWMatchScore < 1 || SWMatchScore > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Match score '-x%d' must be in range 1..%d",SWMatchScore,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWMismatchPenalty = mismatchpenalty->count ? mismatchpenalty->ival[0] : abs(cDfltSWMismatchPenalty);
+		SWMismatchPenalty = mismatchpenalty->count ? mismatchpenalty->ival[0] : 10;
 		if(SWMismatchPenalty < 1 || SWMismatchPenalty > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Mismatch penalty '-X%d' must be in range 1..%d",SWMismatchPenalty,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWGapOpenPenalty = gapopenpenalty->count ? gapopenpenalty->ival[0] : abs(cDfltSWGapOpenPenalty);
+		SWGapOpenPenalty = gapopenpenalty->count ? gapopenpenalty->ival[0] : 12;
 		if(SWGapOpenPenalty < 1 || SWGapOpenPenalty > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap open penalty '-y%d' must be in range 1..%d",SWGapOpenPenalty,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWGapExtnPenalty = gapextnpenalty->count ? gapextnpenalty->ival[0] : abs(cDfltSWGapExtnPenalty);
+		SWGapExtnPenalty = gapextnpenalty->count ? gapextnpenalty->ival[0] : 6;
 		if(SWGapExtnPenalty < 1 || SWGapExtnPenalty > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap extension penalty '-Y%d' must be in range 1..%d",SWGapExtnPenalty,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWProgExtnPenaltyLen = progextnpenaltylen->count ? progextnpenaltylen->ival[0] : cDfltSWProgExtnLen;
+		SWProgExtnPenaltyLen = progextnpenaltylen->count ? progextnpenaltylen->ival[0] : 1;
 		if(SWProgExtnPenaltyLen < 1 || SWProgExtnPenaltyLen > 63)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Apply gap extension progress penalty for gaps at least '-z%d' must be in range 1..%d",SWProgExtnPenaltyLen,63);
@@ -592,6 +612,13 @@ if (!argerrors)
 		if(MinPBSeqLen < cMinScaffSeqLen || MinPBSeqLen > cMaxMinScaffSeqLen)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted error correscted sequence length '-l%d' must be in range %d..%dbp",MinPBSeqLen,cMinScaffSeqLen,cMaxMinScaffSeqLen);
+			return(1);
+			}
+
+		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : max(cMinScaffSeqLen,MinPBSeqLen / 2);
+		if(MinPBSeqOverlap < cMinOverlapLen || MinPBSeqOverlap > cMaxMinScaffSeqLen)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum PacBio overlap required length '-L%d' must be in range %d..%dbp",MinPBSeqOverlap,cMinOverlapLen,cMaxMinScaffSeqLen);
 			return(1);
 			}
 
@@ -708,6 +735,8 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: '%s'",pszMode);
 
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling input sequence rate: %",SampleRate);
+
 	if(PMode != ePBPMConsensus)
 		{
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Use seed cores of this length when identifying putative overlapping sequences: %dbp",MinSeedCoreLen);
@@ -788,7 +817,7 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PMode),"pmode",&PMode);
-
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SampleRate),"samplerate",&SampleRate);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinSeedCoreLen),"seedcorelen",&MinSeedCoreLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinNumSeedCores),"minseedcores",&MinNumSeedCores);
 
@@ -834,7 +863,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
+	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								MinPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
@@ -862,6 +891,7 @@ return 0;
 
 int
 ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
+		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -895,7 +925,7 @@ if((pPBErrCorrect = new CPBErrCorrect)==NULL)
 	return(eBSFerrObj);
 	}
 
-Rslt = pPBErrCorrect->Process(PMode,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
+Rslt = pPBErrCorrect->Process(PMode,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								MinPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,NumThreads);
 delete pPBErrCorrect;
@@ -999,6 +1029,10 @@ m_SWProgExtnPenaltyLen = cDfltSWProgExtnLen;
 
 m_BinClusterSize = cDfltBinClusterSize;
 m_MinPropBinned = cDfltMinPropBinned;
+
+memset(m_ExactKmerDists,0,sizeof(m_ExactKmerDists));
+m_TotAlignSeqLen = 0;
+m_TotAlignSeqs = 0;
  
 m_NumPacBioFiles = 0;
 m_NumHiConfFiles = 0;
@@ -1169,7 +1203,11 @@ char szSource[cBSFSourceSize];
 char szDescription[cBSFDescriptionSize];
 UINT32 SeqLen;
 int Rslt;
+UINT32 SeqID;
+UINT32 NumSampled;
 UINT32 NumSeqsUnderlength;
+UINT32 NumSeqsAccepted;
+size_t TotAcceptedLen;
 tBSFEntryID CurEntryID;
 
 if((Rslt=BioSeqFile.Open(pszFile,cBSFTypeSeq,false))!=eBSFSuccess)
@@ -1179,14 +1217,21 @@ if((Rslt=BioSeqFile.Open(pszFile,cBSFTypeSeq,false))!=eBSFSuccess)
 	}
 
 CurEntryID = 0;
+SeqID = 0;
 NumSeqsUnderlength = 0;
+NumSampled = 0;
+NumSeqsAccepted = 0;
+TotAcceptedLen = 0;
 while((Rslt = CurEntryID = BioSeqFile.Next(CurEntryID)) > eBSFSuccess)
 	{
+	SeqID += 1;
 	BioSeqFile.GetNameDescription(CurEntryID,cBSFSourceSize-1,(char *)&szSource,
 											cBSFDescriptionSize-1,(char *)&szDescription);
 	SeqLen = BioSeqFile.GetDataLen(CurEntryID);
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %s|%s",szSource,szDescription);
-
+	if((NumSeqsAccepted + NumSeqsUnderlength) > ((SeqID * (UINT64)m_SampleRate) / 100))
+		continue;
+	NumSampled += 1;
 	if(SeqLen < (UINT32)MinSeqLen)		// only accept for indexing sequences of at least this length)
 		{
 		NumSeqsUnderlength += 1;
@@ -1245,14 +1290,16 @@ while((Rslt = CurEntryID = BioSeqFile.Next(CurEntryID)) > eBSFSuccess)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
 		break;
 		}
+	NumSeqsAccepted += 1;
+	TotAcceptedLen += SeqLen;
 	}
 if(Rslt == eBSFerrEntry)
 	Rslt = eBSFSuccess;
 if(pSeqBuff != NULL)
 	delete pSeqBuff;
 BioSeqFile.Close();
-if(NumSeqsUnderlength > 0)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessBioseqFile - %u sequences not accepted for indexing as length under %dbp ",NumSeqsUnderlength,MinSeqLen);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - %d parsed, %d sampled, %d accepted, %dbp mean length, %d sequences not accepted for indexing as length under %dbp ",
+					SeqID,NumSampled,NumSeqsAccepted,NumSeqsAccepted == 0 ? 0 :(int)(TotAcceptedLen/NumSeqsAccepted),NumSeqsUnderlength,MinSeqLen);
 return(Rslt);
 }
 
@@ -1278,6 +1325,7 @@ bool bFirstEntry;
 bool bEntryCreated;
 int Rslt;
 int SeqID;
+int NumSampled;
 int NumSeqsAccepted;
 size_t TotAcceptedLen;
 UINT32 NumSeqsUnderlength;
@@ -1304,6 +1352,7 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile:- Adding %s..",pszFil
 bFirstEntry = true;
 bEntryCreated = false;
 SeqID = 0;
+NumSampled = 0;
 BuffOfs = 0;
 NumSeqsUnderlength = 0;
 NumSeqsAccepted = 0;
@@ -1315,19 +1364,25 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 		SeqID++;
 		if(bEntryCreated)				// add any previous entry
 			{
-			if(BuffOfs < (size_t)MinSeqLen)
-				NumSeqsUnderlength += 1;
-			else
-				if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs,Flags)) < eBSFSuccess)
-					{
-					gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
-					break;
-					}
+			if((NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleRate) / 100))
+				{
+				NumSampled += 1;
+				if(BuffOfs < (size_t)MinSeqLen)
+					NumSeqsUnderlength += 1;
 				else
 					{
-					NumSeqsAccepted += 1;
-					TotAcceptedLen += BuffOfs;
+					if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs,Flags)) < eBSFSuccess)
+						{
+						gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+						break;
+						}
+					else
+						{
+						NumSeqsAccepted += 1;
+						TotAcceptedLen += BuffOfs;
+						}
 					}
+				}
 			Rslt = eBSFSuccess;
 			}
 		Descrlen = Fasta.ReadDescriptor(szDescription,cBSFDescriptionSize);
@@ -1396,27 +1451,31 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 
 if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// close entry
 	{
-	if(BuffOfs < (size_t)MinSeqLen)
+	if((NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleRate) / 100))
 		{
-		NumSeqsUnderlength += 1;
-		Rslt = eBSFSuccess;
-		}
-	else
-		{
-		if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs,Flags)) < eBSFSuccess)
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+		NumSampled += 1;
+		if(BuffOfs < (size_t)MinSeqLen)
+			{
+			NumSeqsUnderlength += 1;
+			Rslt = eBSFSuccess;
+			}
 		else
 			{
-			Rslt = eBSFSuccess;
-			NumSeqsAccepted += 1;
-			TotAcceptedLen += BuffOfs;
+			if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs,Flags)) < eBSFSuccess)
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+			else
+				{
+				Rslt = eBSFSuccess;
+				NumSeqsAccepted += 1;
+				TotAcceptedLen += BuffOfs;
+				}
 			}
 		}
 	}
 if(pSeqBuff != NULL)
 	free(pSeqBuff);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - %d parsed, %d accepted, %dbp mean length, %d sequences not accepted for indexing as length under %dbp ",
-					SeqID,NumSeqsAccepted,NumSeqsAccepted == 0 ? 0 :(int)(TotAcceptedLen/NumSeqsAccepted),NumSeqsUnderlength,MinSeqLen);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - %d parsed, %d sampled, %d accepted, %dbp mean length, %d sequences not accepted for indexing as length under %dbp ",
+					SeqID,NumSampled,NumSeqsAccepted,NumSeqsAccepted == 0 ? 0 :(int)(TotAcceptedLen/NumSeqsAccepted),NumSeqsUnderlength,MinSeqLen);
 return(Rslt);
 }
 
@@ -1555,6 +1614,7 @@ return(eBSFSuccess);
 
 int
 CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
+		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -1588,14 +1648,6 @@ tsPBScaffNode *pCurPBScaffNode;
 
 Reset(false);
 
-if(PMode == ePBPMConsensus)
-	{
-	Rslt = GenConsensusFromMAF(MinErrCorrectLen,MinConcScore,pszErrCorFile,pszPacBioFiles[0]);
-	Reset(false);
-	return(Rslt);
-	}
-	
-
 CreateMutexes();
 
 m_SWMatchScore = SWMatchScore;
@@ -1618,6 +1670,25 @@ m_MinHCSeqOverlap = MinHCSeqOverlap;
 
 m_MinErrCorrectLen = MinErrCorrectLen;
 m_MinConcScore = MinConcScore;
+m_SampleRate = SampleRate;
+
+
+switch(PMode) {
+	case ePBPMOverlapDetail:
+		m_MinPropBinned = cDfltScaffMinPropBinned;
+		m_OverlapFloat = cDfltScaffMaxOverlapFloat;
+		break;
+
+	case ePBPMConsensus:
+		Rslt = GenConsensusFromMAF(MinErrCorrectLen,MinConcScore,pszErrCorFile,pszPacBioFiles[0]);
+		Reset(false);
+		return(Rslt);
+
+	default:
+		m_MinPropBinned = cDfltMinPropBinned;
+		m_OverlapFloat = cDfltMaxOverlapFloat;
+		break;
+	}
 
 m_NumPacBioFiles = NumPacBioFiles;
 memset(m_szPacBioFiles,0,sizeof(m_szPacBioFiles));
@@ -1720,7 +1791,8 @@ if((Rslt = LoadSeqs(m_MinPBSeqLen,NumPacBioFiles,pszPacBioFiles,cFlgLCSeq)) < eB
 	return(Rslt);
 	}
 	// get number of sequences BioSeqs accepted for error correction
-NumTargSeqs = m_pSfxArray->GetNumEntries();
+if((NumTargSeqs = m_pSfxArray->GetNumEntries()) < 1)
+	NumTargSeqs = 0;
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loaded and accepted for processing a total of %d PacBio sequences",NumTargSeqs);
 
 if(NumTargSeqs < 3)
@@ -1876,7 +1948,7 @@ if(m_szMultiAlignFile[0] != '\0')
 else
 	m_hMultiAlignFile = -1;
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identifying sequence overlaps for error correction ...");
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identifying sequence overlaps ...");
 Rslt = IdentifySequenceOverlaps(MaxSeqLen,NumThreads);
 Reset(false);
 return(Rslt);
@@ -1910,6 +1982,10 @@ tsThreadPBErrCorrect *pThreadPutOvlps;
 int ThreadIdx;
 tsThreadPBErrCorrect *pThreadPar;
 
+memset(m_ExactKmerDists,0,sizeof(m_ExactKmerDists));
+m_TotAlignSeqLen = 0;
+m_TotAlignSeqs = 0;
+
 pThreadPutOvlps = new tsThreadPBErrCorrect [NumOvlpThreads];
 
 pThreadPar = pThreadPutOvlps;
@@ -1922,13 +1998,13 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 	pThreadPar->pCoreHits = (tsCoreHit *)malloc(pThreadPar->AllocdCoreHitsSize);	
 	if(pThreadPar->pCoreHits == NULL)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Core hits memory allocation of %llu bytes - %s",pThreadPar->AllocdCoreHitsSize,strerror(errno));
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IdentifySequenceOverlaps: Core hits memory allocation of %llu bytes - %s",pThreadPar->AllocdCoreHitsSize,strerror(errno));
 		break;
 		}
 #else
 	if((pThreadPar->pCoreHits = (tsCoreHit *)mmap(NULL,pThreadPar->AllocdCoreHitsSize, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0)) == MAP_FAILED)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Core hits memory allocation of %llu bytes - %s",pThreadPar->AllocdCoreHitsSize,strerror(errno));
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IdentifySequenceOverlaps: Core hits memory allocation of %llu bytes - %s",pThreadPar->AllocdCoreHitsSize,strerror(errno));
 		break;
 		}
 #endif
@@ -1936,14 +2012,14 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 	pThreadPar->AllocdProbeSeqSize = max(cAllocdQuerySeqLen,MaxSeqLen);
 	if((pThreadPar->pProbeSeq = new etSeqBase [pThreadPar->AllocdProbeSeqSize + 10])==NULL)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Core hits probe sequence memory allocation of %d bytes - %s",pThreadPar->AllocdProbeSeqSize,strerror(errno));
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IdentifySequenceOverlaps: Core hits probe sequence memory allocation of %d bytes - %s",pThreadPar->AllocdProbeSeqSize,strerror(errno));
 		break;
 		}
 
 	pThreadPar->AllocdTargSeqSize = pThreadPar->AllocdProbeSeqSize;
 	if((pThreadPar->pTargSeq = new etSeqBase [pThreadPar->AllocdTargSeqSize + 10])==NULL)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Core hits target sequence memory allocation of %d bytes - %s",pThreadPar->AllocdTargSeqSize,strerror(errno));
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IdentifySequenceOverlaps: Core hits target sequence memory allocation of %d bytes - %s",pThreadPar->AllocdTargSeqSize,strerror(errno));
 		break;
 		}
 
@@ -1971,7 +2047,7 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 
 	if((pThreadPar->pmtqsort = new CMTqsort) == NULL)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Core hits instantiation of CMTqsort failed");
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IdentifySequenceOverlaps: Core hits instantiation of CMTqsort failed");
 		break;
 		}
 	pThreadPar->pmtqsort->SetMaxThreads(4);
@@ -2335,7 +2411,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 
 				// checking here if the overlap is very likely to be artefact
 				// requiring that at least MinPropBinned of the bins along the putative alignment length contain hits
-				// and that the first and last hit are consistent
+				// and that the first and last hit are consistent with either a completely contained or overlapped
 				if(CurSEntryIDHits > 1 && ((OverlapSLen = CurSProbeEndOfs - CurSProbeStartOfs) > m_BinClusterSize))
 					PropSBinsOverlap = (m_BinClusterSize * CurSEntryIDHits * 100)/OverlapSLen;
 				else
@@ -2432,7 +2508,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			AcquireSerialise();
 			pThreadPar->pSW = new CSSW;
 			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
-			pThreadPar->pSW->PreAllocMaxTargLen(50000,m_PMode == ePBPMErrCorrect ? false : true);
+			pThreadPar->pSW->PreAllocMaxTargLen(50000,m_PMode == ePBPMConsensus ? true : false);
 			ReleaseSerialise();
 			}
 
@@ -2467,7 +2543,8 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			pThreadPar->pTargSeq[TargSeqLen] = eBaseEOS;
 			pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
 			
-			// restrict the range over which the SW will be processed to that of the overlap +/- 1Kbp
+			// restrict the range over which the SW will be processed to that of the overlap +/- m_OverlapFloat
+    int Rslt;
 			if(bTargSense)
 				{
 				if(pSummaryCnts->SProbeStartOfs < m_OverlapFloat)
@@ -2486,7 +2563,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					pSummaryCnts->STargEndOfs = TargSeqLen - 1;
 				else
 					pSummaryCnts->STargEndOfs += m_OverlapFloat;
-				pThreadPar->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
+				Rslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
 											pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs);
 				}
 			else
@@ -2516,14 +2593,13 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				else
 					pSummaryCnts->ATargEndOfs += m_OverlapFloat;
 
-				pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
+				Rslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
 											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
 				}
-
 #ifdef _PEAKSCOREACCEPT_
-			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell,m_PMode == ePBPMErrCorrect ? false : true);
+			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell,m_PMode == ePBPMConsensus ? true : false);
 #else
-			pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMErrCorrect ? false : true);
+			pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? true : false);
 #endif
 			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= MinOverlapLen)
@@ -2546,7 +2622,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					ProvArtefact += 1;
 					}
 
-				if(Class == eOLCOverlapping && (PathClass = pThreadPar->pSW->ClassifyPath(m_MaxArtefactDev,
+				if(m_PMode != ePBPMConsensus && Class == eOLCOverlapping && (PathClass = pThreadPar->pSW->ClassifyPath(m_MaxArtefactDev,
 																					PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 																					PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs)) > 0)
 					{
@@ -2565,6 +2641,29 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				
 				if(m_PMode == ePBPMErrCorrect && Class != (int)eOLCartefact && pThreadPar->NumTargCoreHitCnts >= 2)
 					{
+#undef _CHECKKMERDIST_
+#ifdef _CHECKKMERDIST_	
+// define _CHECKKMERDIST_ if wanting to see the exact K-mer length distributions when debugging
+					UINT32 CurExactKmerDists[100];
+					pThreadPar->pSW->PathKmerCnts(70,CurExactKmerDists,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+																									PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);	
+				
+					char szKMerDists[2000];
+					int KMerDistsIdx;
+					AcquireSerialise();
+					for(int TTx = 0; TTx < 70; TTx += 1)
+						m_ExactKmerDists[TTx] += CurExactKmerDists[TTx];
+					m_TotAlignSeqLen += (PeakMatchesCell.PLastAnchorEndOfs - PeakMatchesCell.PFirstAnchorStartOfs);	
+					m_TotAlignSeqs += 1;
+					if(m_TotAlignSeqs % 100 == 99)
+						{
+						KMerDistsIdx = sprintf(szKMerDists,"ExactKMerDists over %d seq pairs with mean length %dbp ",m_TotAlignSeqs,m_TotAlignSeqLen/m_TotAlignSeqs);
+						for(int TTx = 0; TTx < 70; TTx += 1)
+							KMerDistsIdx += sprintf(&szKMerDists[KMerDistsIdx],",%d",m_ExactKmerDists[TTx]);
+						gDiagnostics.DiagOut(eDLInfo,gszProcName,szKMerDists);
+						}
+					ReleaseSerialise();
+#endif
 					pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
 															
@@ -2573,8 +2672,6 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,pThreadPar->pTargSeq);
 					NumInMultiAlignment += 1;
 					}
-
-			
 
 				if(m_PMode == ePBPMOverlapDetail && m_hErrCorFile != -1)
 					{
@@ -2790,6 +2887,7 @@ UINT32 HighHitsThisCore;
 UINT32 TotHitsAllCores;
 UINT32 HitSeqLen;
 UINT32 ProbeOfs;
+UINT32 LastProbeOfs;
 
 UINT32 ChkOvrLapCoreProbeOfs;
 UINT32 LastCoreProbeOfs;
@@ -2831,8 +2929,12 @@ HitsThisCore = 0;
 HighHitsThisCore = 0;
 TotHitsAllCores = 0;
 MaxAcceptHomoCnt = (pPars->CoreSeqLen * cQualCoreHomopolymer) / 100; // if any core contains more than cQualCoreHomopolymer% of the same base then treat as being a near homopolymer core and slough
+LastProbeOfs = 1 + pProbeNode->SeqLen - pPars->CoreSeqLen;
+if(pPars->CoreSeqLen < cMaxPacBioSeedExtn)
+	LastProbeOfs -= 120;
 
-for(ProbeOfs = 0; ProbeOfs < (pProbeNode->SeqLen - (pPars->CoreSeqLen + 120)); ProbeOfs+=pPars->DeltaCoreOfs,pCoreSeq+=pPars->DeltaCoreOfs)
+
+for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=pPars->DeltaCoreOfs,pCoreSeq+=pPars->DeltaCoreOfs)
 	{
 	// with PacBio reads most homopolymer runs are actual artefact inserts so don't bother processing these homopolymer runs for cores
 	if(MaxAcceptHomoCnt > 0)

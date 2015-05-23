@@ -29,7 +29,7 @@
 #include "pacbiokanga.h"
 
 #include "../libbiokanga/bgzf.h"
-#include "../libbiokanga/SSW.h"
+#include "SSW.h"
 #include "pacbiocommon.h"
 #include "AssembGraph.h"
 #include "PBScaffold.h"
