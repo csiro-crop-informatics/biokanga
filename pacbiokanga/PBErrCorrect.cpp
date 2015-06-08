@@ -320,8 +320,8 @@ if (!argerrors)
 	SWGapOpenPenalty = abs(cDfltSWGapOpenPenalty);
 	SWGapExtnPenalty = abs(cDfltSWGapExtnPenalty);
 	SWProgExtnPenaltyLen = cDfltSWProgExtnLen;
-	MinPBSeqLen = cDfltMinScaffSeqLen;
-	MinPBSeqOverlap = cDfltMinOverlapLen; 
+	MinPBSeqLen = cDfltMinPBSeqLen;
+	MinPBSeqOverlap = cDfltMinErrCorrectLen; 
 	MinHCSeqLen = 1000;
 	MinHCSeqOverlap = 500;
 	MaxArtefactDev = cDfltMaxArtefactDev;
@@ -397,17 +397,17 @@ if (!argerrors)
 			return(1);
 			}
 
-		MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : cDfltMinScaffSeqLen;
-		if(MinPBSeqLen < cMinScaffSeqLen || MinPBSeqLen > cMaxMinScaffSeqLen)
+		MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : cDfltMinPBSeqLen;
+		if(MinPBSeqLen < cMinPBSeqLen || MinPBSeqLen > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted PacBio length '-l%d' must be in range %d..%dbp",MinPBSeqLen,cMinScaffSeqLen,cMaxMinScaffSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted PacBio length '-l%d' must be in range %d..%dbp",MinPBSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
-		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : cDfltMinOverlapLen;
-		if(MinPBSeqOverlap < cMinOverlapLen || MinPBSeqOverlap > cMaxMinScaffSeqLen)
+		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : cDfltMinErrCorrectLen;
+		if(MinPBSeqOverlap < cMinPBSeqLen || MinPBSeqOverlap > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum PacBio overlap required length '-L%d' must be in range %d..%dbp",MinPBSeqOverlap,cMinOverlapLen,cMaxMinScaffSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum PacBio overlap required length '-L%d' must be in range %d..%dbp",MinPBSeqOverlap,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
@@ -422,16 +422,16 @@ if (!argerrors)
 			MaxArtefactDev = 0;
 
 		MinHCSeqLen = minhcseqlen->count ? minhcseqlen->ival[0] : 1000;
-		if(MinHCSeqLen < cMinScaffSeqLen || MinHCSeqLen > cMaxMinScaffSeqLen)
+		if(MinHCSeqLen < cMinPBSeqLen || MinHCSeqLen > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted high confidence length '-l%d' must be in range %d..%dbp",MinHCSeqLen,cMinScaffSeqLen,cMaxMinScaffSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted high confidence length '-l%d' must be in range %d..%dbp",MinHCSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
 		MinHCSeqOverlap = minhcseqovl->count ? minhcseqovl->ival[0] : 500;
-		if(MinHCSeqOverlap < cMinOverlapLen || MinHCSeqOverlap > cMaxMinScaffSeqLen)
+		if(MinHCSeqOverlap < cMinPBSeqLen || MinHCSeqOverlap > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum high confidence overlap required length '-L%d' must be in range %d..%dbp",MinHCSeqOverlap,cMinOverlapLen,cMaxMinScaffSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum high confidence overlap required length '-L%d' must be in range %d..%dbp",MinHCSeqOverlap,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
@@ -530,10 +530,10 @@ if (!argerrors)
 			return(1);
 			}
 
-		MinErrCorrectLen = minerrcorrectlen->count ? minerrcorrectlen->ival[0] : 5000;
-		if(MinErrCorrectLen < cMinOverlapLen || MinErrCorrectLen > cMaxMinScaffSeqLen)
+		MinErrCorrectLen = minerrcorrectlen->count ? minerrcorrectlen->ival[0] : cDfltMinErrCorrectLen;
+		if(MinErrCorrectLen < cMinPBSeqLen || MinErrCorrectLen > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Error corrected and trimmed sequence minimum length '-S%d' must be in range %d..%dbp",MinErrCorrectLen,cMinOverlapLen,cMaxMinScaffSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Error corrected and trimmed sequence minimum length '-S%d' must be in range %d..%dbp",MinErrCorrectLen,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 		}
@@ -608,17 +608,17 @@ if (!argerrors)
 			return(1);
 			}
 
-		MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : cDfltMinScaffSeqLen/2;
-		if(MinPBSeqLen < cMinScaffSeqLen || MinPBSeqLen > cMaxMinScaffSeqLen)
+		MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : PMode == ePBPMOverlapDetail ? cDfltMinErrCorrectLen : cDfltMinPBSeqLen;
+		if(MinPBSeqLen < cMinPBSeqLen || MinPBSeqLen > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted error correscted sequence length '-l%d' must be in range %d..%dbp",MinPBSeqLen,cMinScaffSeqLen,cMaxMinScaffSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted error corrected sequence length '-l%d' must be in range %d..%dbp",MinPBSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
-		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : max(cMinScaffSeqLen,MinPBSeqLen / 2);
-		if(MinPBSeqOverlap < cMinOverlapLen || MinPBSeqOverlap > cMaxMinScaffSeqLen)
+		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : min(cDfltMinErrCorrectLen,MinPBSeqLen);
+		if(MinPBSeqOverlap < cMinPBSeqLen || MinPBSeqOverlap > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum PacBio overlap required length '-L%d' must be in range %d..%dbp",MinPBSeqOverlap,cMinOverlapLen,cMaxMinScaffSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum PacBio overlap required length '-L%d' must be in range %d..%dbp",MinPBSeqOverlap,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
@@ -735,7 +735,7 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: '%s'",pszMode);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling input sequence rate: %",SampleRate);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling input sequence rate: %d",SampleRate);
 
 	if(PMode != ePBPMConsensus)
 		{
@@ -758,7 +758,7 @@ if (!argerrors)
 			}
 		else
 			{
-			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum consensus sequence length: %dbp",MinPBSeqLen);
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum error corrected sequence length: %dbp",MinPBSeqLen);
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum overlap required: %d",MinPBSeqOverlap);
 			}
 
@@ -1001,7 +1001,7 @@ m_ProvContained = 0;
 m_ProvArtefact = 0;
 m_ProvSWchecked = 0;
 
-m_MinErrCorrectLen = 2000;
+m_MinErrCorrectLen = cDfltMinErrCorrectLen;
 m_MinConcScore = 2;
 
 m_PMode = ePBPMErrCorrect;
@@ -1010,8 +1010,8 @@ m_szScaffLineBuff[0] = '\0';
 m_ScaffLineBuffIdx = 0;
 
 m_OverlapFloat = cDfltMaxOverlapFloat;
-m_MinPBSeqLen = cDfltMinScaffSeqLen;	
-m_MinPBSeqOverlap = cDfltMinOverlapLen;
+m_MinPBSeqLen = cDfltMinPBSeqLen;	
+m_MinPBSeqOverlap = cDfltMinErrCorrectLen;
 m_MaxArtefactDev = cDfltMaxArtefactDev;
 m_MinHCSeqLen = cDfltMinHCSeqLen;
 m_MinHCSeqOverlap = cDfltMinHCSeqOverlap;
@@ -1494,7 +1494,7 @@ for(Idx = 0; Idx < NumTargFiles; Idx++)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to glob '%s",pszTargFiles[Idx]);
 		Reset(false);
-		return(-1);
+		return((INT64)eBSFerrOpnFile);
    		}
 
 
@@ -1733,8 +1733,8 @@ if(SumFileSizes == -1)
 if(NumHiConfFiles && pszHiConfFiles != NULL)
 	{
 	INT64 HiConfFileSizes;
-	HiConfFileSizes = EstSumSeqLens(NumHiConfFiles,pszHiConfFiles);	// guestimate sum of all sequences; will return -1 if errors
-	if(HiConfFileSizes == -1)
+	HiConfFileSizes = EstSumSeqLens(NumHiConfFiles,pszHiConfFiles);	// guestimate sum of all sequences; will return eBSFerrOpnFile if errors
+	if(HiConfFileSizes == (INT64)eBSFerrOpnFile)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to access the high confidence files");
 		return(eBSFerrObj);
@@ -1913,7 +1913,7 @@ else
 
 if(m_PMode == ePBPMOverlapDetail)
 	{
-	m_ScaffLineBuffIdx=sprintf(m_szScaffLineBuff,"\"Class\",\"ProbeID\",\"ProbDescr\",\"TargID\",\"TargDescr\",\"SeedHits\",\"Sense\",\"ProbeLen\",\"TargLen\",\"ProbeAlignLength\",\"TargAlignLength\",\"PeakScore\",\"FinalScore\",\"NumAlignedBases\",\"NumExactBases\",\"NumProbeInserts\",\"NumProbeInsertBases\",\"NumTargInserts\",\"NumTargInsertBases\",\"ProbeStartOfs\",\"TargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"ProbeOfs5\",\"TargOfs5\",\"ProbeOfs3\",\"TargOfs3\"");
+	m_ScaffLineBuffIdx=sprintf(m_szScaffLineBuff,"\"Class\",\"ProbeID\",\"ProbDescr\",\"TargID\",\"TargDescr\",\"SeedHits\",\"ProbeSense\",\"TargSense\",\"ProbeLen\",\"TargLen\",\"ProbeAlignLength\",\"TargAlignLength\",\"PeakScore\",\"FinalScore\",\"NumAlignedBases\",\"NumExactBases\",\"NumProbeInserts\",\"NumProbeInsertBases\",\"NumTargInserts\",\"NumTargInsertBases\",\"ProbeStartOfs\",\"TargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"ProbeOfs5\",\"TargOfs5\",\"ProbeOfs3\",\"TargOfs3\"");
 #ifdef _PEAKSCOREACCEPT_
 	m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",\"PSAlignLength\",\"PSPeakScore\",\"PSNumAlignedBases\",\"PSNumExactBases\",\"PSNumProbeInserts\",\"PSNumProbeInsertBases\",\"PSNumTargInserts\",\"PSNumTargInsertBases\",\"PSProbeStartOfs\",\"PSTargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"PSProbeOfs5\",\"PSTargOfs5\",\"PSProbeOfs3\",\"PSTargOfs3\"");
 #endif
@@ -2203,6 +2203,24 @@ return(0);
 int
 CPBErrCorrect::ThreadPBErrCorrect(tsThreadPBErrCorrect *pThreadPar)
 {
+UINT32  OverlapSLen;
+UINT32  OverlapALen;
+UINT32  PropSBinsOverlap;
+UINT32  PropABinsOverlap;
+UINT32 TargLen;
+UINT32 CurTargCoreHitCnts;
+tsPBScaffNode *pTargNode;
+UINT32 ProbeAlignLength;
+UINT32 TargAlignLength;
+UINT32 TargSeqLen;
+UINT32 LongSAligns;
+UINT32 LongAAligns;
+tsSSWCell *pPeakMatchesCell;
+tsSSWCell PeakMatchesCell;
+#ifdef _PEAKSCOREACCEPT
+tsSSWCell PeakScoreCell;
+#endif
+bool bTargSense;
 UINT32 Idx;
 UINT32 CurSummaryHitCnts;
 UINT32 LowestSummaryHitCnts;
@@ -2403,12 +2421,6 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			// if just processed last core hit for the current target ...
 			if(HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargNodeID)
 				{
-				UINT32  OverlapSLen;
-				UINT32  OverlapALen;
-				UINT32  PropSBinsOverlap;
-				UINT32  PropABinsOverlap;
-				UINT32 TargLen;
-
 				// checking here if the overlap is very likely to be artefact
 				// requiring that at least MinPropBinned of the bins along the putative alignment length contain hits
 				// and that the first and last hit are consistent with either a completely contained or overlapped
@@ -2489,20 +2501,8 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	NumInMultiAlignment = 0;
 	if(pThreadPar->NumTargCoreHitCnts > 0)
 		{
-		UINT32 CurTargCoreHitCnts;
-		tsPBScaffNode *pTargNode;
-		UINT32 ProbeAlignLength;
-		UINT32 TargAlignLength;
-		UINT32 TargSeqLen;
-		UINT32 LongSAligns = 0;
-		UINT32 LongAAligns = 0;
-
-
-		tsSSWCell *pPeakMatchesCell;
-		tsSSWCell PeakMatchesCell;
-#ifdef _PEAKSCOREACCEPT
-		tsSSWCell PeakScoreCell;
-#endif
+		LongSAligns = 0;
+		LongAAligns = 0;
 		if(pThreadPar->pSW == NULL)
 			{
 			AcquireSerialise();
@@ -2523,7 +2523,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			{
 			if(pSummaryCnts->NumSHits < pThreadPar->MinNumCores && pSummaryCnts->NumAHits < pThreadPar->MinNumCores)
 				continue;
-			bool bTargSense = pSummaryCnts->NumSHits >= pSummaryCnts->NumAHits ? true :  false;
+			bTargSense = pSummaryCnts->NumSHits >= pSummaryCnts->NumAHits ? true :  false;
 			pTargNode = &m_pPBScaffNodes[pSummaryCnts->TargNodeID-1];
 			if(pTargNode->flgHCseq == 1)
 				MinOverlapLen = m_MinHCSeqOverlap;
@@ -2544,7 +2544,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
 			
 			// restrict the range over which the SW will be processed to that of the overlap +/- m_OverlapFloat
-    int Rslt;
+			int Rslt;
 			if(bTargSense)
 				{
 				if(pSummaryCnts->SProbeStartOfs < m_OverlapFloat)
@@ -2630,13 +2630,23 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					ProvArtefact += 1;
 					}
 
-				if(Class == eOLCOverlapping && PeakMatchesCell.StartTOfs < m_OverlapFloat && (TargSeqLen - PeakMatchesCell.EndTOfs) < m_OverlapFloat)
+				if(Class == eOLCOverlapping)
 					{
-					Class = (int)eOLCcontaining;
-					AcquireLock(true);
-					pTargNode->flgContained = 1;
-					ReleaseLock(true);	
-					ProvContained += 1;
+					if(PeakMatchesCell.StartTOfs < m_OverlapFloat && (TargSeqLen - PeakMatchesCell.EndTOfs) < m_OverlapFloat) // is target completely contained by probe?
+						Class = (int)eOLCcontains;
+					else
+						if(PeakMatchesCell.StartPOfs < m_OverlapFloat && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) < m_OverlapFloat) // or is probe completely contained within target?
+							Class = (int)eOLCcontained;
+					if(Class != eOLCOverlapping)
+						{
+						AcquireLock(true);
+						if(Class == (int)eOLCcontains)
+							pTargNode->flgContains = 1;
+						else
+							pTargNode->flgContained = 1;
+						ReleaseLock(true);	
+						ProvContained += 1;
+						}
 					}
 				
 				if(m_PMode == ePBPMErrCorrect && Class != (int)eOLCartefact && pThreadPar->NumTargCoreHitCnts >= 2)
@@ -2683,9 +2693,9 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 						m_ScaffLineBuffIdx = 0;
 						}
 
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"%c\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
+					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"%c\",\"%c\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
 							Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,
-																			bTargSense ? pSummaryCnts->NumSHits : pSummaryCnts->NumAHits, bTargSense ? 'S' : 'A',
+																			bTargSense ? pSummaryCnts->NumSHits : pSummaryCnts->NumAHits, 'S', bTargSense ? 'S' : 'A',
 																			pCurPBScaffNode->SeqLen,TargSeqLen,
 							ProbeAlignLength, 
 							TargAlignLength,

@@ -17,7 +17,7 @@
 #include "../libbiokanga/commdefs.h"
 
 const UINT32 cSSWMinProbeOrTargLen = 5;			// require probe and target lengths to be at least this number of bp
-const UINT32 cSSWMaxProbeOrTargLen = 100000000;  // require either probe or target length to be no longer than this limit
+const UINT32 cSSWMaxProbeOrTargLen = 25000000;  // require either probe or target length to be no longer than this limit
 const UINT32 cSSWMaxPenaltyGap = 1000000;		 // can specify gaps of upto this length before gap extension penalties are applied
 
 const int cSSWDfltMatchScore = 1;		// score for matching bases
@@ -32,14 +32,14 @@ const int cSSWDfltAnchorLen = 4;		// default exactly matching anchors of at leas
 const int cSSWMaxAnchorLen = 100;      // can specify exactly matching anchors of at most this length  
 
 const int cMaxInitiatePathOfs = 250;    // default is to require SW paths to have started within this many bp on either the probe or target - effectively anchoring the SW
-const int cMinNumExactMatches = 100;    // default is only consider a path as being a peak path once that putative path contains at least this many exactly matching bases
+const int cMinNumExactMatches = 100;     // default is only consider a path as being a peak path once that putative path contains at least this many exactly matching bases
 
 const int cMaxTopNPeakMatches = 100;     // can process for at most this many peak matches in any probe vs target SW alignment
 
 const int cDfltConfWind = 50;			// default confidence window is this length
 const int cMaxConfWindSize = 200;		// allowing confidence window length to be at most this length
 
-const int cMaxMAFBlockErrCorLen = 250000;		// allowing for error corrected read sequences of up to this length
+const int cMaxMAFBlockErrCorLen = cSSWMaxProbeOrTargLen/10;	// allowing for error corrected read sequences of up to this length
 const int cMaxMAFBlockLen = (cMaxMAFBlockErrCorLen * 100);	// allowing for multialignment format block buffering of up to this length
 
 #pragma pack(1)
@@ -67,7 +67,6 @@ typedef struct TAG_sSSWCell {
 	UINT32 LeftInDelLen;		// current left (insert relative to target) gap length
 	UINT32 DownInDelLen;		// current down (deletion relative to target) gap length
 	UINT32 CurExactLen;			// current exactly matching sequence length
-	
 } tsSSWCell;
 
 
@@ -222,7 +221,7 @@ class CSSW
 	int m_MAFAlignBuffIdx;			// offset in m_pszMAFAlignBlock at which next char is being parsed
 	int m_MAFAlignBuffered;			// number of chars currently buffered in m_pszMAFAlignBuff
 	INT64 m_MAFFileLineNum;			// line number in MAF file currently being parsed
-	int m_AllocMAFAlignBuffSize;	// m_pszMAFAlignBlock allocated to hold this many chars
+	UINT32 m_AllocMAFAlignBuffSize;	// m_pszMAFAlignBlock allocated to hold this many chars
 	char *m_pszMAFAlignBuff;		// allocated to buffer the MAF alignment blocks whilst parsing
 	tsConfBase *m_pConsConfSeq;		// allocated to hold the parsed consensus bases and consensus confidence scores
 	char *m_pszConsensusBuff;		// allocated to buffer the generated consensus sequence

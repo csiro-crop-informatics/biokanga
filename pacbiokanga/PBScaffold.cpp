@@ -37,13 +37,13 @@
 
 int
 ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
-		int MinScaffSeqLen,			// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
-		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
+		int MinScaffSeqLen,					// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
+		int MinScaffOverlap,				// pairs of targeted scaffold sequences must have overlapped by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		char *pszOverlapDetailFile,			// pregenerated sequence overlap loci details
-		int NumErrCorrectedFiles,	// number of error corrected sequence specs
+		int NumErrCorrectedFiles,			// number of error corrected sequence specs
 		char *pszErrCorrectedFiles[],		// input error corrected sequence files
-	    char *pszOutFile,			// where to write merged scaffolded sequences
-		int NumThreads);			// maximum number of worker threads to use
+	    char *pszOutFile,					// where to write merged scaffolded sequences
+		int NumThreads);					// maximum number of worker threads to use
 
 
 #ifdef _WIN32
@@ -254,17 +254,17 @@ if (!argerrors)
 		}
 
 
-	MinScaffSeqLen = minscafflen->count ? minscafflen->ival[0] : cDfltMinScaffSeqLen;
-	if(MinScaffSeqLen < cMinScaffSeqLen || MinScaffSeqLen > cMaxMinScaffSeqLen)
+	MinScaffSeqLen = minscafflen->count ? minscafflen->ival[0] : cDfltMinErrCorrectLen;
+	if(MinScaffSeqLen < cMinPBSeqLen || MinScaffSeqLen > cMaxMinPBSeqLen)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted scaffold length '-l%d' must be in range %d..%dbp",MinScaffSeqLen,cMinScaffSeqLen,cMaxMinScaffSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted scaffold length '-l%d' must be in range %d..%dbp",MinScaffSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
 		return(1);
 		}
 
-	MinScaffOverlap = minscaffovl->count ? minscaffovl->ival[0] : cDfltMinOverlapLen;
-	if(MinScaffOverlap < cMinOverlapLen || MinScaffOverlap > cMaxMinScaffSeqLen)
+	MinScaffOverlap = minscaffovl->count ? minscaffovl->ival[0] : cDfltMinErrCorrectLen;
+	if(MinScaffOverlap < cMinPBSeqLen || MinScaffOverlap > cMaxMinPBSeqLen)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum scaffold overlap required length '-L%d' must be in range %d..%dbp",MinScaffOverlap,MinScaffOverlap,cMaxMinScaffSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum scaffold overlap required length '-L%d' must be in range %d..%dbp",MinScaffOverlap,cMinPBSeqLen,cMaxMinPBSeqLen);
 		return(1);
 		}
 
@@ -481,9 +481,9 @@ m_ProvSWchecked = 0;
 
 m_PMode = ePBPMScaffold;
 
-m_OverlapFloat = cDfltMaxOverlapFloat;
-m_MinScaffSeqLen = cDfltMinScaffSeqLen;	
-m_MinScaffOverlap = cDfltMinOverlapLen;
+m_OverlapFloat = cDfltScaffMaxOverlapFloat;
+m_MinScaffSeqLen = cDfltMinErrCorrectLen;	
+m_MinScaffOverlap = cDfltMinErrCorrectLen;
 
 m_ScaffScoreExact = cDfltScaffScoreExact;					
 m_ScaffScoreMismatch = cDfltScaffScoreMismatch;				
@@ -661,7 +661,9 @@ int NumNoProbeIdents;
 int NumNoTargIdents;
 int ProbeNameID;
 int TargNameID;
-int ScaffoldScore;	
+int ScaffoldScore;
+int ScoreAlignLen;
+int Scaffold1KScore;	
 
 char *pszTmp;
 int Class;
@@ -674,7 +676,8 @@ char szPrevProbeDescr[cMaxDescrIDLen+1];
 int TargID;
 char szTargDescr[cMaxDescrIDLen+1];
 int SeedHits;
-char Sense;
+char ProbeSense;
+char TargSense;
 int ProbeLen;
 int TargLen;
 int	ProbeAlignLength;
@@ -695,6 +698,9 @@ int	ProbeOfs5;
 int	TargOfs5;
 int	ProbeOfs3;
 int	TargOfs3;
+
+UINT32 ProbeSeqLen;
+UINT32 TargSeqLen;
 
 m_NumRejectedScoreThres = 0;
 m_NumRejectedScoreThres = 0;
@@ -731,10 +737,10 @@ NumElsRead = 0;
 NumEdges = 0;
 while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 	{
-	NumFields = pCSV->GetCurFields();		// PacBio scaffold overlap files contain 27 fields
-	if(NumFields != 27)
+	NumFields = pCSV->GetCurFields();		// PacBio scaffold overlap files contain 28 fields
+	if(NumFields != 28)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Expected PacBio overlaps CSV file number of fields to be 27 in '%s', GetCurFields() returned '%d'",pszPacBioOvlps,NumFields);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Expected PacBio overlaps CSV file number of fields to be 28 in '%s', GetCurFields() returned '%d'",pszPacBioOvlps,NumFields);
 		delete pCSV;
 		return((UINT32)eBSFerrFieldCnt);
 		}
@@ -784,135 +790,152 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		};
 	if((Rslt=pCSV->GetText(7,&pszTmp)) < 0)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing Sense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeSense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	Sense = pszTmp[0];
-	switch(Sense) {
+	ProbeSense = pszTmp[0];
+	switch(ProbeSense) {
 		case 's': case 'S': break;
 		case 'a': case 'A': break;
 		default:
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing Sense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeSense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 			delete pCSV;
 			return((UINT32)eBSFerrParse);
 		};
-	if((Rslt=pCSV->GetInt(8,&ProbeLen)) < 0)
+
+	if((Rslt=pCSV->GetText(8,&pszTmp)) < 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargSense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+		delete pCSV;
+		return((UINT32)Rslt);
+		};
+	TargSense = pszTmp[0];
+	switch(TargSense) {
+		case 's': case 'S': break;
+		case 'a': case 'A': break;
+		default:
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargSense at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+			delete pCSV;
+			return((UINT32)eBSFerrParse);
+		};
+
+	if((Rslt=pCSV->GetInt(9,&ProbeLen)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeLen at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(9,&TargLen)) < 0)
+	if((Rslt=pCSV->GetInt(10,&TargLen)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargLen at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(10,&ProbeAlignLength)) < 0)
+	if((Rslt=pCSV->GetInt(11,&ProbeAlignLength)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeAlignLength at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(11,&TargAlignLength)) < 0)
+	if((Rslt=pCSV->GetInt(12,&TargAlignLength)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargAlignLength at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(12,&PeakScore)) < 0)
+	if((Rslt=pCSV->GetInt(13,&PeakScore)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing PeakScore at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(13,&FinalScore)) < 0)
+	if((Rslt=pCSV->GetInt(14,&FinalScore)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing FinalScore at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(14,&NumAlignedBases)) < 0)
+	if((Rslt=pCSV->GetInt(15,&NumAlignedBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumAlignedBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(15,&NumExactBases)) < 0)
+	if((Rslt=pCSV->GetInt(16,&NumExactBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumExactBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(16,&NumProbeInserts)) < 0)
+	if((Rslt=pCSV->GetInt(17,&NumProbeInserts)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumProbeInserts at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(17,&NumProbeInsertBases)) < 0)
+	if((Rslt=pCSV->GetInt(18,&NumProbeInsertBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumProbeInsertBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(18,&NumTargInserts)) < 0)
+	if((Rslt=pCSV->GetInt(19,&NumTargInserts)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumTargInserts at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(19,&NumTargInsertBases)) < 0)
+	if((Rslt=pCSV->GetInt(20,&NumTargInsertBases)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing NumTargInsertBases at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(20,&ProbeStartOfs)) < 0)
+	if((Rslt=pCSV->GetInt(21,&ProbeStartOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeStartOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
 
-	if((Rslt=pCSV->GetInt(21,&TargStartOfs)) < 0)
+	if((Rslt=pCSV->GetInt(22,&TargStartOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargStartOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(22,&ProbeEndOfs)) < 0)
+	if((Rslt=pCSV->GetInt(23,&ProbeEndOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeEndOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(23,&TargEndOfs)) < 0)
+	if((Rslt=pCSV->GetInt(24,&TargEndOfs)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargEndOfs at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(24,&ProbeOfs5)) < 0)
+	if((Rslt=pCSV->GetInt(25,&ProbeOfs5)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeOfs5 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(25,&TargOfs5)) < 0)
+	if((Rslt=pCSV->GetInt(26,&TargOfs5)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargOfs5 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(26,&ProbeOfs3)) < 0)
+	if((Rslt=pCSV->GetInt(27,&ProbeOfs3)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing ProbeOfs3 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)Rslt);
 		};
-	if((Rslt=pCSV->GetInt(27,&TargOfs3)) < 0)
+	if((Rslt=pCSV->GetInt(28,&TargOfs3)) < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error parsing TargOfs3 at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
@@ -930,32 +953,41 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 	   ProbeEndOfs < (ProbeStartOfs + 99) || ProbeEndOfs > ProbeLen || 
 	   TargStartOfs < 1 || (TargStartOfs + 100) > TargLen ||  
 	   TargEndOfs < (TargStartOfs + 99) || TargEndOfs > TargLen ||
-	   !(Sense == 'S' || Sense == 's' || Sense == 'A' || Sense == 'a')) 
+	   !(ProbeSense == 'S' || ProbeSense == 's' || ProbeSense == 'A' || ProbeSense == 'a') ||
+		!(TargSense == 'S' || TargSense == 's' || TargSense == 'A' || TargSense == 'a')) 
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error, inconsistencies in values parsed from line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
 		return((UINT32)eBSFerrParse);
 		}
-
+	if(ProbeSense == 'A' || ProbeSense == 'a')
+		{
+		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Sorry, can not accept (treating as artefact) ProbeSense == 'A' at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
+		m_NumRejectArtefact += 1;
+		continue;
+		}
 
 		// Score for scaffolding needs to be independent of the SW score as user may have changed the default scoring penalties when error correcting.
         // Also because scaffolding is normally with sequences whicah are error reduced relative to the original reads then the scoring used should be
         // more akin to that normally associated with relatively error free alignments where the InDel rate is greatly reduced compared with the original PacBio sequences.
         // Currently the default scoring is 1 for exacts, -1 for mismatches and -3 for InDels and -1 for InDel gap extensions; these may need to be exposed to the user as parameterised ....
+	ScoreAlignLen = ((1 + ProbeAlignLength + TargAlignLength)/2);
 	ScaffoldScore = (NumExactBases * m_ScaffScoreExact) +							// score the exacts
 				((NumAlignedBases - NumExactBases) * m_ScaffScoreMismatch) +		// score the mismatches
 				((NumProbeInserts + NumTargInserts) *  m_ScaffScoreGapOpen) +     // score the gap (InDel) openings
 				((NumProbeInsertBases - NumProbeInserts + NumTargInsertBases - NumTargInserts) *  m_ScaffScoreGapExtn); // score the gap extensions
+	Scaffold1KScore = (int)(((INT64)ScaffoldScore * 1000) / ScoreAlignLen);
 
 	switch(Class) {
-		case eOLCcontaining:
+		case eOLCcontained:     // slough the containing or contained
+		case eOLCcontains:				
 			m_NumRejectContained += 1;
 			continue;
-		case eOLCartefact:
+		case eOLCartefact:		// slough any artefacts
 			m_NumRejectArtefact += 1;
 			continue;
-		case eOLCOverlapping:
-			if(ScaffoldScore < m_MinScaffScoreThres)
+		case eOLCOverlapping:   // extensions possible only if overlapping
+			if(Scaffold1KScore < m_MinScaffScoreThres)
 				{
 				m_NumRejectedScoreThres += 1;
 				continue;
@@ -983,6 +1015,16 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 	else
 		ProbeNameID = PrevProbeIdent;
 
+	 ProbeSeqLen = m_pSfxArray->GetSeqLen(ProbeNameID);
+	 if(ProbeSeqLen != ProbeLen)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Actual probe fasta sequence length: %d, Overlap detail probe length: %d, for sequence named '%s' at line %d in file '%s'",
+									ProbeSeqLen,ProbeLen,szProbeDescr,NumElsRead,pszPacBioOvlps);
+		delete pCSV;
+		return((UINT32)eBSFerrParse);
+		}
+
+
 	TargNameID = m_pSfxArray->GetIdent(szTargDescr);
 	if(TargNameID <= 0)
 		{
@@ -992,8 +1034,17 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		continue;
 		}
 
+	 TargSeqLen = m_pSfxArray->GetSeqLen(TargNameID);
+	 if(TargSeqLen != TargLen)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Actual target fasta sequence length: %d, Overlap detail target length: %d, for sequence named '%s' at line %d in file '%s'",
+									TargSeqLen,TargLen,szProbeDescr,NumElsRead,pszPacBioOvlps);
+		delete pCSV;
+		return((UINT32)eBSFerrParse);
+		}
+
 	// note that AddEdge() is expecting offsets to be 0 based hence substracting 1
-	if((NumEdges = m_pAssembGraph->AddEdge(ProbeNameID,TargNameID,(UINT32)ScaffoldScore,ProbeStartOfs-1,ProbeEndOfs-1,TargStartOfs-1,TargEndOfs-1,(eOverlapClass)Class,Sense == 's' || Sense == 'S' ? false : true)) > cMaxValidID)
+	if((NumEdges = m_pAssembGraph->AddEdge(ProbeNameID,TargNameID,ProbeLen,TargLen,(UINT32)Scaffold1KScore,ScoreAlignLen,ProbeStartOfs-1,ProbeEndOfs-1,TargStartOfs-1,TargEndOfs-1,(eOverlapClass)Class,TargSense == 's' || TargSense == 'S' ? false : true)) > cMaxValidID)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge failed at line %d in file '%s'",NumElsRead,pszPacBioOvlps);
 		delete pCSV;
@@ -1014,11 +1065,7 @@ if(!bValidateOnly)
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepting %u overlaps for further processing (rejected %u score, %u contained, %u artefact) from file '%s'",
 												m_NumAcceptedOverlaps,m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectArtefact,pszPacBioOvlps);
 
-	if(NumEdges != m_NumAcceptedOverlaps)
-		{
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Graph processing rejected a further %d overlaps",m_NumAcceptedOverlaps - NumEdges);
-		m_NumAcceptedOverlaps = NumEdges;
-		}
+	m_NumAcceptedOverlaps = NumEdges;
 	}
 return(m_NumAcceptedOverlaps);
 }
@@ -1048,7 +1095,7 @@ if(FileSize == 0)		// 0 if file not readable or if 0 length
 	return(eBSFerrFileAccess);
 	}
 
-if(FileSize < cMinScaffSeqLen)		// arbitary minimum file size...
+if(FileSize < cDfltMinErrCorrectLen)		// arbitary minimum file size...
 	{
 	gDiagnostics.DiagOut(eDLWarn,gszProcName,"LoadTargetSeqs: file exists but is only %lld long",pszTargFile,FileSize);
 	return(eBSFerrFileAccess);
@@ -1461,9 +1508,10 @@ if(m_pSfxArray->GetNumEntries() < 3)		// need at least 3 sequences if attempting
 	Reset(false);
 	return(eBSFerrNoEntries);
 	}
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting suffix array...");
-m_pSfxArray->Finalise();
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting completed");
+//gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting suffix array...");
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: Still developing NOT sorting suffix array...");
+//m_pSfxArray->Finalise();
+//gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting completed");
 return(Rslt);
 
 }
@@ -1631,12 +1679,12 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	m_pMapEntryID2NodeIDs[pCurPBScaffNode->EntryID-1] = CurNodeID;
 	}
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading previously generated error corrected sequence overlaps from file '%s' ...",pszMAFFile);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading previously generated overlap detail from file '%s' ...",pszMAFFile);
 if((UINT32)(Rslt = LoadPacBioOvlps(pszMAFFile)) > cMaxValidID)
 	return(Rslt);
 if(m_NumAcceptedOverlaps == 0)
 	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"No scaffold overlaps");
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"No sequence overlaps loaded");
 	return(Rslt);										
 	}
 
@@ -1648,11 +1696,11 @@ if((UINT32)(Rslt = m_pAssembGraph->FinaliseEdges())  > cMaxValidID)
 m_NumAcceptedOverlaps = Rslt;
 if(m_NumAcceptedOverlaps == 0)
 	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"FinaliseEdges: No scaffold overlaps");
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"FinaliseEdges: No sequence overlaps");
 	return(Rslt);										
 	}
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted %u overlaps from file '%s' ...",m_NumAcceptedOverlaps,pszMAFFile);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted %u sequence overlap details from file '%s' ...",m_NumAcceptedOverlaps,pszMAFFile);
 
 
 UINT32 NumDiscComponents = 0;
@@ -1661,6 +1709,9 @@ if((NumDiscComponents = m_pAssembGraph->IdentifyDiscComponents()) > cMaxValidID)
 	Reset(false);
 	return((int)NumDiscComponents);
 	}
+
+m_pAssembGraph->FindHighestScoringPaths();
+
 m_pAssembGraph->WriteScaffoldSeqs(pszOutFile);
 
 Reset(false);

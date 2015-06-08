@@ -8,11 +8,11 @@ const char *pszArtef3Seq = "ACACTCTTTCCCTACACGACGCTCTTCCGATCT"; // default artef
 
 
 const int cDfltNumReads = 10000000;		// default number of reads
-const int cMinNumReads =  100;			// minimum number of reads
+const int cMinNumReads =  5;			// minimum number of reads
 const int cMaxNumReads =  500000000;	// maximum number of reads
 const int cDfltReadLen =  100;			// default read length
 const int cMinReadLen  =  20;			// minimum read length
-const int cMaxSimReadLen = 1000;		// max simulated read length
+const int cMaxSimReadLen = 100000;		// max simulated read length
 
 const int cUpdnstream = 2000;			// when regional filtering this is the length of the up/down stream region
 

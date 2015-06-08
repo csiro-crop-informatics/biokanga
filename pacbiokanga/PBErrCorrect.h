@@ -98,7 +98,8 @@ typedef struct TAG_sPBScaffNode {
 	UINT32 EntryID;					// suffix array entry identifier for indexed sequence
 	UINT32 SeqLen;					// length in bp of this scaffolding node sequence
 	UINT32 flgCurProc:1;			// sequence is currently being processed
-	UINT32 flgContained:1;			// sequence is fully contained within another sequence
+	UINT32 flgContained:1;			// sequence is fully contained within at least one other sequence
+	UINT32 flgContains:1;			// sequence fully contains at least one other sequence
 	UINT32 flgUnderlength:1;        // sequence is under length
 	UINT32 flgHCseq:1;				// loaded as a high confidence (non-PacBio) sequence
 	

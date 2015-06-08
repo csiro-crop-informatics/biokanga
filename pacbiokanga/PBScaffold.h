@@ -81,7 +81,7 @@ class CPBScaffold
 	int m_ScaffScoreMismatch;				// expecting relatively few mismatches in error reduced scaffolding sequence overlaps
 	int m_ScaffScoreGapOpen;				// expecting relatively few gap openings in error reduced scaffolding sequence overlaps
 	int m_ScaffScoreGapExtn;				// expecting very few gap extensions in error reduced scaffolding sequence overlaps
-	int m_MinScaffScoreThres;				// accepted overlaps must be at least this minimum score
+	int m_MinScaffScoreThres;				// accepted overlaps must be at least this minimum score per Kbp overlap
 	UINT32 m_NumRejectedScoreThres;			// this number of overlaps rejected as being below m_MinScaffScoreThres threshold
 	UINT32 m_NumRejectContained;			// this number of overlaps rejected because the overlap was classified as contained
 	UINT32 m_NumRejectArtefact;				// this number of overlaps rejected because the overlap was classified as being an artefact

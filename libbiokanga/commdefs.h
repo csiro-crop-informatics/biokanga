@@ -158,7 +158,7 @@ typedef INT8  tSpeciesID;		// species identifier
 #ifdef _SHORTMAXREADLEN_
 const int cMaxReadLen = 2048;				// can process reads (if more than this length then must be sequences!) of up to this length
 #else
-const int cMaxReadLen = (0x10000);			// 64Kbp; reads (observed in PacBio fastq and Illumina moleculo fastq format) can be up to this length so need to be able to handle them
+const int cMaxReadLen = (0x30000);			// 256Kbp; reads (in future expected for PacBio fastq and Illumina moleculo fastq format) can be up to this length so need to be able to handle them
 #endif
 
 // releases previous to 2.75.x had lower max gene/dataset/species/chrom name limits than later releases

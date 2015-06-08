@@ -35,9 +35,10 @@ const int cDfltBinClusterSize = 250;					// clustering seed cores into this size
 const int cDfltMinPropBinned = 70;						// must be at least this proportion of bins with at least one core hit over putative overlap length 
 const int cDfltScaffMinPropBinned = 90;					// when scaffolding then must be at least this proportion of bins with at least one core hit over putative overlap length 
 
-const int cMinScaffSeqLen = 500;						 // allowing for minimum scaffolded sequences to be specified down to this length (could be targeting RNA transcriptome)
-const int cDfltMinScaffSeqLen = 15000;					 // default is to allow for scaffolded sequences down to this minimum length
-const int cMaxMinScaffSeqLen = 100000;					 // allowing for minimum scaffolded sequences to be specified up to this length 
+const int cMinPBSeqLen = 500;						 // allowing for minimum PacBio sequences to be specified down to this length (could be targeting RNA transcriptome)
+const int cDfltMinPBSeqLen = 10000;					 // default is to allow for PacBio sequences down to this minimum length
+const int cDfltMinErrCorrectLen = 5000;              // default is for this minimum length error corrected PacBio sequences
+const int cMaxMinPBSeqLen = 100000;					 // allowing for minimum PacBio sequences to be specified up to this length 
 
 const int cDfltSWMatchScore = 3;						// default SW match score for pacbio alignments
 const int cDfltSWMismatchPenalty = -7;					// default SW mismatch penalty for pacbio alignments
@@ -51,9 +52,6 @@ const int cMinSWAlignLen = 50;							// and alignment length of at least this ma
 
 const int cDfltMaxOverlapFloat = 1000;					// allow up to this much float on overlaps to account for the PacBio error profile 
 const int cDfltScaffMaxOverlapFloat = 200;				// but when scaffolding with error corrected reads then reduce
-
-const int cMinOverlapLen = 500;							 // minimum putative overlap length which can be requested by user
-const int cDfltMinOverlapLen = 5000;					 // default minimum putative overlap length
 
 const int cAllocdNumCoreHits = 1000000;					 // each thread preallocs for this many core hits, realloc'd as may be required
 const int cAllocdQuerySeqLen = 500000;					 // each thread preallocs to hold query sequences of this length, realloc'd as may be required

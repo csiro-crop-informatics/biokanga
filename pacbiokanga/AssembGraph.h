@@ -15,25 +15,16 @@
 #pragma once
 
 const UINT32 cMaxEdges = 250;						// any vertex can have at most this many inbound or outbound edges
-const UINT32 cDfltMinAcceptScoreThres = 5000;          // default is to only accept edges for processing which have scores of at least this threshold
+const UINT32 cDfltMinAcceptScoreThres = 980;         // default is to only accept edges for processing which have scores per 1Kbp overlap of at least this threshold
 
-#ifdef _DEBUG
-#ifdef _WIN32
-const UINT32 cInitialAllocVertices =10000000;		// initially allocate for this many vertices
-#else
-const UINT32 cInitialAllocVertices =50000000;		// initially allocate for this many vertices
-#endif
-#else
-const UINT32 cInitialAllocVertices =50000000;		// initially allocate for this many vertices
-#endif
-
+const UINT32 cInitialAllocVertices =500000;		// initially allocate for this many vertices, will be realloc'd if required
 const double cReallocVertices   =   0.3;	    // then, as may be required, realloc in increments of this proportion of existing vertices
 const UINT32 cInitialAllocEdges =  (cInitialAllocVertices * 3);	// initially allocate for this many outgoing edges
-const double cReallocEdges      =   0.3;		// then, as may be required, realloc in increments of this proportion pf existing outgoing edges
-const UINT32 cInitalComponentsAlloc   = 2000000;	// hopefully there will not be too many assemblies with more than 2M components - will realloc as may be required
+const double cReallocEdges      =   0.3;		// then, as may be required, realloc in increments of this proportion of existing outgoing edges
+const UINT32 cInitalComponentsAlloc   = 50000;	// not expecting too many assemblies with more than 50K components but will realloc if required
 const double cReallocComponents  = 0.3;		// realloc as may be required in this proportion of existing components
 
-const UINT32 cTransitStackAlloc   =    5000000;		// initially allocate for transition stack to hold this many entries
+const UINT32 cTransitStackAlloc   =    1000000;		// initially allocate for transition stack to hold this many entries
 const double cReallocTransitStack =    0.3;		// realloc by this proportion of existing stack entries
 
 
@@ -49,14 +40,15 @@ typedef enum TAG_eVerticesSortOrder {
 
 typedef enum TAG_eOverlapClass {
 	eOLCOverlapping = 0,	// probe classified as overlapping target, either 5' or 3'
-	eOLCcontaining,			// probe completely contains the target
+	eOLCcontains,			// probe completely contains the target
+	eOLCcontained,			// probe is completely contained within the target
 	eOLCartefact			// probe contains a subsequence of target, classifying as an artefact overlap and not further processed
 } eOverlapClass;
 
 #pragma pack(1)
 
 // graph consists of vertices (representing sequences) and connecting edges (overlaying sequences) between adjacent vertices
-// edges are of two types - forward edges represent overlaying sequences (verticeA is overlaying vertexB), and overlaid (verticeA is overlaid by verticeB)
+// edges are of two types - forward edges represent overlaying sequences (vertexA is overlaying vertexB), and overlaid (vertexA is overlaid by vertexB)
 // it is also important to note that the graph is likely to contain many - perhaps millions - of disconnected components 
 
 // an instance of a Vertex which is used to represent a read sequence
@@ -67,53 +59,78 @@ typedef struct TAG_sGraphVertex {
 		tSeqID SeqID;			// identifies the sequence being represented by this vertex
 		UINT32 SeqLen;			//  sequence is this length
 		tComponentID ComponentID; // vertex is a member of this disconnected component
-		UINT32 DegreeOut:8;		// number of outgoing edges from this vertex to any adjacent vertices, clamped to max cMaxEdges (currently 255)
-		UINT32 DegreeIn:8;		// number of incoming edges from any adjacent vertices, clamped to max cMaxEdges (currently 255)
+		UINT32 DegreeOut:8;		// number of outgoing edges from this vertex to any adjacent vertices, clamped to max cMaxEdges (currently 250)
+		UINT32 DegreeIn:8;		// number of incoming edges from any adjacent vertices, clamped to max cMaxEdges (currently 250)
 		UINT32 flgEmitted:1;	// sequence has been emitted as part of a fragment;	
 		UINT32 flgRmvEdges:1;   // sequence may contain SMRTbell hairpin as this read aligns at least twice to the same other read
+		UINT32 flgAntisenseScored:1; // set if highest antisense scoring path already processed
+		UINT32 flgSenseScored:1;	// set if highest sense scoring path already processed
+		UINT32 flgPathAccepted:1;	// this vertex has been accepted as part of a highest scoring path
+		UINT32 flgAntisenseTerm:1;	// vertex classified as antisense path terminating
+		UINT32 flgSenseTerm:1;		// vertex classified as sense path terminating
+		UINT32 Depth:1;				// recurse depth at which this vertex was processed - used to determine circular references
+		UINT32 SenseScore;				// score for highest sense path originating from this vertex
+		tEdgeID SenseScoreEdgeID;		// highest scoring sense path starts with this outgoing edge		
+		UINT32 AntisenseScore;			// score for highest antisense path originating from this vertex
+		tEdgeID AntisenseScoreEdgeID;   // highest scoring antisense path starts with this outgoing edge		
+
 	} tsGraphVertex;
 
 
 // an instance of an outgoing edge, from 'FromVertexID' to 'ToVertexID' 
 // normally will be sorted in FromVertexID.ToVertexID ascending order
 typedef struct TAG_sGraphOutEdge {
-	tVertID FromVertexID;	// edge is outgoing (overlapping) from this vertex 
-	tVertID ToVertexID;		// edge is incoming (overlapped) to this Vertex
+	tVertID FromVertexID;	// edge is outgoing from this vertex 
+	tVertID ToVertexID;		// edge is incoming to this Vertex
+	UINT32 FromSeqLen;		// 'From' vertex sequence length is this length - more efficent to duplicate copy of length with edges as it saves a lookup in graph vertices when length is needed
+	UINT32 ToSeqLen;		// 'To' vertex sequence length is this length - more efficent to duplicate copy of length with edges as it saves a lookup in graph vertices when length is needed
 	UINT32 FromSeq5Ofs;		// overlap of FromVertexID onto ToVertexID starts at this base relative to FromVertexID 5' start
 	UINT32 FromSeq3Ofs;		// overlap of FromVertexID onto ToVertexID ends at this base relative to FromVertexID 5' start
 	UINT32 ToSeq5Ofs;		// overlap onto ToVertexID from FromVertexID starts at this base relative to ToVertexID 5' start
 	UINT32 ToSeq3Ofs;		// overlap onto ToVertexID from FromVertexID ends at this base relative to ToVertexID 5' start
-	UINT32 Score;			// score associated with this overlap, 0..0x7fff, higher scores represent higher confidence in the overlap
+	UINT32 Score;			// score associated with this overlap, higher scores represent higher confidence in the overlap
+	UINT32 ScoreAlignLen;	// scored for this alignment length: (1 + ProbeAlignLen + TargAlignLen) / 2
 	UINT32 OverlapClass:2;  // original classification (eOverlapClass)
-	UINT32 Contains:1;		// set if FromVertexID completely contains ToVertexID
-	UINT32 Artefact:1;		// set if FromVertexID overlap onto ToVertexID classified as being artefactual
-	UINT32 OverlapSense:2;	// 0 FromVertexID sense overlaps ToVertexID sense, 1 FromVertexID antisense overlaps ToVertexID sense, 2 FromVertexID sense overlaps ToVertexID antisense
-	UINT32 bRemove:1;		// set if this vertex marked for removal
-	UINT32 TravFwd:1;		// set after this edge has been traversed from FromVertexID to ToVertexID
-	UINT32 TravRev:1;		// set after this edge has been traversed from ToVertexID to FromVertexID
-	UINT32 AuxFlgs:23;		// currently unassigned (ensure flags total to <= 32 so as to all fit within UINT32)
+	UINT32 flgContains:1;	// set if FromVertexID completely contains ToVertexID
+	UINT32 flgContained:1;	// set if ToVertexID completely contains FromVertexID
+	UINT32 flgArtefact:1;	// set if FromVertexID overlap onto ToVertexID classified as being artefactual
+	UINT32 flgOvlAntisense:1;// set if antisense FromVertexID overlaps sense ToVertexID sense, reset if sense FromVertexID antisense overlaps sense ToVertexID
+	UINT32 flgRemove:1;		// set if this edge marked for removal
+	UINT32 flgTravFwd:1;	// set after this edge has been traversed from FromVertexID to ToVertexID
+	UINT32 flgTravRev:1;	// set after this edge has been traversed from ToVertexID to FromVertexID
+	UINT32 flgInfBackEdge:1;// set if this is an inferred backedge, if 0 then edge was result of actual alignment
+	UINT32 AuxFlgs:22;		// currently unassigned (ensure flags total to <= 32 so as to all fit within UINT32)
 	} tsGraphOutEdge;
 
 typedef struct TAG_sOverlappedSeq {
-				tSeqID OverlappingSeqID;	// identifies the overlapping (FromVertexID) sequence
-				tSeqID OverlappedSeqID;		// identifies overlapped (ToVertexID) sequence or a completely contained sequence
+				tSeqID FromSeqID;			// identifies the 'From' overlapping (FromVertexID) sequence
+				tSeqID ToSeqID;			   // identifies the 'To' overlapped (ToVertexID) sequence or a completely contained sequence
+				UINT32 FromSeqLen;			// 'From' sequence length is this length
+				UINT32 ToSeqLen;			// 'To' sequence length is this length
 				UINT32 FromSeq5Ofs;			// overlap of FromVertexID onto ToVertexID starts at this base relative to FromVertexID 5' start
 				UINT32 FromSeq3Ofs;			// overlap of FromVertexID onto ToVertexID ends at this base relative to FromVertexID 5' start
 				UINT32 ToSeq5Ofs;			// overlap onto ToVertexID from FromVertexID starts at this base relative to ToVertexID 5' start
 				UINT32 ToSeq3Ofs;			// overlap onto ToVertexID from FromVertexID ends at this base relative to ToVertexID 5' start
-				UINT16 Score;				// score associated with this overlap, 0..0x7fff, higher scores represent higher confidence in the overlap
+				UINT16 Score;				// score associated with this overlap, higher scores represent higher confidence in the overlap
+				UINT32 ScoreAlignLen;		// scored for this alignment length: (1 + ProbeAlignLen + TargAlignLen) / 2
 				eOverlapClass OverlapClass;	// classification of overlap from OverlappingSeqID onto OverlappedSeqID
 				bool bAntisense;			// false: sense overlaps sense, true: antisense overlaps sense 
 	} tsOverlappedSeq;
+
+const int cAllocPathEdges = 100;			// initally allocate for this many path edges per component; realloc as needed
 
 // disconnected graph components
 typedef struct TAG_sComponent {
 	tComponentID ComponentID;			// identifies this component
 	tVertID VertexID;					// one of the vertices which is in this component
 	UINT32 NumVertices;					// there are this many vertices in this component
-	UINT32 PathNumVertices;				// there are this many vertices along path inclusive of PathStartVertexID and PathEndVertexID
-	tVertID PathStartVertexID;          // path starts from this vertex
-	tVertID PathEndVertexID;            // path ends at this vertex
+	tVertID PathStartVertexID;			// highest scoring path starts from this vertex
+	UINT32 PathScore;					// highest scoring path has this score
+	UINT32 PathLength;					// highest scoring path is this length
+	UINT32 flgAntisense:1;              // highest scoring path was initially antisense
+	UINT32 NumPathEdges;				// number of edges in path
+	UINT32 AllocdPathEdges;				// currently allocated to hold this many path edges
+	tEdgeID *pPathEdgeIDs;				// highest scoring path edges 
 } tsComponent;
 
 
@@ -199,7 +216,7 @@ class CAssembGraph
 				  tVertID FromVertexID);		// from this FromVertexID
 
 	UINT32			// index+1 in m_pFwdGraphEdges of first matching FromVertexID, or 0 if non matching				
-		LocateFirstVertID(tVertID FromVertexID);	// find first matching 
+		LocateFirstFwdEdgeID(tVertID FromVertexID);	// find first matching 
 	
 	UINT32			// index+1 in m_pFwdGraphEdges of first matching DnSeqID, or 0 if non matching				
 		LocateFirstDnSeqID(tSeqID DnSeqID);		// find first matching 
@@ -227,12 +244,15 @@ class CAssembGraph
 	tVertID PeekTransitStack(void);				// peeked VertexID or 0 if stack empty
 	void ClearTransitStack(void);					// remove all entries from stack
 
-	UINT32							// number of vertices with both inbound and outboud edges
+	UINT32							// number of vertices with both inbound and outbound edges
 		VertexConnections(void);		// identify and mark vertices which have multiple inbound edges
-	UINT32 GenSeqFragment(tsGraphVertex *pVertex);		// initial seed vectex
+	UINT32 GenSeqFragment(tsGraphVertex *pVertex);		// initial seed vertex
 	UINT32  TransitIdentDiscGraph(tVertID VertexID,tComponentID ComponentID);
 	UINT32  ClearEdgeTravFwdRevs(void);
 	UINT32	ClearDiscCompIDs(void);
+
+int DumpVertex(tsGraphVertex *pVertex);
+int DumpEdge(tsGraphOutEdge *pEdge);
 
 public:
 	CAssembGraph(void);
@@ -254,16 +274,19 @@ public:
 		ReduceEdges(void);				// reduce graph by detecting and removing extraneous edges
 
 
-	UINT32									// returns total number of edges, including this edge if accepted, thus far accepted; if more than 
-		AddEdge(tSeqID OverlappingSeqID,	// identifies the overlapping sequence
-				tSeqID OverlappedSeqID,		// identifies overlapped sequence or a completely contained sequence
-				UINT32 Score,				// score associated with this overlap, 0..0x7fff, higher scores represent higher confidence in the overlap
-				UINT32 FromSeq5Ofs,			// overlap of FromVertexID onto ToVertexID starts at this base relative to FromVertexID 5' start
-				UINT32 FromSeq3Ofs,			// overlap of FromVertexID onto ToVertexID ends at this base relative to FromVertexID 5' start
-				UINT32 ToSeq5Ofs,			// overlap onto ToVertexID from FromVertexID starts at this base relative to ToVertexID 5' start
-				UINT32 ToSeq3Ofs,			// overlap onto ToVertexID from FromVertexID ends at this base relative to ToVertexID 5' start
-				eOverlapClass OverlapClass,	// classification of overlap from OverlappingSeqID onto OverlappedSeqID
-				bool bAntisense);			// false: sense overlaps sense, true: antisense overlaps sense 
+	UINT32									// returns total number of edges, including this edge if accepted, thus far accepted 
+		AddEdge(tSeqID FromSeqID,			// identifies the 'From' or overlapping sequence
+				tSeqID ToSeqID,				// identifies the 'To' overlapped sequence
+				UINT32 FromSeqLen,			// 'From' sequence length is this length
+				UINT32 ToSeqLen,			// 'To' sequence length is this length
+				UINT32 Score,				// score associated with this overlap, higher scores represent higher confidence in the overlap
+				UINT32 ScoreAlignLen,		// scored for this alignment length: (1 + ProbeAlignLen + TargAlignLen) / 2
+				UINT32 FromSeq5Ofs,			// overlap of FromSeqID onto ToSeqID starts at this base relative to FromSeqID 5' start
+				UINT32 FromSeq3Ofs,			// overlap of FromSeqID onto ToSeqID ends at this base relative to FromSeqID 5' start
+				UINT32 ToSeq5Ofs,			// overlap onto ToSeqID from FromSeqID starts at this base relative to ToSeqID 5' start
+				UINT32 ToSeq3Ofs,			// overlap onto ToSeqID from FromSeqID ends at this base relative to ToSeqID 5' start
+				eOverlapClass OverlapClass,	// classification of overlap from FromSeqID onto ToSeqID, note that classification must be eOLCOverlapping
+				bool bAntisense);			// false: 'From' sense overlaps 'To' sense, true: 'From' antisense overlaps 'To' sense 
 
 	UINT32									// returns total number of edges , including any of these edges, if accepted, thus far accepted 
 		AddEdges(UINT32 NumSeqs,				// number of overlapped sequences
@@ -281,13 +304,27 @@ public:
 	UINT32 IdentifyDiscComponent(tVertID VertexID, // start component traversal from this vertex
 				tComponentID ComponentID);			 // mark all traversed vertices as members of this component
 
-	UINT32									// returned extended length of probe sequence if probe overlap onto target was accepted, 0 if unable to extend
-	OverlapAcceptable(bool bSenseDir,		// false: downstream to 3' previous as sense, true: downstream to 3' previous as antisense
-					  bool *pbSenseDir,		// returned sense direction to use
-					tsGraphOutEdge *pEdge);
+	INT32											// returned From sequence extension; -1 if no sequence extension
+	OverlapAcceptable(bool bOvlAntisense,			// true if the sequence overlapping the edge.FromVertexID was antisense
+					tsGraphOutEdge *pEdge,			// overlap edge
+					  bool *pbOvlAntisense = NULL);	// returned sense direction to use; false: sense, true: antisense
 
-	UINT32															// number of vertices marked as members of this component
-		FindMaxShortestPaths(tComponentID ComponentID);		 // mark all traversed vertices as members of this component
+
+	UINT32
+		ScorePaths(bool bOvlAntisense,			// true if the sequence overlapping VertexID was antisense
+					tVertID VertexID);			// score all paths starting with outgoing edges from this vertex
+
+	UINT32											// highest scoring of any path from pEdge
+		ScorePath(UINT32 Depth,					// current recursive depth - used to detect circular paths
+				  bool bOvlAntisense,			// true if the sequence overlapping the edge.FromVertexID was antisense
+				  tsGraphOutEdge *pEdge);		// score paths starting with this edge
+
+
+	int										 // eBSFSuccess or otherwise
+		FindHighestScoringPaths(void);		 // score all possible paths and record highest scoring path for each component
+
+	int										// eBSFSuccess or otherwise
+		GenTraceBackPath(tsComponent *pComponent); // generate traceback path for this component
 
 	UINT32	IdentifyDiscComponents(void);
 

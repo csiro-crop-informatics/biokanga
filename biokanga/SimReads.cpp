@@ -160,7 +160,7 @@ struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file"
 
 struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - random start and end, 1 - Profiled start with random end sites, 2 - random start with profiled end sites,  3 - profiled start with profiled end sites, 4 - same as standard with Hammings (0 - default)");
 struct arg_int *fmode = arg_int0("M","format","<int>",		    "output format: 0 - CSV loci only, 1 - CSV loci with sequence, 2 - multifasta wrapped, 3 - multifasta non-wrapped, 4 - SOLiD colorspace, 5 - SOLiD for BWA (default: 3)");
-struct arg_int *numreads = arg_int0("n","nreads","<int>",	    "number of reads required, minimum 100, maximum 500000000 (default = 10000000)");
+struct arg_int *numreads = arg_int0("n","nreads","<int>",	    "number of reads required, minimum 5, maximum 500000000 (default = 10000000)");
 
 
 struct arg_int *region    = arg_int0("G","genomicregion","<int>","Process regions 0:ALL,1:CDS,2:5'UTR,3:3'UTR,4:Introns,5:5'US,6:3'DS,7:Intergenic (default = ALL)");
@@ -175,9 +175,9 @@ struct arg_int *indelsize = arg_int0("x","indelsize","<int>",   "simulate micro-
 struct arg_dbl *indelrate = arg_dbl0("X","indelrate","<dbl>",	"simulate micro-InDels with mean rate per read in range 0 - 100% of all reads (default is 0)");
 
 struct arg_str *strand=arg_str0("s", "strand","<str>",          "generate for this strand '+' or '-' only (default is both)");
-struct arg_int *readlen = arg_int0("l","length","<int>",	    "read lengths (default = 100, max is 1000)");
+struct arg_int *readlen = arg_int0("l","length","<int>",	    "read lengths (default = 100, max is 100000)");
 struct arg_int *cutmin = arg_int0("c","cutmin","<int>",		    "min cut length (minimum = read length)");
-struct arg_int *cutmax = arg_int0("C","cutmax","<int>",		    "max cut length (maximum = 1000)");
+struct arg_int *cutmax = arg_int0("C","cutmax","<int>",		    "max cut length (maximum = 100000)");
 struct arg_file *infile = arg_file1("i","in","<file>",			"input from this raw multifasta or bioseq assembly");
 struct arg_file *inmnase = arg_file0("I","inprofile","<file>",	"input from this profile site preferences file");
 
@@ -2673,7 +2673,7 @@ typedef struct TAG_sReadRprt {
 	etSeqBase FwdSeq[cMaxReadLen+1];
 	etSeqBase RevSeq[cMaxReadLen+1];
 	char szColorspace[cMaxReadLen+2];
-	char szLineBuff[0x03fff];
+	char szLineBuff[(cMaxReadLen + 2) * 2];
 	int LineLen;
 	int NumCols;
 } sReadRprt;
@@ -2700,17 +2700,23 @@ int ReadsIdx;
 int ReadLenRem;
 
 int NumOfDups;
-
+int NumReported;
 etSeqBase CSseedBase;
 
-sReadRprt PEreads[2];			// to hold each paired end read
+sReadRprt *pPEreads;			// to hold each either SE or PE read being reported
 
 
-int NumReported;
+
 
 // check if any reads to report
 if(m_pSimReads == NULL || MaxReads < 1 || AvailReads < 1)
 	return(0);
+
+if((pPEreads = new sReadRprt[2])==NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ReportReads: Memory allocation error");
+	return(eBSFerrMem);
+	}
 
 if(bDedupe && AvailReads > 1)
 	{
@@ -2799,11 +2805,11 @@ if(Region == eMEGRAny && m_pBEDFile != NULL)
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Writing simulated reads to file: '%s'",m_pszOutFile);
 
 
-memset(PEreads,0,sizeof(PEreads));
+memset(pPEreads,0,2 * sizeof(sReadRprt));
 pRead = m_pSimReads;
 NumReported = 0;
 if(m_PMode == ePMSampHamm)
-	PEreads[0].LineLen = sprintf(PEreads[0].szLineBuff,"\"Chrom\",\"Loci\",\"Hamming\"\n");
+	pPEreads[0].LineLen = sprintf(pPEreads[0].szLineBuff,"\"Chrom\",\"Loci\",\"Hamming\"\n");
 
 for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 	{
@@ -2819,7 +2825,7 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 		{
 		if((*pReadSeq & NUCONLYMSK) > eBaseN)
 			break;
-		PEreads[0].FwdSeq[Idx] = *pReadSeq & NUCONLYMSK;
+		pPEreads[0].FwdSeq[Idx] = *pReadSeq & NUCONLYMSK;
 		}
 	if(Idx != (Pair1ReadLen + m_InDelSize))
 		{
@@ -2838,7 +2844,7 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 			{
 			if((*pReadSeq & NUCONLYMSK) > eBaseN)
 				break;
-			PEreads[1].FwdSeq[Idx] = *pReadSeq & NUCONLYMSK;
+			pPEreads[1].FwdSeq[Idx] = *pReadSeq & NUCONLYMSK;
 			}
 		if(Idx != (Pair2ReadLen + m_InDelSize))
 			{
@@ -2848,7 +2854,7 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 			}
 		}
 
-	pReadSeq = PEreads[0].FwdSeq;
+	pReadSeq = pPEreads[0].FwdSeq;
 
 	NumReported += 1;
 	pChromSeq = &m_pChromSeqs[pRead->ChromSeqID-1];
@@ -2857,36 +2863,36 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 		case eFMcsvSeq:
 			if(m_PMode == ePMSampHamm)
 				{
-				PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"\"%s\",%d,%d\n",
+				pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"\"%s\",%d,%d\n",
 					pChromSeq->szChromName,pRead->StartLoci,pRead->HammingDist);
 				break;
 				}
 
-			PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"%d,\"%s\",\"%s\",\"%s\",%d,%d,%d,\"%c\",%d",
+			pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"%d,\"%s\",\"%s\",\"%s\",%d,%d,%d,\"%c\",%d",
 					NumPrevReported+NumReported,"usimreads",m_szSpecies,pChromSeq->szChromName,pRead->StartLoci,pRead->EndLoci,pRead->Len,pRead->Strand ? '-' : '+',pRead->HammingDist);
 			if(m_FMode == eFMcsvSeq)
 				{
-				PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],",\"");
-				pReadSeq = PEreads[0].FwdSeq;
+				pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],",\"");
+				pReadSeq = pPEreads[0].FwdSeq;
 
 				if(pRead->Strand)
 					{
-					memcpy(PEreads[0].RevSeq,pReadSeq,Pair1ReadLen);
-					CSeqTrans::ReverseComplement(Pair1ReadLen,PEreads[0].RevSeq);
-					pReadSeq = PEreads[0].RevSeq;
+					memcpy(pPEreads[0].RevSeq,pReadSeq,Pair1ReadLen);
+					CSeqTrans::ReverseComplement(Pair1ReadLen,pPEreads[0].RevSeq);
+					pReadSeq = pPEreads[0].RevSeq;
 					}
-				CSeqTrans::MapSeq2Ascii(pReadSeq,Pair1ReadLen,&PEreads[0].szLineBuff[PEreads[0].LineLen]);
-				PEreads[0].LineLen += Pair1ReadLen;
-				PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"\"");
+				CSeqTrans::MapSeq2Ascii(pReadSeq,Pair1ReadLen,&pPEreads[0].szLineBuff[pPEreads[0].LineLen]);
+				pPEreads[0].LineLen += Pair1ReadLen;
+				pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"\"");
 				}
 			if(bReadHamDist)
 				{
 				int HamDistIdx;
 				UINT32 *pCnt = pRead->pHamDistFreq;
 				for(HamDistIdx=0; HamDistIdx <= pRead->Len; HamDistIdx++,pCnt++)
-					PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],",%d",*pCnt);
+					pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],",%d",*pCnt);
 				}
-			PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"\n");
+			pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"\n");
 			break;
 
 		case eFMFasta:
@@ -2900,12 +2906,12 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 			else
 				m_MaxFastaLineLen = cMaxSimReadLen;
 
-			pReadSeq = PEreads[0].FwdSeq;
+			pReadSeq = pPEreads[0].FwdSeq;
 			if(pRead->Strand)
 				{
-				memcpy(PEreads[0].RevSeq,pReadSeq,Pair1ReadLen+m_InDelSize);
-				CSeqTrans::ReverseComplement(Pair1ReadLen+m_InDelSize,PEreads[0].RevSeq);
-				pReadSeq = PEreads[0].RevSeq;
+				memcpy(pPEreads[0].RevSeq,pReadSeq,Pair1ReadLen+m_InDelSize);
+				CSeqTrans::ReverseComplement(Pair1ReadLen+m_InDelSize,pPEreads[0].RevSeq);
+				pReadSeq = pPEreads[0].RevSeq;
 				}
 
 			SimArtefacts(false,Pair1ReadLen,pReadSeq);
@@ -2924,30 +2930,32 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 				pszIsRand = (char *)"lcr";
 				}
 
-			PEreads[0].LineLen+=sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
+			pPEreads[0].LineLen+=sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
 					NumPrevReported+NumReported,pChromSeq->szChromName,pRead->StartLoci,pRead->EndLoci+InDelSize,Pair1ReadLen,pRead->Strand ? '-' : '+',pRead->HammingDist,NumSubs,InDelSize);
 
 			ReadOfs = 0;
 			ReadLenRem = Pair1ReadLen;
 			while(ReadLenRem)
 				{
-				PEreads[0].NumCols = ReadLenRem > m_MaxFastaLineLen ? m_MaxFastaLineLen : ReadLenRem;
-				CSeqTrans::MapSeq2UCAscii(&pReadSeq[ReadOfs],PEreads[0].NumCols,&PEreads[0].szLineBuff[PEreads[0].LineLen]);
-				PEreads[0].LineLen += PEreads[0].NumCols;
-				PEreads[0].LineLen += sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"\n");
-				ReadLenRem -= PEreads[0].NumCols;
-				ReadOfs += PEreads[0].NumCols;
+				pPEreads[0].NumCols = ReadLenRem > m_MaxFastaLineLen ? m_MaxFastaLineLen : ReadLenRem;
+				if(pPEreads[0].NumCols > 20000)
+					printf("CheckMe!");
+				CSeqTrans::MapSeq2UCAscii(&pReadSeq[ReadOfs],pPEreads[0].NumCols,&pPEreads[0].szLineBuff[pPEreads[0].LineLen]);
+				pPEreads[0].LineLen += pPEreads[0].NumCols;
+				pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"\n");
+				ReadLenRem -= pPEreads[0].NumCols;
+				ReadOfs += pPEreads[0].NumCols;
 				}
 
 			if(bPEgen == true)
 				{
 				NumReported += 1;
-				pReadSeq = PEreads[1].FwdSeq;
+				pReadSeq = pPEreads[1].FwdSeq;
 				if(pPairRead->Strand)
 					{
-					memcpy(PEreads[1].RevSeq,pReadSeq,Pair2ReadLen+m_InDelSize);
-					CSeqTrans::ReverseComplement(Pair2ReadLen+m_InDelSize,PEreads[1].RevSeq);
-					pReadSeq = PEreads[1].RevSeq;
+					memcpy(pPEreads[1].RevSeq,pReadSeq,Pair2ReadLen+m_InDelSize);
+					CSeqTrans::ReverseComplement(Pair2ReadLen+m_InDelSize,pPEreads[1].RevSeq);
+					pReadSeq = pPEreads[1].RevSeq;
 					}
 
 				SimArtefacts(false,Pair2ReadLen,pReadSeq);
@@ -2966,19 +2974,19 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 					pszIsRand = (char *)"lcr";
 					}
 
-				PEreads[1].LineLen+=sprintf(&PEreads[1].szLineBuff[PEreads[1].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
+				pPEreads[1].LineLen+=sprintf(&pPEreads[1].szLineBuff[pPEreads[1].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
 						NumPrevReported+NumReported,pChromSeq->szChromName,pPairRead->StartLoci,pPairRead->EndLoci+InDelSize,Pair2ReadLen,pPairRead->Strand ? '-' : '+',pPairRead->HammingDist,NumSubs,InDelSize);
 
 				ReadOfs = 0;
 				ReadLenRem = Pair2ReadLen;
 				while(ReadLenRem)
 					{
-					PEreads[1].NumCols = ReadLenRem > m_MaxFastaLineLen ? m_MaxFastaLineLen : ReadLenRem;
-					CSeqTrans::MapSeq2UCAscii(&pReadSeq[ReadOfs],PEreads[1].NumCols,&PEreads[1].szLineBuff[PEreads[1].LineLen]);
-					PEreads[1].LineLen += PEreads[1].NumCols;
-					PEreads[1].LineLen += sprintf(&PEreads[1].szLineBuff[PEreads[1].LineLen],"\n");
-					ReadLenRem -= PEreads[1].NumCols;
-					ReadOfs += PEreads[1].NumCols;
+					pPEreads[1].NumCols = ReadLenRem > m_MaxFastaLineLen ? m_MaxFastaLineLen : ReadLenRem;
+					CSeqTrans::MapSeq2UCAscii(&pReadSeq[ReadOfs],pPEreads[1].NumCols,&pPEreads[1].szLineBuff[pPEreads[1].LineLen]);
+					pPEreads[1].LineLen += pPEreads[1].NumCols;
+					pPEreads[1].LineLen += sprintf(&pPEreads[1].szLineBuff[pPEreads[1].LineLen],"\n");
+					ReadLenRem -= pPEreads[1].NumCols;
+					ReadOfs += pPEreads[1].NumCols;
 					}
 				}
 			break;
@@ -2988,15 +2996,15 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 		case eFMSOLiDbwa:
 			{
 			int NumSubs;
-			pReadSeq = PEreads[0].FwdSeq;
+			pReadSeq = pPEreads[0].FwdSeq;
 			if(pRead->Strand)
 				{
-				memcpy(PEreads[0].RevSeq,pReadSeq,Pair1ReadLen);
+				memcpy(pPEreads[0].RevSeq,pReadSeq,Pair1ReadLen);
 				if(m_FMode == eFMSOLiD)
-					CSeqTrans::ReverseComplement(Pair1ReadLen,PEreads[0].RevSeq);
+					CSeqTrans::ReverseComplement(Pair1ReadLen,pPEreads[0].RevSeq);
 				else
-					CSeqTrans::ReverseSeq(Pair1ReadLen,PEreads[0].RevSeq);
-				pReadSeq = PEreads[0].RevSeq;
+					CSeqTrans::ReverseSeq(Pair1ReadLen,pPEreads[0].RevSeq);
+				pReadSeq = pPEreads[0].RevSeq;
 				}
 
 			int InDelSize;
@@ -3015,45 +3023,45 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 				}
 
 			CSseedBase = (UINT8)RGseeds.IRandom(0,3);
-			PEreads[0].szColorspace[0] = CSeqTrans::MapBase2Ascii(CSseedBase);
+			pPEreads[0].szColorspace[0] = CSeqTrans::MapBase2Ascii(CSseedBase);
 			if(m_FMode == eFMSOLiD)
-				TransformToColorspace(pReadSeq,Pair1ReadLen,&PEreads[0].szColorspace[1],CSseedBase);
+				TransformToColorspace(pReadSeq,Pair1ReadLen,&pPEreads[0].szColorspace[1],CSseedBase);
 			else
-				TransformToColorspaceBase(pReadSeq,Pair1ReadLen,&PEreads[0].szColorspace[1],CSseedBase);
+				TransformToColorspaceBase(pReadSeq,Pair1ReadLen,&pPEreads[0].szColorspace[1],CSseedBase);
 
 			if(m_FMode == eFMSOLiD)
 				{
-				PEreads[0].LineLen+=sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
+				pPEreads[0].LineLen+=sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
 					NumPrevReported+NumReported,pChromSeq->szChromName,pRead->StartLoci,pRead->EndLoci+InDelSize,Pair1ReadLen,pRead->Strand ? '-' : '+',pRead->HammingDist,NumSubs,InDelSize);
-				PEreads[0].LineLen+=sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"%s\n",PEreads[0].szColorspace);
+				pPEreads[0].LineLen+=sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"%s\n",pPEreads[0].szColorspace);
 				}
 			else
 				{
-				PEreads[0].LineLen+=sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"@%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
+				pPEreads[0].LineLen+=sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"@%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
 					NumPrevReported+NumReported,pChromSeq->szChromName,pRead->StartLoci,pRead->EndLoci+InDelSize,Pair1ReadLen,pRead->Strand ? '-' : '+',pRead->HammingDist,NumSubs,InDelSize);
-				PEreads[0].LineLen+=sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"%s\n",PEreads[0].szColorspace);
-				PEreads[0].LineLen+=sprintf(&PEreads[0].szLineBuff[PEreads[0].LineLen],"+ descriptor line\n");
-				pQualChr = &PEreads[0].szLineBuff[PEreads[0].LineLen];
+				pPEreads[0].LineLen+=sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"%s\n",pPEreads[0].szColorspace);
+				pPEreads[0].LineLen+=sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"+ descriptor line\n");
+				pQualChr = &pPEreads[0].szLineBuff[pPEreads[0].LineLen];
 				*pQualChr++ = '!';			// dummy quality scores
 				for(Idx = 0; Idx < Pair1ReadLen; Idx++)
 					*pQualChr++ = (char)(((pRead->StartLoci + Idx) % 20) + 65);
 				*pQualChr++ = '\n';
 				*pQualChr = '\0';
-				PEreads[0].LineLen += Pair1ReadLen + 2;
+				pPEreads[0].LineLen += Pair1ReadLen + 2;
 				}
 
 			if(bPEgen == true)
 				{
 				NumReported += 1;
-				pReadSeq = PEreads[1].FwdSeq;
+				pReadSeq = pPEreads[1].FwdSeq;
 				if(pPairRead->Strand)
 					{
-					memcpy(PEreads[1].RevSeq,pReadSeq,Pair2ReadLen);
+					memcpy(pPEreads[1].RevSeq,pReadSeq,Pair2ReadLen);
 					if(m_FMode == eFMSOLiD)
-						CSeqTrans::ReverseComplement(Pair2ReadLen,PEreads[1].RevSeq);
+						CSeqTrans::ReverseComplement(Pair2ReadLen,pPEreads[1].RevSeq);
 					else
-						CSeqTrans::ReverseSeq(Pair2ReadLen,PEreads[1].RevSeq);
-					pReadSeq = PEreads[1].RevSeq;
+						CSeqTrans::ReverseSeq(Pair2ReadLen,pPEreads[1].RevSeq);
+					pReadSeq = pPEreads[1].RevSeq;
 					}
 
 				if(!m_PropRandReads || (m_PropRandReads < RGseeds.IRandom(0,1000000)))
@@ -3070,59 +3078,60 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 					}
 
 				CSseedBase = (UINT8)RGseeds.IRandom(0,3);
-				PEreads[1].szColorspace[0] = CSeqTrans::MapBase2Ascii(CSseedBase);
+				pPEreads[1].szColorspace[0] = CSeqTrans::MapBase2Ascii(CSseedBase);
 
 				if(m_FMode == eFMSOLiD)
-					TransformToColorspace(pReadSeq,Pair2ReadLen,&PEreads[1].szColorspace[1],CSseedBase);
+					TransformToColorspace(pReadSeq,Pair2ReadLen,&pPEreads[1].szColorspace[1],CSseedBase);
 				else
-					TransformToColorspaceBase(pReadSeq,Pair2ReadLen,&PEreads[1].szColorspace[1],CSseedBase);
+					TransformToColorspaceBase(pReadSeq,Pair2ReadLen,&pPEreads[1].szColorspace[1],CSseedBase);
 
 				if(m_FMode == eFMSOLiD)
 					{
-					PEreads[1].LineLen+=sprintf(&PEreads[1].szLineBuff[PEreads[1].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
+					pPEreads[1].LineLen+=sprintf(&pPEreads[1].szLineBuff[pPEreads[1].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
 						NumPrevReported+NumReported,pChromSeq->szChromName,pPairRead->StartLoci,pPairRead->EndLoci+InDelSize,Pair2ReadLen,pPairRead->Strand ? '-' : '+',pPairRead->HammingDist,NumSubs,InDelSize);
-					PEreads[1].LineLen+=sprintf(&PEreads[1].szLineBuff[PEreads[1].LineLen],"%s\n",PEreads[1].szColorspace);
+					pPEreads[1].LineLen+=sprintf(&pPEreads[1].szLineBuff[pPEreads[1].LineLen],"%s\n",pPEreads[1].szColorspace);
 					}
 				else
 					{
-					PEreads[1].LineLen+=sprintf(&PEreads[1].szLineBuff[PEreads[1].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
+					pPEreads[1].LineLen+=sprintf(&pPEreads[1].szLineBuff[pPEreads[1].LineLen],">%s|usimreads|%1.8d|%s|%d|%d|%d|%c|%d|%d|%d\n",pszIsRand,
 					NumPrevReported+NumReported,pChromSeq->szChromName,pPairRead->StartLoci,pPairRead->EndLoci+InDelSize,Pair2ReadLen,pPairRead->Strand ? '-' : '+',pPairRead->HammingDist,NumSubs,InDelSize);
-					PEreads[1].LineLen+=sprintf(&PEreads[1].szLineBuff[PEreads[1].LineLen],"%s\n",PEreads[1].szColorspace);
-					PEreads[1].LineLen+=sprintf(&PEreads[1].szLineBuff[PEreads[1].LineLen],"+ descriptor line\n");
-					pQualChr = &PEreads[1].szLineBuff[PEreads[1].LineLen];
+					pPEreads[1].LineLen+=sprintf(&pPEreads[1].szLineBuff[pPEreads[1].LineLen],"%s\n",pPEreads[1].szColorspace);
+					pPEreads[1].LineLen+=sprintf(&pPEreads[1].szLineBuff[pPEreads[1].LineLen],"+ descriptor line\n");
+					pQualChr = &pPEreads[1].szLineBuff[pPEreads[1].LineLen];
 					*pQualChr++ = '!';
 					for(Idx = 0; Idx < Pair2ReadLen; Idx++)
 						*pQualChr++ = (char)(((pPairRead->StartLoci + Idx) % 20) + 65);
 					*pQualChr++ = '\n';
 					pQualChr = '\0';
-					PEreads[1].LineLen += Pair2ReadLen + 2;
+					pPEreads[1].LineLen += Pair2ReadLen + 2;
 					}
 				}
 			break;
 			}
 		}
 
-	if((PEreads[0].LineLen + 4000) > sizeof(PEreads[0].szLineBuff))
+	if((pPEreads[0].LineLen + 2) > sizeof(pPEreads[0].szLineBuff) / 2)
 		{
-		if(write(m_hOutFile,PEreads[0].szLineBuff,PEreads[0].LineLen) != PEreads[0].LineLen)
+		if(write(m_hOutFile,pPEreads[0].szLineBuff,pPEreads[0].LineLen) != pPEreads[0].LineLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",PEreads[0].LineLen, m_pszOutFile, strerror(errno));
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",pPEreads[0].LineLen, m_pszOutFile, strerror(errno));
 			Reset(false);
 			return(eBSFerrFileAccess);
 			}
-		PEreads[0].LineLen=0;
+		pPEreads[0].LineLen=0;
 		}
 	if(bPEgen == true)
 		{
-		if((PEreads[1].LineLen + 4000) > sizeof(PEreads[1].szLineBuff))
+		if((pPEreads[1].LineLen + 2) > sizeof(pPEreads[1].szLineBuff) / 2)
 			{
-			if(write(m_hOutPEFile,PEreads[1].szLineBuff,PEreads[1].LineLen) != PEreads[1].LineLen)
+			if(write(m_hOutPEFile,pPEreads[1].szLineBuff,pPEreads[1].LineLen) != pPEreads[1].LineLen)
 				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",PEreads[1].LineLen, m_pszOutPEFile, strerror(errno));
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",pPEreads[1].LineLen, m_pszOutPEFile, strerror(errno));
+				delete pPEreads;
 				Reset(false);
 				return(eBSFerrFileAccess);
 				}
-			PEreads[1].LineLen=0;
+			pPEreads[1].LineLen=0;
 			}
 		}
 
@@ -3134,9 +3143,10 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 		break;
 	}
 
-if(PEreads[0].LineLen && write(m_hOutFile,PEreads[0].szLineBuff,PEreads[0].LineLen) != PEreads[0].LineLen)
+if(pPEreads[0].LineLen && write(m_hOutFile,pPEreads[0].szLineBuff,pPEreads[0].LineLen) != pPEreads[0].LineLen)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",PEreads[0].LineLen, m_pszOutFile, strerror(errno));
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",pPEreads[0].LineLen, m_pszOutFile, strerror(errno));
+	delete pPEreads;
 	Reset(false);
 	return(eBSFerrFileAccess);
 	}
@@ -3148,9 +3158,10 @@ fsync(m_hOutFile);
 
 if(bPEgen == true)
 	{
-	if(PEreads[1].LineLen && write(m_hOutPEFile,PEreads[1].szLineBuff,PEreads[1].LineLen) != PEreads[1].LineLen)
+	if(pPEreads[1].LineLen && write(m_hOutPEFile,pPEreads[1].szLineBuff,pPEreads[1].LineLen) != pPEreads[1].LineLen)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",PEreads[1].LineLen, m_pszOutPEFile, strerror(errno));
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst writing %d bytes - '%s' - %s",pPEreads[1].LineLen, m_pszOutPEFile, strerror(errno));
+		delete pPEreads;
 		Reset(false);
 		return(eBSFerrFileAccess);
 		}
@@ -3160,7 +3171,8 @@ if(bPEgen == true)
 	fsync(m_hOutPEFile);
 	#endif
 	}
-
+if(pPEreads != NULL)
+	delete pPEreads;
 return(NumReported);
 }
 
@@ -3646,14 +3658,14 @@ if(Region != eMEGRAny)
 	}
 
 // show distributions
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"\"ReadOfs\",\"InducedSubs\"");
-int Idx;
-for(Idx=0;Idx<ReadLen;Idx++)
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"%d,%d",Idx,m_InducedErrPsnDist[Idx]);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"\"SubDist\",\"Cnt\"");
+//gDiagnostics.DiagOut(eDLInfo,gszProcName,"\"ReadOfs\",\"InducedSubs\"");
+//int Idx;
+//for(Idx=0;Idx<ReadLen;Idx++)
+//	gDiagnostics.DiagOutMsgOnly(eDLInfo,"%d,%d",Idx,m_InducedErrPsnDist[Idx]);
+//gDiagnostics.DiagOut(eDLInfo,gszProcName,"\"SubDist\",\"Cnt\"");
 
-for(Idx=0;Idx<cNumProfEls;Idx++)
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"%d,%d",Idx,m_InducedErrDist[Idx]);
+//for(Idx=0;Idx<cNumProfEls;Idx++)
+//	gDiagnostics.DiagOutMsgOnly(eDLInfo,"%d,%d",Idx,m_InducedErrDist[Idx]);
 Reset(true);
 return(eBSFSuccess);
 }

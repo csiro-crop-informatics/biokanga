@@ -281,9 +281,9 @@ return(true);
 
 
 bool 
-CSSW::SetMinNumExactMatches(int MinNumExactMatches)		// can process for at most this many peak matches in any probe vs target SW alignment
+CSSW::SetMinNumExactMatches(int MinNumExactMatches)		// require at least this many exactly matching in path to further process that path
 {
-if(MinNumExactMatches < 10)								// must be a reasonable lower limit!
+if(MinNumExactMatches < cSSWDfltAnchorLen)				// must be a reasonable lower limit!
 	return(false);
 m_MinNumExactMatches = MinNumExactMatches;
 return(true);
@@ -443,7 +443,7 @@ m_AllocdTracebacksSize = 0;
 
 if(!bNoTracebacks)
 	{
-	m_AllocdTracebacks = (UINT32)((UINT64)MaxTargLen * 500);		
+	m_AllocdTracebacks = MaxTargLen * 500;		
 	m_AllocdTracebacksSize = sizeof(tsSSWTraceback) * m_AllocdTracebacks;
 #ifdef _WIN32
 	m_pAllocdTracebacks = (tsSSWTraceback *) malloc(m_AllocdTracebacksSize);
@@ -1780,7 +1780,7 @@ bool bCpltdReadMAF;
 UINT32 NumParsedBlocks;
 int ConsSeqLen;
 
-m_AllocMAFAlignBuffSize = cMaxMAFBlockLen * 10;
+m_AllocMAFAlignBuffSize = (UINT32)cMaxMAFBlockLen * 10;
 if(m_pszMAFAlignBuff == NULL)
 	{
 	if((m_pszMAFAlignBuff = new char [m_AllocMAFAlignBuffSize])==NULL)
@@ -1903,7 +1903,7 @@ do {
 	if(!bCpltdReadMAF)
 		{
 		BuffTopUp = m_MAFAlignBuffered - m_MAFAlignBuffIdx;
-		if(BuffTopUp < (m_AllocMAFAlignBuffSize / 2))
+		if(BuffTopUp < (int)(m_AllocMAFAlignBuffSize / 2))
 			{
 			if(m_MAFAlignBuffIdx > 0 && BuffTopUp > 0)
 				memmove(m_pszMAFAlignBuff,&m_pszMAFAlignBuff[m_MAFAlignBuffIdx],BuffTopUp);
