@@ -62,7 +62,7 @@ typedef struct TAG_sPBScaffNode {
 #pragma pack()
 
 
-class CPBScaffold
+class CPBAssemb
 {
 	etPBPMode m_PMode;						// processing mode
 
@@ -100,7 +100,7 @@ class CPBScaffold
 	tsPBScaffNode *m_pPBScaffNodes;				// allocated to hold scaffolding nodes
 	UINT32 *m_pMapEntryID2NodeIDs;				// used to map from suffix array entry identifiers to the corresponding scaffolding node identifier
 
-	CSfxArrayV3 *m_pSfxArray;					// suffix array file (m_szTargFile) is loaded into this
+	CSeqStore *m_pSeqStore;						// sequence store
 
 	CAssembGraph *m_pAssembGraph;				// used to assemble PacBio overlapping sequences into scaffolds
 
@@ -146,8 +146,8 @@ static int SortLenDescending(const void *arg1, const void *arg2); // Sort scaffo
 #endif
 
 public:
-	CPBScaffold();
-	~CPBScaffold();
+	CPBAssemb();
+	~CPBAssemb();
 
 	int
 	Process(etPBPMode PMode,		// processing mode

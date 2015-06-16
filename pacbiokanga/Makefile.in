@@ -91,9 +91,10 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_pacbiokanga_OBJECTS = SQLiteSummaries.$(OBJEXT) SSW.$(OBJEXT) \
+	PBAssemb.$(OBJEXT) PBECContigs.$(OBJEXT) SeqStore.$(OBJEXT) \
 	PBFilter.$(OBJEXT) PacBioUtility.$(OBJEXT) \
-	PBScaffold.$(OBJEXT) pacbiokanga.$(OBJEXT) PBSim.$(OBJEXT) \
-	PBErrCorrect.$(OBJEXT) AssembGraph.$(OBJEXT)
+	pacbiokanga.$(OBJEXT) PBSim.$(OBJEXT) PBErrCorrect.$(OBJEXT) \
+	AssembGraph.$(OBJEXT)
 pacbiokanga_OBJECTS = $(am_pacbiokanga_OBJECTS)
 pacbiokanga_LDADD = $(LDADD)
 pacbiokanga_DEPENDENCIES = ../libbiokanga/libbiokanga.a \
@@ -255,7 +256,7 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-pacbiokanga_SOURCES = SQLiteSummaries.cpp SQLiteSummaries.h SSW.cpp SSW.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h PBScaffold.cpp PBScaffold.h pacbiokanga.cpp pacbiokanga.h PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h AssembGraph.cpp AssembGraph.h 
+pacbiokanga_SOURCES = SQLiteSummaries.cpp SQLiteSummaries.h SSW.cpp SSW.h PBAssemb.cpp PBAssemb.h PBECContigs.cpp PBECContigs.h SeqStore.cpp SeqStore.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h pacbiokanga.cpp pacbiokanga.h PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h AssembGraph.cpp AssembGraph.h 
 
 # set the include path found by configure
 INCLUDES = $(all_includes)
@@ -350,13 +351,15 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AssembGraph.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBAssemb.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBECContigs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBErrCorrect.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBFilter.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBScaffold.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBSim.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PacBioUtility.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/SQLiteSummaries.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/SSW.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/SeqStore.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pacbiokanga.Po@am__quote@
 
 .cpp.o:

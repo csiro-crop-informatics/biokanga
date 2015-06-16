@@ -31,12 +31,13 @@
 #include "../libbiokanga/bgzf.h"
 #include "SSW.h"
 #include "pacbiocommon.h"
+#include "SeqStore.h"
 #include "AssembGraph.h"
-#include "PBScaffold.h"
+#include "PBAssemb.h"
 
 
 int
-ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
+ProcPacBioAssemb(etPBPMode PMode,		// processing mode
 		int MinScaffSeqLen,					// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,				// pairs of targeted scaffold sequences must have overlapped by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		char *pszOverlapDetailFile,			// pregenerated sequence overlap loci details
@@ -47,13 +48,13 @@ ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
 
 
 #ifdef _WIN32
-int ProcScaffold(int argc, char* argv[])
+int ProcAssemb(int argc, char* argv[])
 {
 // determine my process name
 _splitpath(argv[0],NULL,NULL,gszProcName,NULL);
 #else
 int
-ProcScaffold(int argc, char** argv)
+ProcAssemb(int argc, char** argv)
 {
 // determine my process name
 CUtility::splitpath((char *)argv[0],NULL,gszProcName);
@@ -68,13 +69,13 @@ int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failu
 int PMode;					// processing mode
 
 int MinScaffSeqLen;			// individual target scaffold sequences must be of at least this length (defaults to 5Kbp)
-int MinScaffOverlap;		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
+int MinScaffOverlap;		// pairs of targeted sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 
 char szOverlapDetailFile[_MAX_PATH];	// pregenerated  overlap loci details
 int NumPacBioFiles;						// number of input pacbio file specs
 char *pszPacBioFiles[cMaxInFileSpecs];	// input pacbio files
 
-char szOutFile[_MAX_PATH];				// where to write merged scaffolded sequences
+char szOutFile[_MAX_PATH];				// where to write merged assembled sequences
 
 int NumberOfProcessors;		// number of installed CPUs
 int NumThreads;				// number of threads (0 defaults to number of CPUs)
@@ -91,12 +92,12 @@ struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file"
 
 struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 use pregenerated overlap loci details file and error corrected sequences");
 struct arg_int *minscafflen = arg_int0("l","minscafflen","<int>",	"minimum individual sequence length (default 5000, range 500 to 100000)");
-struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum scaffold overlap required to merge into single scaffold (default 5000, range 250 to 100000)");
+struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum overlap required to merge reads into single contig (default 5000, range 250 to 100000)");
 
 struct arg_file *pacbiosovlps = arg_file1("I","pacbiosovlps","<file>",	"input file containing pregenerated error corrected overlap detail");
 
-struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,	"names of input files containing error corrected sequences to be used for scaffolding");
-struct arg_file *outfile = arg_file1("o","out","<file>",			"output merged scaffold sequences to this file");
+struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,	"names of input files containing error corrected sequences to be used for contigs");
+struct arg_file *outfile = arg_file1("o","out","<file>",			"output merged contig sequences to this file");
 
 struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
@@ -257,14 +258,14 @@ if (!argerrors)
 	MinScaffSeqLen = minscafflen->count ? minscafflen->ival[0] : cDfltMinErrCorrectLen;
 	if(MinScaffSeqLen < cMinPBSeqLen || MinScaffSeqLen > cMaxMinPBSeqLen)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted scaffold length '-l%d' must be in range %d..%dbp",MinScaffSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted sequence length '-l%d' must be in range %d..%dbp",MinScaffSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
 		return(1);
 		}
 
 	MinScaffOverlap = minscaffovl->count ? minscaffovl->ival[0] : cDfltMinErrCorrectLen;
 	if(MinScaffOverlap < cMinPBSeqLen || MinScaffOverlap > cMaxMinPBSeqLen)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum scaffold overlap required length '-L%d' must be in range %d..%dbp",MinScaffOverlap,cMinPBSeqLen,cMaxMinPBSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum sequence overlap required length '-L%d' must be in range %d..%dbp",MinScaffOverlap,cMinPBSeqLen,cMaxMinPBSeqLen);
 		return(1);
 		}
 
@@ -301,7 +302,7 @@ if (!argerrors)
 	CUtility::TrimQuotedWhitespcExtd(szOutFile);
 	if(szOutFile[0] == '\0')
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no output file specified with '-o<filespec>' option)\n");
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no output assembly file specified with '-o<filespec>' option)\n");
 		exit(1);
 		}
 
@@ -334,15 +335,15 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: '%s'",pszMode);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum individual scaffolding sequence length: %dbp",MinScaffSeqLen);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum scaffold overlap required to merge into single scaffold: %d",MinScaffOverlap);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum individual input sequence length: %dbp",MinScaffSeqLen);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum sequence overlap required to merge into single config: %d",MinScaffOverlap);
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input file containing pregenerated PacBio overlap loci detail: '%s'",szOverlapDetailFile);
 
 	for(Idx=0; Idx < NumPacBioFiles; Idx++)
-			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input error corrected sequences file spec: '%s'",pszPacBioFiles[Idx]);
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input sequences file spec: '%s'",pszPacBioFiles[Idx]);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output merged scaffold sequences file: '%s'",szOutFile);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output contig sequences file: '%s'",szOutFile);
 
 	if(szExperimentName[0] != '\0')
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"This processing reference: %s",szExperimentName);
@@ -378,7 +379,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioScaffolds((etPBPMode)PMode,MinScaffSeqLen,MinScaffOverlap,szOverlapDetailFile,NumPacBioFiles,pszPacBioFiles,szOutFile,NumThreads);
+	Rslt = ProcPacBioAssemb((etPBPMode)PMode,MinScaffSeqLen,MinScaffOverlap,szOverlapDetailFile,NumPacBioFiles,pszPacBioFiles,szOutFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -403,7 +404,7 @@ return 0;
 
 
 int
-ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
+ProcPacBioAssemb(etPBPMode PMode,		// processing mode
 		int MinScaffSeqLen,			// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		char *pszOverlapDetailFile,			// pregenerated sequence overlap loci details
@@ -413,11 +414,11 @@ ProcPacBioScaffolds(etPBPMode PMode,		// processing mode
 		int NumThreads)				// maximum number of worker threads to use
 {
 int Rslt;
-CPBScaffold *pPacBioer;
+CPBAssemb *pPacBioer;
 
-if((pPacBioer = new CPBScaffold)==NULL)
+if((pPacBioer = new CPBAssemb)==NULL)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CPBScaffold");
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CPBAssemb");
 	return(eBSFerrObj);
 	}
 
@@ -427,9 +428,9 @@ delete pPacBioer;
 return(Rslt);
 }
 
-CPBScaffold::CPBScaffold() // relies on base classes constructors
+CPBAssemb::CPBAssemb() // relies on base classes constructors
 {
-m_pSfxArray = NULL;
+m_pSeqStore = NULL;
 m_pAssembGraph = NULL;
 m_pPBScaffNodes = NULL;
 m_pMapEntryID2NodeIDs = NULL;
@@ -437,19 +438,19 @@ m_bMutexesCreated = false;
 Init();
 }
 
-CPBScaffold::~CPBScaffold() // relies on base classes destructors
+CPBAssemb::~CPBAssemb() // relies on base classes destructors
 {
 Reset(false);
 }
 
 
 void
-CPBScaffold::Init(void)
+CPBAssemb::Init(void)
 {
-if(m_pSfxArray != NULL)
+if(m_pSeqStore != NULL)
 	{
-	delete m_pSfxArray;
-	m_pSfxArray = NULL;
+	delete m_pSeqStore;
+	m_pSeqStore = NULL;
 	}
 
 if(m_pAssembGraph != NULL)
@@ -507,7 +508,7 @@ m_bMutexesCreated = false;
 }
 
 void
-CPBScaffold::Reset(bool bSync)			// if bSync true then fsync before closing output file handles
+CPBAssemb::Reset(bool bSync)			// if bSync true then fsync before closing output file handles
 {
 
 Init();
@@ -515,7 +516,7 @@ Init();
 
 
 int
-CPBScaffold::CreateMutexes(void)
+CPBAssemb::CreateMutexes(void)
 {
 if(m_bMutexesCreated)
 	return(eBSFSuccess);
@@ -564,7 +565,7 @@ return(eBSFSuccess);
 }
 
 void
-CPBScaffold::DeleteMutexes(void)
+CPBAssemb::DeleteMutexes(void)
 {
 if(!m_bMutexesCreated)
 	return;
@@ -580,7 +581,7 @@ m_bMutexesCreated = false;
 }
 
 void
-CPBScaffold::AcquireSerialise(void)
+CPBAssemb::AcquireSerialise(void)
 {
 #ifdef _WIN32
 WaitForSingleObject(m_hMtxIterReads,INFINITE);
@@ -590,7 +591,7 @@ pthread_mutex_lock(&m_hMtxIterReads);
 }
 
 void
-CPBScaffold::ReleaseSerialise(void)
+CPBAssemb::ReleaseSerialise(void)
 {
 #ifdef _WIN32
 ReleaseMutex(m_hMtxIterReads);
@@ -600,7 +601,7 @@ pthread_mutex_unlock(&m_hMtxIterReads);
 }
 
 void
-CPBScaffold::AcquireSerialiseMH(void)
+CPBAssemb::AcquireSerialiseMH(void)
 {
 #ifdef _WIN32
 WaitForSingleObject(m_hMtxMHReads,INFINITE);
@@ -610,7 +611,7 @@ pthread_mutex_lock(&m_hMtxMHReads);
 }
 
 void
-CPBScaffold::ReleaseSerialiseMH(void)
+CPBAssemb::ReleaseSerialiseMH(void)
 {
 #ifdef _WIN32
 ReleaseMutex(m_hMtxMHReads);
@@ -620,7 +621,7 @@ pthread_mutex_unlock(&m_hMtxMHReads);
 }
 
 void
-CPBScaffold::AcquireLock(bool bExclusive)
+CPBAssemb::AcquireLock(bool bExclusive)
 {
 #ifdef _WIN32
 if(bExclusive)
@@ -636,7 +637,7 @@ else
 }
 
 void
-CPBScaffold::ReleaseLock(bool bExclusive)
+CPBAssemb::ReleaseLock(bool bExclusive)
 {
 #ifdef _WIN32
 if(bExclusive)
@@ -650,7 +651,7 @@ pthread_rwlock_unlock(&m_hRwLock);
 
 
 UINT32												//  returns number of overlaps loaded and accepted, if > cMaxValidID then cast to teBSFrsltCodes for actual error 
-CPBScaffold::LoadPacBioOvlps(char *pszPacBioOvlps,  // load from this pregenerated PacBio sequence overlap loci CSV file
+CPBAssemb::LoadPacBioOvlps(char *pszPacBioOvlps,  // load from this pregenerated PacBio sequence overlap loci CSV file
 							 bool bValidateOnly)	// if true then simply parse and validate that the CSV format is as expected
 {
 int Rslt;
@@ -978,6 +979,12 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 				((NumProbeInsertBases - NumProbeInserts + NumTargInsertBases - NumTargInserts) *  m_ScaffScoreGapExtn); // score the gap extensions
 	Scaffold1KScore = (int)(((INT64)ScaffoldScore * 1000) / ScoreAlignLen);
 
+	if(ScoreAlignLen < (int)m_MinScaffOverlap)
+		{
+		m_NumRejectedScoreThres += 1;
+		continue;
+		}
+
 	switch(Class) {
 		case eOLCcontained:     // slough the containing or contained
 		case eOLCcontains:				
@@ -1001,7 +1008,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 
 	if(szPrevProbeDescr[0] == 0 || stricmp(szPrevProbeDescr,szProbeDescr) != 0)
 		{
-		ProbeNameID = m_pSfxArray->GetIdent(szProbeDescr);
+		ProbeNameID = m_pSeqStore->GetSeqID(szProbeDescr);
 		if(ProbeNameID <= 0)
 			{
 			if(!NumNoProbeIdents)
@@ -1015,7 +1022,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 	else
 		ProbeNameID = PrevProbeIdent;
 
-	 ProbeSeqLen = m_pSfxArray->GetSeqLen(ProbeNameID);
+	 ProbeSeqLen = m_pSeqStore->GetLen(ProbeNameID);
 	 if(ProbeSeqLen != ProbeLen)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Actual probe fasta sequence length: %d, Overlap detail probe length: %d, for sequence named '%s' at line %d in file '%s'",
@@ -1025,7 +1032,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		}
 
 
-	TargNameID = m_pSfxArray->GetIdent(szTargDescr);
+	TargNameID = m_pSeqStore->GetSeqID(szTargDescr);
 	if(TargNameID <= 0)
 		{
 		if(!NumNoTargIdents)
@@ -1034,7 +1041,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		continue;
 		}
 
-	 TargSeqLen = m_pSfxArray->GetSeqLen(TargNameID);
+	 TargSeqLen = m_pSeqStore->GetLen(TargNameID);
 	 if(TargSeqLen != TargLen)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Actual target fasta sequence length: %d, Overlap detail target length: %d, for sequence named '%s' at line %d in file '%s'",
@@ -1062,7 +1069,7 @@ if(NumNoTargIdents)
 
 if(!bValidateOnly)
 	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepting %u overlaps for further processing (rejected %u score, %u contained, %u artefact) from file '%s'",
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted or inferred %u overlaps for further processing (rejected %u score, %u contained, %u artefact) from file '%s'",
 												m_NumAcceptedOverlaps,m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectArtefact,pszPacBioOvlps);
 
 	m_NumAcceptedOverlaps = NumEdges;
@@ -1070,171 +1077,11 @@ if(!bValidateOnly)
 return(m_NumAcceptedOverlaps);
 }
 
-int
-CPBScaffold::LoadTargetSeqs(char *pszTargFile)		// load pre-generated suffix array from pszTargFile
-{
-int Rslt;
-INT64 FileSize;
-char szTargSpecies[120];
-
-// check if pszTargFile exists, is of a minimum length, and can be read
-#ifdef _WIN32
-struct _stat64 st;
-if(!_stat64(pszTargFile,&st))
-#else
-struct stat64 st;
-if(!stat64(pszTargFile,&st))
-#endif
-	FileSize = (INT64)st.st_size;
-else
-	FileSize = 0;
-
-if(FileSize == 0)		// 0 if file not readable or if 0 length
-	{
-	gDiagnostics.DiagOut(eDLWarn,gszProcName,"LoadTargetSeqs: Unable to access file '%s', does file exist and not 0 length, or is it readable",pszTargFile);
-	return(eBSFerrFileAccess);
-	}
-
-if(FileSize < cDfltMinErrCorrectLen)		// arbitary minimum file size...
-	{
-	gDiagnostics.DiagOut(eDLWarn,gszProcName,"LoadTargetSeqs: file exists but is only %lld long",pszTargFile,FileSize);
-	return(eBSFerrFileAccess);
-	}
-
-// first try loading as previously generated suffix index over targeted sequences
-if((Rslt = m_pSfxArray->Open(pszTargFile)) < eBSFSuccess)
-	{
-	while(m_pSfxArray->NumErrMsgs())
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,m_pSfxArray->GetErrMsg());
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to load input bioseq suffix array file '%s'",pszTargFile);
-	delete m_pSfxArray;
-	m_pSfxArray = NULL;
-	return(Rslt);
-	}
-
-// report to user some sfx array metadata as conformation the targeted assembly is correct
-strcpy(szTargSpecies,m_pSfxArray->GetDatasetName());
-tsSfxHeaderV3 SfxHeader;
-m_pSfxArray->GetSfxHeader(&SfxHeader);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadTargetSeqs:  Name: '%s' Descr: '%s' Title: '%s' Version: %d",
-					 szTargSpecies,SfxHeader.szDescription,SfxHeader.szTitle,SfxHeader.Version);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading target scaffolding sequences suffix array...");
-if((Rslt=m_pSfxArray->SetTargBlock(1))<0)
-	{
-	while(m_pSfxArray->NumErrMsgs())
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,m_pSfxArray->GetErrMsg());
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to load target scaffolding sequences suffix array");
-	return(Rslt);
-	}
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"target scaffolding sequences suffix array loaded");
-
-return(eBSFSuccess);
-}
-
-// ProcessBioseqFile
-// Process input biosequence file into suffix file
-int
-CPBScaffold::ProcessBioseqFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
-				 char *pszFile)						// file containing sequences to be parsed and indexed
-{
-CBioSeqFile BioSeqFile;
-etSeqBase *pSeqBuff = NULL;
-UINT32 AllocLen = 0;
-char szSource[cBSFSourceSize];
-char szDescription[cBSFDescriptionSize];
-UINT32 SeqLen;
-int Rslt;
-UINT32 NumSeqsUnderlength;
-tBSFEntryID CurEntryID;
-
-if((Rslt=BioSeqFile.Open(pszFile,cBSFTypeSeq,false))!=eBSFSuccess)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - error %d %s",Rslt,BioSeqFile.GetErrMsg());
-	return(Rslt);
-	}
-
-CurEntryID = 0;
-NumSeqsUnderlength = 0;
-while((Rslt = CurEntryID = BioSeqFile.Next(CurEntryID)) > eBSFSuccess)
-	{
-	BioSeqFile.GetNameDescription(CurEntryID,cBSFSourceSize-1,(char *)&szSource,
-											cBSFDescriptionSize-1,(char *)&szDescription);
-	SeqLen = BioSeqFile.GetDataLen(CurEntryID);
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %s|%s",szSource,szDescription);
-
-	if(SeqLen < (UINT32)MinSeqLen)		// only accept for indexing sequences of at least this length)
-		{
-		NumSeqsUnderlength += 1;
-		continue;
-		}
-
-	if(AllocLen < (SeqLen + 1))
-		{
-		if(pSeqBuff != NULL)
-			delete pSeqBuff;
-		AllocLen = SeqLen;
-		pSeqBuff = new unsigned char [AllocLen];
-		if(pSeqBuff == NULL)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - Unable to alloc %u bytes memory for pSeqBuff",AllocLen);
-			Rslt = eBSFerrMem;
-			break;
-			}
-		}
-
-	if((Rslt = BioSeqFile.GetData(CurEntryID,eSeqBaseType,0,pSeqBuff,SeqLen)) != SeqLen)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - error %d %s",Rslt,BioSeqFile.GetErrMsg());
-		break;
-		}
-
-
-
-	// remove any repeat masking flags so that sorts can actually sort
-	// if run of more than 25 Ns and at least 5 Ns to end of buffer then randomly mutate
-	// every 13th N
-	//	e.g <25Ns>r<12Ns>r<12Ns> where r is a pseudorandom base
-	etSeqBase *pMskBase = pSeqBuff;
-	int SeqNs = 0;
-	for(UINT32 MskIdx = 0; MskIdx < SeqLen; MskIdx++,pMskBase++)
-		{
-		*pMskBase &= ~cRptMskFlg;
-		if(*pMskBase == eBaseN && (MskIdx+5) < SeqLen)
-			{
-			if(++SeqNs > 25 &&
-				pMskBase[1] == eBaseN &&
-				pMskBase[2] == eBaseN &&
-				pMskBase[3] == eBaseN &&
-				pMskBase[4] == eBaseN)
-				{
-				if(!(SeqNs % 13))	// mutate every 13th
-					*pMskBase = rand() % 4;
-				}
-			}
-		else
-			SeqNs = 0;
-		}
-
-	if((Rslt=m_pSfxArray->AddEntry(szSource,pSeqBuff,SeqLen)) < eBSFSuccess)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessBioseqFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
-		break;
-		}
-	}
-if(Rslt == eBSFerrEntry)
-	Rslt = eBSFSuccess;
-if(pSeqBuff != NULL)
-	delete pSeqBuff;
-BioSeqFile.Close();
-if(NumSeqsUnderlength > 0)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessBioseqFile - %u sequences not accepted for indexing as length under %dbp ",NumSeqsUnderlength,MinSeqLen);
-return(Rslt);
-}
 
 // ProcessFastaFile
-// Parse input fasta format file into a biosequence suffix array file
+// Parse input fasta format file into a CSeqStore
 int
-CPBScaffold::ProcessFastaFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
+CPBAssemb::ProcessFastaFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
 				char *pszFile)						// file containing sequences
 {
 CFasta Fasta;
@@ -1292,9 +1139,9 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 			if(BuffOfs < (size_t)MinSeqLen)
 				NumSeqsUnderlength += 1;
 			else
-				if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs)) < eBSFSuccess)
+				if((Rslt=m_pSeqStore->AddSeq(0,szName,(UINT32)BuffOfs,pSeqBuff)) == 0)
 					{
-					gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+					Rslt = -1;
 					break;
 					}
 				else
@@ -1377,8 +1224,8 @@ if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// close entry
 		}
 	else
 		{
-		if((Rslt=m_pSfxArray->AddEntry(szName,pSeqBuff,(UINT32)BuffOfs)) < eBSFSuccess)
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
+		if((Rslt=m_pSeqStore->AddSeq(0,szName,(UINT32)BuffOfs,pSeqBuff)) == 0)
+			Rslt = -1;
 		else
 			{
 			Rslt = eBSFSuccess;
@@ -1396,18 +1243,12 @@ return(Rslt);
 
 
 int 
-CPBScaffold::LoadTargetSeqs(int MinSeqLen,int NumTargFiles,char **pszTargFiles)		// parse, and index sequences in these files into in memory suffix array; file expected to contain either fasta or fastq sequences
+CPBAssemb::LoadTargetSeqs(int MinSeqLen,int NumTargFiles,char **pszTargFiles)		// parse, and index sequences in these files into in memory suffix array; file expected to contain either fasta or fastq sequences
 {
 int Rslt;
 int Idx;
 int NumGlobs;
 INT64 SumFileSizes;
-UINT32 DupEntries[cMaxDupEntries];
-int NumDupEntries;
-char szDupEntry[100];
-
-
-m_pSfxArray->SetMaxQSortThreads(m_NumThreads);
 
 CSimpleGlob glob(SG_GLOB_FULLSORT);
 
@@ -1441,83 +1282,31 @@ if(NumGlobs == 0)
 	return(eBSFerrOpnFile);
 	}
 
-
-Rslt=m_pSfxArray->Open(false,false);
-if(Rslt !=eBSFSuccess)
-	{
-	while(m_pSfxArray->NumErrMsgs())
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,m_pSfxArray->GetErrMsg());
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile, unable to create in-memory suffix array - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
-	Reset(false);
-	return(Rslt);
-	}
-
-if((Rslt=m_pSfxArray->SetDescription((char *)"inmem")) != eBSFSuccess)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set description 'inmem'");
-	Reset(false);
-	return(Rslt);
-	}
-if((Rslt=m_pSfxArray->SetTitle((char *)"inmem")) != eBSFSuccess)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set title 'inmem'");
-	Reset(false);
-	return(Rslt);
-	}
-
-if((Rslt = m_pSfxArray->SetDatasetName((char *)"inmem")) != eBSFSuccess)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set dataset name 'inmem'");
-	Reset(false);
-	return(Rslt);
-	}
-m_pSfxArray->SetInitalSfxAllocEls(SumFileSizes);	// just a hint which is used for initial allocations by suffix processing
-
 Rslt = eBSFSuccess;
 
 for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 	{
-		// try opening as a fasta file, if that fails then try as a bioseq
+		// try opening as a fasta file
 	Rslt = ProcessFastaFile(MinSeqLen,glob.File(n));
-	if(Rslt == eBSFerrNotFasta)
-		Rslt = ProcessBioseqFile(MinSeqLen,glob.File(n));
 	if(Rslt < eBSFSuccess)
 		{
-		m_pSfxArray->Close(false);
 		Reset(false);
 		return(Rslt);
 		}
 
-		// check for duplicate entry names
-	if((NumDupEntries = m_pSfxArray->ChkDupEntries(cMaxDupEntries,&DupEntries[0])) > 0)
-		{
-		while(NumDupEntries--)
-			{
-			m_pSfxArray->GetIdentName(DupEntries[NumDupEntries],sizeof(szDupEntry)-1,szDupEntry); // get sequence name for specified entry identifier
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile, duplicate sequence entry name '%s' in file '%s'",szDupEntry,glob.File(n));
-			}
-		m_pSfxArray->Close(false);
-		Reset(false);
-		return(-1);
-		}
 	}
-if(m_pSfxArray->GetNumEntries() < 3)		// need at least 3 sequences if attempting to error correct
+if(m_pSeqStore->GetNumSeqs() < 3)		// need at least 3 sequences if attempting to error correct
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Insufficent ( < 3) sequences accepted for processing");
-	m_pSfxArray->Close(false);
 	Reset(false);
 	return(eBSFerrNoEntries);
 	}
-//gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting suffix array...");
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: Still developing NOT sorting suffix array...");
-//m_pSfxArray->Finalise();
-//gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting completed");
 return(Rslt);
 
 }
 
 int
-CPBScaffold::Process(etPBPMode PMode,		// processing mode
+CPBAssemb::Process(etPBPMode PMode,		// processing mode
 		int MinScaffSeqLen,			// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		char *pszMAFFile,			// pregenerated multialignment sequence overlap loci details
@@ -1568,14 +1357,14 @@ strncpy(m_szOutFile,pszOutFile,sizeof(m_szOutFile));
 m_szOutFile[sizeof(m_szOutFile)-1] = '\0';	
 
 m_NumThreads = NumThreads;	
-if(m_pSfxArray != NULL)
-	delete m_pSfxArray;
-if((m_pSfxArray = new CSfxArrayV3) == NULL)
+if(m_pSeqStore != NULL)
+	delete m_pSeqStore;
+if((m_pSeqStore = new CSeqStore) == NULL)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CSfxArrayV3");
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CSeqStore");
 	return(eBSFerrObj);
 	}
-m_pSfxArray->Reset(false);
+m_pSeqStore->Reset();
 
 if(m_pAssembGraph != NULL)
 	{
@@ -1605,7 +1394,7 @@ if((Rslt = LoadTargetSeqs(MinScaffSeqLen,NumErrCorrectedFiles,pszErrCorrectedFil
 	return(Rslt);
 	}
 	// get number of sequences loaded as targets to be used for scaffolding
-NumTargSeqs = m_pSfxArray->GetNumEntries();
+NumTargSeqs = m_pSeqStore->GetNumSeqs();
 if(NumTargSeqs < 1)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"No targeted scaffold sequences in file(s)");
@@ -1639,7 +1428,7 @@ MaxSeqLen = 0;
 pCurPBScaffNode = m_pPBScaffNodes;
 for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	{
-	pCurPBScaffNode->SeqLen = m_pSfxArray->GetSeqLen(CurNodeID);
+	pCurPBScaffNode->SeqLen = m_pSeqStore->GetLen(CurNodeID);
 	pCurPBScaffNode->EntryID = CurNodeID;
 	pCurPBScaffNode->flgUnderlength = pCurPBScaffNode->SeqLen < m_MinScaffSeqLen ? 1 : 0;
 	if(MaxSeqLen == 0 || pCurPBScaffNode->SeqLen > (UINT32)MaxSeqLen)
@@ -1712,7 +1501,7 @@ if((NumDiscComponents = m_pAssembGraph->IdentifyDiscComponents()) > cMaxValidID)
 
 m_pAssembGraph->FindHighestScoringPaths();
 
-m_pAssembGraph->WriteScaffoldSeqs(pszOutFile);
+m_pAssembGraph->WriteContigSeqs(pszOutFile,m_pSeqStore);
 
 Reset(false);
 return(Rslt);
@@ -1721,7 +1510,7 @@ return(Rslt);
 // MapEntryID2NodeID
 // Given a suffix array entry identifier returns the corresponding node identifier
 UINT32										// returned tsPBScaffNode node identifier
-CPBScaffold::MapEntryID2NodeID(UINT32 EntryID)			// suffix array entry identifier
+CPBAssemb::MapEntryID2NodeID(UINT32 EntryID)			// suffix array entry identifier
 {
 if(EntryID == 0 || EntryID > m_NumPBScaffNodes || m_pMapEntryID2NodeIDs == NULL)
 	return(0);
@@ -1734,7 +1523,7 @@ return(m_pMapEntryID2NodeIDs[EntryID-1]);
 // SortLenDescending
 // Sort scaffolding nodes by length descending with entry identifiers as tie breaker
 int
-CPBScaffold::SortLenDescending(const void *arg1, const void *arg2)
+CPBAssemb::SortLenDescending(const void *arg1, const void *arg2)
 {
 tsPBScaffNode *pEl1 = (tsPBScaffNode *)arg1;
 tsPBScaffNode *pEl2 = (tsPBScaffNode *)arg2;

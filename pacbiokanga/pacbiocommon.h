@@ -51,7 +51,7 @@ const int cMinSWPeakScore = 50;							// SW alignments must have peak scores of 
 const int cMinSWAlignLen = 50;							// and alignment length of at least this many bases to be further processed
 
 const int cDfltMaxOverlapFloat = 1000;					// allow up to this much float on overlaps to account for the PacBio error profile 
-const int cDfltScaffMaxOverlapFloat = 200;				// but when scaffolding with error corrected reads then reduce
+const int cDfltScaffMaxOverlapFloat = 100;				// but when assembling or correcting contigs with error corrected reads then reduce
 
 const int cAllocdNumCoreHits = 1000000;					 // each thread preallocs for this many core hits, realloc'd as may be required
 const int cAllocdQuerySeqLen = 500000;					 // each thread preallocs to hold query sequences of this length, realloc'd as may be required

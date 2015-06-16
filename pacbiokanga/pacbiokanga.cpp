@@ -31,14 +31,16 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "0.6.8";		// increment with each release
+const char *cpszProgVer = "0.7.2";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 
 extern int ProcPBSim(int argc, char* argv[]);
 extern int ProcFilter(int argc, char* argv[]);
 extern int ProcErrCorrect(int argc, char* argv[]);
-extern int ProcScaffold(int argc, char* argv[]);
+extern int ProcAssemb(int argc, char* argv[]);
+extern int ProcECContigs(int argc, char* argv[]);
+
 
 // inplace text cleaning; any leading/trailing or internal quote characters are removed; excessive whitespace is reduced to single
 char *
@@ -74,8 +76,9 @@ tsSubProcess SubProcesses[] = {
 	{"pbsim","Simulate Reads", "Simulate PacBio reads (NOTE: using integrated PBSIM module)", ProcPBSim },
 	{"filter","Filter Reads", "Filter PacBio reads for retained hairpins", ProcFilter },
 	{"errcorrect","Error Correct Reads", "Error correct PacBio reads", ProcErrCorrect },
-	{"scaffold","Scaffold Reads","Scaffold PacBio reads",ProcScaffold}
-};
+	{"assemb","Assemb Reads","Assemble error corrected PacBio reads into contigs",ProcAssemb},
+	{"eccontigs","Error Correct Contigs","Error correct assembled PacBio contigs",ProcECContigs}
+	};
 const int cNumSubProcesses = (sizeof(SubProcesses) / sizeof(tsSubProcess));
 
 CStopWatch gStopWatch;

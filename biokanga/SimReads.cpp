@@ -1954,6 +1954,7 @@ while((Rslt = SeqLen = Fasta.ReadSequence(pSeqBuff,cMaxAllocBuffChunk-1,true,fal
 		if(SeqLen != eBSFFastaDescr || sscanf(szDescription," %s[ ,]",szName)!=1)
 			sprintf(szName,"%s.%d",pszFastaFile,ChromID);
 		strncpy(pChromSeq->szChromName,szName,sizeof(pChromSeq->szChromName));
+		pChromSeq->szChromName[30] = '\0';	  // limiting chrom names to be at most 30 chars as additional detail will later be appended		
 		pChromSeq->Strand = '*';
 		pChromSeq->RelDensity = 1000;
 		pChromSeq->SeqOfs = (UINT32)m_GenomeLen;
