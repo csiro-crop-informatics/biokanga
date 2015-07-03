@@ -16,8 +16,8 @@
 
 #include "../libbiokanga/commdefs.h"
 
-const UINT32 cSSWMinProbeOrTargLen = 5;			// require probe and target lengths to be at least this number of bp
-const UINT32 cSSWMaxProbeOrTargLen = 25000000;  // require either probe or target length to be no longer than this limit
+const UINT32 cSSWMinProbeOrTargLen = 100;			// require probe and target lengths to be at least this number of bp
+const UINT32 cSSWMaxProbeOrTargLen = 0x00fffffff;  // require either probe or target length to be no longer than this limit (256Mbp)
 const UINT32 cSSWMaxPenaltyGap = 1000000;		 // can specify gaps of upto this length before gap extension penalties are applied
 
 const int cSSWDfltMatchScore = 1;		// score for matching bases
@@ -39,8 +39,8 @@ const int cMaxTopNPeakMatches = 100;     // can process for at most this many pe
 const int cDfltConfWind = 50;			// default confidence window is this length
 const int cMaxConfWindSize = 200;		// allowing confidence window length to be at most this length
 
-const int cMaxMAFBlockErrCorLen = cSSWMaxProbeOrTargLen/10;	// allowing for error corrected read sequences of up to this length
-const int cMaxMAFBlockLen = (cMaxMAFBlockErrCorLen * 100);	// allowing for multialignment format block buffering of up to this length
+const UINT32 cMaxMAFBlockErrCorLen = cSSWMaxProbeOrTargLen/50;	// allowing for error corrected read sequences of up to this length
+const UINT32 cMaxMAFBlockLen = (cMaxMAFBlockErrCorLen * 100);	// allowing for multialignment format block buffering of up to this length
 
 #pragma pack(1)
 // each cell in stripe or column
@@ -166,6 +166,12 @@ class CSSW
 	int m_DlyGapExtn;					// delayed gap penalties, only apply gap extension penalty if gap at least this length
     int m_ProgPenaliseGapExtn;			// if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
 
+
+	int m_CPMatchScore;					// path class, ClassifyPath(), score for matching bases (0..100)
+	int m_CPMismatchPenalty;			// path class mismatch penalty (-100..0)
+	int m_CPGapOpenPenalty;				// path class gap opening penalty (-100..0)
+	int m_CPGapExtnPenalty;				// path class gap extension penalty (-100..0)
+
 	int m_ConfWinSize;					// sequence bases averaged over this sized window must be of at least this confidence (0..9) with the initial and final bases having at least this confidence
 
 
@@ -178,8 +184,8 @@ class CSSW
 	size_t m_AllocdCellSize;        // total current allocation size for m_pAllocdCells 
 	tsSSWCell *m_pAllocdCells;		// allocated to hold cells	
 
-	UINT32 m_UsedTracebacks;		// number of currently allocated Tracebacks used
-	UINT32 m_AllocdTracebacks;		// number of currently allocated Tracebacks
+	UINT64 m_UsedTracebacks;		// number of currently allocated Tracebacks used
+	UINT64 m_AllocdTracebacks;		// number of currently allocated Tracebacks
 	size_t m_AllocdTracebacksSize;  // total current allocation size for m_pTracebacks 
 	tsSSWTraceback *m_pAllocdTracebacks;	// allocated to hold Tracebacks	
 
@@ -243,17 +249,6 @@ class CSSW
 	tsMAlignCol *								// inserted column or NULL if errors inserting
 		InsertCol(UINT32 PrevCol);				// allocate and insert new column after PrevCol
 
-	int								// highest score for path anchored at the pProbe[0] and pTarg[0]  
-		ChkStartPath(int Scorethres, // looking for a path of at least this SW score
-			  int SeqLen,			// both pProbe and pTarg are at least this length, max of 100 will be processed
-			  etSeqBase *pProbe,	// SW this sequence against
-			  etSeqBase *pTarg,		// this sequence
-			  int SeedScore=10,		// seed the path with this initial score
-			  int MatchScore=cSSWDfltMatchScore,			// exact match score
-			  int MismatchPenalty=cSSWDfltMismatchPenalty,	// mismatch penalty
-			  int GapOpenPenalty=cSSWDfltGapOpenPenalty,		// gap open penalty
-			  int GapExtnPenalty=cSSWDfltGapExtnPenalty);// gap extension penalty
-
 public:
 	CSSW();
 	~CSSW();
@@ -267,6 +262,11 @@ public:
 				int ProgPenaliseGapExtn = cSSWDfltProgPenaliseGapExtn,	// if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
 				int AnchorLen = cSSWDfltAnchorLen);				// identified first and last anchors in alignment to be of at least this length
 
+	bool SetCPScores(int MatchScore= cSSWDfltMatchScore,		// ClassifyPath() score for match
+				int MismatchPenalty  = cSSWDfltMismatchPenalty,	// ClassifyPath() penalty for mismatch
+				int GapOpenPenalty  = cSSWDfltGapOpenPenalty,	// ClassifyPath() penalty for opening a gap
+				int GapExtnPenalty  = cSSWDfltGapOpenPenalty);	// ClassifyPath() penalty if extending already opened gap
+
 	bool SetMaxInitiatePathOfs(int MaxInitiatePathOfs = cMaxInitiatePathOfs);	// require SW paths to have started within this many bp (0 to disable) on either the probe or target - effectively anchoring the SW 
 
 	bool SetMinNumExactMatches(int MinNumExactMatches = cMinNumExactMatches);		// require at least this many exactly matching in path to further process that path
@@ -278,7 +278,8 @@ public:
 	bool SetProbe( UINT32 Len,etSeqBase *pSeq);					// set probe sequence to use in subsequent alignments
 	bool SetTarg( UINT32 Len,etSeqBase *pSeq);					// set target sequence to use in subsequent alignments
 
-	bool PreAllocMaxTargLen( UINT32 MaxTargLen, bool bNoTracebacks = false);				// preallocate to process targets of this maximal length, with option to note allocate for tracebacks
+	bool PreAllocMaxTargLen( UINT32 MaxTargLen,					// preallocate to process targets of this maximal length
+							 UINT32 MaxOverlapLen = 0);			// allocating tracebacks for this maximal expected overlap, 0 if no tracebacks required
 
 
 	tsSSWTraceback *InitiateTraceback(UINT32 IdxP, UINT32 IdxT);
@@ -303,7 +304,7 @@ public:
 
 	tsSSWCell *										// smith-waterman style local alignment, returns highest accumulated exact matches scoring cell
 				Align(tsSSWCell *pPeakScoreCell = NULL,	// optionally also return conventional peak scoring cell
-						bool bNoTracebacks = false);	// if false then not using tracebacks
+						UINT32 MaxOverlapLen = 0);		// process tracebacks for this maximal expected overlap, 0 if no tracebacks required
 
 	double											// parsimony of multiple alignment, 0 (min) to 1.0 (max) 
 		ParsimoniousMultialign( int Depth,			// parsimony for this number of bases in each column
@@ -343,7 +344,8 @@ public:
 		TracebacksToAlignOps(UINT32 ProbeStartOfs,	// alignment starts at this probe sequence offset (1..n)
 					UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset
 					UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
-					UINT32 TargEndOfs);				// alignment ends at this target sequence offset
+					UINT32 TargEndOfs,				// alignment ends at this target sequence offset
+					tMAOp **ppAlignOps = NULL);     // optionally return ptr to alignment operations
 
 	int
 		StartMultiAlignments(int SeqLen,			// probe sequence is this length
@@ -358,14 +360,14 @@ public:
 					  etSeqBase *pTargSeq);			// alignment target sequence
 
 	int
-	GenMultialignConcensus(void);
+		GenMultialignConcensus(void);
 
 	int      // total number of returned chars in pszBuffer for the textual representation of the error corrected consensus sequence (could be multiple consensus sequences)
 		MAlignCols2fasta(UINT32 ProbeID,	// identifies sequence which was used as the probe when determining the multialignments
-				  int MinConf,	// sequence bases averaged over 100bp must be of at least this confidence (0..9)
-				  int MinLen,			// and sequence lengths must be of at least this length 
-				  UINT32 BuffSize,		// buffer allocated to hold at most this many chars
-				  char *pszBuffer);		// output error corrected sequences to this buffer
+				  int MinConf,				// sequence bases averaged over 100bp must be of at least this confidence (0..9)
+				  int MinLen,				// and sequence lengths must be of at least this length 
+				  UINT32 BuffSize,			// buffer allocated to hold at most this many chars
+				  char *pszBuffer);			// output error corrected sequences to this buffer
 
 	int
 		GenConsensusFromMAF(int MinErrCorrectLen,	// error corrected sequences must be at least this minimum length

@@ -1002,6 +1002,7 @@ if(m_hMultiAlignFile != -1)
 
 m_NumPBScaffNodes = 0;
 m_AllocdPBScaffNodes = 0;
+m_MaxPBSeqLen = 0;
 
 m_NumOverlapProcessed = 0;
 m_ProvOverlapping = 0;
@@ -1880,6 +1881,7 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 		MaxSeqLen = pCurPBScaffNode->SeqLen;
 	}
 m_NumPBScaffNodes = NumTargSeqs;
+m_MaxPBSeqLen = MaxSeqLen;
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences ...",NumTargSeqs);
 
@@ -2517,7 +2519,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			AcquireSerialise();
 			pThreadPar->pSW = new CSSW;
 			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
-			pThreadPar->pSW->PreAllocMaxTargLen(50000,m_PMode == ePBPMConsensus ? true : false);
+			pThreadPar->pSW->PreAllocMaxTargLen(100000,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 			ReleaseSerialise();
 			}
 
@@ -2606,9 +2608,9 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
 				}
 #ifdef _PEAKSCOREACCEPT_
-			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell,m_PMode == ePBPMConsensus ? true : false);
+			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 #else
-			pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? true : false);
+			pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 #endif
 			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= MinOverlapLen)

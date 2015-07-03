@@ -837,9 +837,12 @@ public:
 					UINT16 ResetFlags = 0);				// reset these flags
 
 	int GetIdentName(UINT32 EntryID,int MaxLen,char *pszSeqIdent); // get sequence name for specified entry identifier
-    int GetIdent(char *pszSeqIdent);					// returns identifer for specified sequence name
+    int GetIdent(char *pszSeqIdent);					// returns identifier for specified sequence name
 	UINT32 GetSeqLen(UINT32 EntryID);						// get length of sequence for requested entry identifier
 	UINT64 GetTotSeqsLen(void);							// returns total length of all sequences in currently loaded entries block
+	UINT32 GetMinSeqLen(void);							// returns minimum length of any sequence in currently loaded entries block
+	UINT32 GetMaxSeqLen(void);							// returns maximum length of any sequence in currently loaded entries block
+
 	
 	int GetBaseFlags(UINT32 EntryID,						// identifies sequence containing loci flags to be returned - flags returned are in bits 0..3
 				UINT32 Loci);							// offset within sequence of base flags to return

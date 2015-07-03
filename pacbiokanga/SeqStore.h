@@ -22,6 +22,8 @@ typedef struct TAG_sSeqHdr {
 class CSeqStore
 {
 	UINT32 m_NumStoredSeqs;			// this many sequences currently stored
+	UINT32 m_MinSeqLen;				// minimum length of any currently stored sequence
+	UINT32 m_MaxSeqLen;				// maximum length of any currently stored sequence
 	size_t m_TotStoredSeqsLen;		// total length of all currently stored sequences
 	size_t m_UsedSeqHdrMem;			// tsSeqHdrs occupying this much memory 
 	size_t m_AllocdSeqHdrSize;		// currently this much memory allocated to hold tsSeqHdrs
@@ -50,6 +52,12 @@ public:
 
 	size_t								// returned total length of all currently stored sequences
 			GetTotalLen(void);			// get total length of all currently stored sequences
+
+	UINT32								// returned max length of any currently stored sequence
+			GetMaxSeqLen(void);			// get max length of any currently stored sequence
+
+	UINT32								// returned min length of any currently stored sequence
+			GetMinSeqLen(void);			// get min length of any currently stored sequence
 
 	UINT32								// returned flags
 			GetFlags(tSeqID SeqID);		// get flags associated with sequence identified by SeqID

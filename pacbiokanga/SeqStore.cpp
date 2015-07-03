@@ -86,6 +86,8 @@ if(m_pDescrSeqs)
 
 m_NumStoredSeqs = 0;
 m_TotStoredSeqsLen = 0;
+m_MinSeqLen = 0;
+m_MaxSeqLen = 0;
 m_UsedSeqHdrMem = 0; 
 m_AllocdSeqHdrSize = 0;
 m_UsedDescrSeqsMem = 0; 
@@ -228,6 +230,10 @@ m_UsedDescrSeqsMem += DescrLen + 1;
 memcpy(pDescrSeq,pSeq,SeqLen);
 m_UsedDescrSeqsMem += SeqLen;
 m_TotStoredSeqsLen += SeqLen;
+if(SeqLen > m_MaxSeqLen)
+	m_MaxSeqLen = SeqLen;
+if(m_MinSeqLen == 0 || m_MinSeqLen > SeqLen)
+	m_MinSeqLen = SeqLen;		
 return(m_NumStoredSeqs);	
 }
 
@@ -276,6 +282,22 @@ return(m_NumStoredSeqs);
 }
 
 
+UINT32								// returned max length of any currently stored sequence
+CSeqStore::GetMaxSeqLen(void)		// get max length of any currently stored sequence
+{
+if(m_pSeqHdrs == NULL || m_pDescrSeqs == NULL)
+	return(0);
+return(m_MaxSeqLen);
+}
+
+UINT32								// returned min length of any currently stored sequence
+CSeqStore::GetMinSeqLen(void)		// get min length of any currently stored sequence
+{
+if(m_pSeqHdrs == NULL || m_pDescrSeqs == NULL)
+	return(0);
+return(m_MinSeqLen);
+}
+
 size_t								// returned total length of all currently stored sequences
 CSeqStore::GetTotalLen(void)			// get total length of all currently stored sequences
 {
@@ -313,8 +335,8 @@ if(pszDescr == NULL || MaxDescrLen == 0 || m_pSeqHdrs == NULL || m_pDescrSeqs ==
 
 pSeqHdr = &m_pSeqHdrs[SeqID - 1];
 pDescrSeq = &m_pDescrSeqs[pSeqHdr->DescrSeqOfs];
-strncpy(pszDescr,(const char *)pDescrSeq,MaxDescrLen);
-pszDescr[MaxDescrLen] = '\0';
+strncpy(pszDescr,(const char *)pDescrSeq,MaxDescrLen - 1);
+pszDescr[MaxDescrLen - 1] = '\0';
 return(pSeqHdr->Flags);
 }
 

@@ -45,7 +45,6 @@ Reset();
 
 CSSW::~CSSW()
 {
-
 if(m_gzFile != NULL)
 	gzclose(m_gzFile);
 
@@ -254,6 +253,11 @@ m_MACoverage = 0;
 
 m_ErrCorSeqID = 0;
 
+m_CPMatchScore = cSSWDfltMatchScore;
+m_CPMismatchPenalty = cSSWDfltMismatchPenalty;
+m_CPGapOpenPenalty = cSSWDfltGapOpenPenalty;
+m_CPGapExtnPenalty = cSSWDfltGapExtnPenalty;
+
 m_ConfWinSize = cDfltConfWind;
 m_MatchScore = cSSWDfltMatchScore;			
 m_MismatchPenalty = cSSWDfltMismatchPenalty;		
@@ -343,6 +347,27 @@ m_AnchorLen = AnchorLen;
 return(true);
 }
 
+
+// SetCPScores
+// Set match, mismatch, gap opening and gap extension scores
+bool 
+CSSW::SetCPScores(int MatchScore,			// score for match
+				int MismatchPenalty,	// penalty for mismatch
+				int GapOpenPenalty,		// penalty for opening a gap
+				int GapExtnPenalty)		// penalty if extending already opened gap
+{
+if(MatchScore <= 0 || MatchScore > 100 || 
+	MismatchPenalty < -100 || MismatchPenalty > 0 || 
+	GapOpenPenalty < -100 || GapOpenPenalty > 0 || 
+	GapExtnPenalty < -100 ||  GapExtnPenalty > 0)
+	return(false);
+m_CPMatchScore = MatchScore;				
+m_CPMismatchPenalty = MismatchPenalty;		
+m_CPGapOpenPenalty = GapOpenPenalty;			
+m_CPGapExtnPenalty = GapExtnPenalty;			
+return(true);
+}
+
 // SetProbe
 // Set probe sequence to use in subsequent alignments
 bool 
@@ -387,8 +412,8 @@ return(true);
 }
 
 bool 
-CSSW::PreAllocMaxTargLen( UINT32 MaxTargLen,		// preallocate to process targets of this maximal length
-							bool bNoTracebacks)		// if true then don't preallocate for tracebacks			
+CSSW::PreAllocMaxTargLen( UINT32 MaxTargLen,			// preallocate to process targets of this maximal length
+						  UINT32 MaxOverlapLen)			// allocating tracebacks for this maximal expected overlap, 0 if no tracebacks required			
 {
 if(m_pAllocdCells != NULL && (MaxTargLen + 1000 < m_AllocdCells))
 	return(true);
@@ -441,9 +466,9 @@ if(m_pAllocdTracebacks != NULL)
 m_AllocdTracebacks = 0;
 m_AllocdTracebacksSize = 0;
 
-if(!bNoTracebacks)
+if(MaxOverlapLen > 0)
 	{
-	m_AllocdTracebacks = MaxTargLen * 500;		
+	m_AllocdTracebacks = (UINT64)MaxOverlapLen * 500;		
 	m_AllocdTracebacksSize = sizeof(tsSSWTraceback) * m_AllocdTracebacks;
 #ifdef _WIN32
 	m_pAllocdTracebacks = (tsSSWTraceback *) malloc(m_AllocdTracebacksSize);
@@ -482,9 +507,9 @@ if(m_pMAAlignOps != NULL)
 m_pMAAlignOps = NULL;
 m_AllocdMAAlignOpsSize = 0;
 
-if(!bNoTracebacks)
+if(MaxOverlapLen > 0)
 	{		
-	m_AllocdMAAlignOpsSize = MaxTargLen*3;
+	m_AllocdMAAlignOpsSize = MaxOverlapLen * 2;
 #ifdef _WIN32
 	m_pMAAlignOps = (UINT8 *) malloc(m_AllocdMAAlignOpsSize);
 	if(m_pMAAlignOps == NULL)
@@ -574,7 +599,7 @@ return(PathLen);
 tsSSWTraceback *
 CSSW::InitiateTraceback(UINT32 IdxP, UINT32 IdxT)
 {
-UINT32 UsedTracebacks;
+UINT64 UsedTracebacks;
 tsSSWTraceback *pCur;
 if(IdxP == 0 || IdxT == 0 || (UsedTracebacks = m_UsedTracebacks) == 0 || m_AllocdTracebacks == 0 || m_pAllocdTracebacks == NULL)
 	return(NULL);
@@ -708,7 +733,7 @@ return(eBSFSuccess);
 
 tsSSWCell *								// smith-waterman style local alignment, returns highest accumulated exact matches cell
 CSSW::Align(tsSSWCell *pPeakScoreCell,	// optionally also return conventional peak scoring cell
-				bool bNoTracebacks)		// if false then not using tracebacks
+				UINT32 MaxOverlapLen)	// process tracebacks for this maximal expected overlap, 0 if no tracebacks required
 {
 UINT32 IdxP;							// current index into m_Probe[]
 UINT32 IdxT;							// current index into m_Targ[]
@@ -740,10 +765,13 @@ tsSSWCell *pPrevCell;
 tsSSWCell LeftCell;
 tsSSWCell DiagCell;
 
+bool bNoTracebacks;
 tsSSWTraceback *pTraceback;
 
-if(m_ProbeLen < cSSWMinProbeOrTargLen || m_ProbeLen > cSSWMaxProbeOrTargLen ||  m_TargLen < cSSWMinProbeOrTargLen || m_TargLen > cSSWMaxProbeOrTargLen)
+if(m_ProbeLen < cSSWMinProbeOrTargLen || m_ProbeLen > cSSWMaxProbeOrTargLen ||  m_TargLen < cSSWMinProbeOrTargLen || m_TargLen > cSSWMaxProbeOrTargLen || MaxOverlapLen > cSSWMaxProbeOrTargLen)
 	return(NULL);	
+
+bNoTracebacks = MaxOverlapLen == 0 ? true : false;
 
 if(m_ProbeRelLen == 0)
 	ProbeRelLen = m_ProbeLen - m_ProbeStartRelOfs;	
@@ -759,7 +787,7 @@ memset(&m_PeakScoreCell,0,sizeof(m_PeakScoreCell));
 
 // allocating to hold full length even if relative length a lot shorter to reduce number of reallocations which may be subsequently required
 if(((m_AllocdCells + 100 < m_TargLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  
-	!PreAllocMaxTargLen(m_TargLen + 100,bNoTracebacks))
+	!PreAllocMaxTargLen(m_TargLen + 100,MaxOverlapLen))
 	return(NULL);
 
 if(!bNoTracebacks && m_pAllocdTracebacks != NULL)
@@ -802,7 +830,7 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 		ReduceTracebacks(cTrBkFlgRetain,cTrBkFlgRetain);
 		if((m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen))
 			{
-			UINT32 trbsreq;
+			UINT64 trbsreq;
 			size_t memreq;
 			void *pAllocd;
 			trbsreq = (m_AllocdTracebacks + (TargRelLen * 500));
@@ -1780,7 +1808,7 @@ bool bCpltdReadMAF;
 UINT32 NumParsedBlocks;
 int ConsSeqLen;
 
-m_AllocMAFAlignBuffSize = (UINT32)cMaxMAFBlockLen * 10;
+m_AllocMAFAlignBuffSize = cMaxMAFBlockLen * 5;
 if(m_pszMAFAlignBuff == NULL)
 	{
 	if((m_pszMAFAlignBuff = new char [m_AllocMAFAlignBuffSize])==NULL)
@@ -2296,8 +2324,8 @@ m_NumWinScores = 0;
 if(MaxArtefactDev > 25)			// clamp to be in range 1 to 25
 	MaxArtefactDev = 25;
 
-// calculate a score over the path using same scoring as when SW'ing
-// now check for localised significant deviations from the overall rate along the target
+// calculate a score over the path using path classification scoring
+// then check for localised significant deviations from the overall rate along the target
 // using a window of 1Kbp and expecting the peak deviation from overall mean to be less than MaxArtefactDev
 Score = 0;
 bGapOpened = false;
@@ -2309,9 +2337,9 @@ do {
 		case cTrBkFlgStart:							// start of alignment path; process as if cTrBkFlgMatch
 		case cTrBkFlgMatch:							// match - may not be an exact match
 			if(pTraceBack->IdxT & cTrBkFlgSub)
-				Score += m_MismatchPenalty;
+				Score += m_CPMismatchPenalty;
 			else
-				Score += m_MatchScore;
+				Score += m_CPMatchScore;
 			bGapOpened = false;
 			ProbeOfs += 1;
 			break;	
@@ -2319,9 +2347,9 @@ do {
 			ProbeOfs += 1;
 		case cTrBkFlgDel:							// base deleted from probe relative to target
 			if(!bGapOpened)
-				Score += m_GapOpenPenalty;
+				Score += m_CPGapOpenPenalty;
 			else
-				Score += m_GapExtnPenalty;
+				Score += m_CPGapExtnPenalty;
 			bGapOpened = true;
 		}
 	if(Score < 0)
@@ -2381,7 +2409,8 @@ int													// number of alignment ops generated
 CSSW::TracebacksToAlignOps(UINT32 ProbeStartOfs,	// alignment starts at this probe sequence offset (1..n)
 					UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset
 					UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
-					UINT32 TargEndOfs)				// alignment ends at this target sequence offset
+					UINT32 TargEndOfs,				// alignment ends at this target sequence offset
+					tMAOp **ppAlignOps)             // optionally return ptr to alignment operations
 {
 tMAOp AOp;
 tMAOp *pOps;
@@ -2391,6 +2420,8 @@ int Ofs;
 int NumOps;
 tsSSWTraceback *pTraceBack;
 
+if(ppAlignOps != NULL)
+	*ppAlignOps = NULL;
 m_MAAlignOps = 0;
 NumOps = 0;
 pOps = m_pMAAlignOps;
@@ -2451,6 +2482,8 @@ for(Ofs = 0; Ofs < NumOps/2; Ofs++,pOps++,pOpsXchg--)
 	}
 m_pMAAlignOps[NumOps] = cMACompleted;
 m_MAAlignOps = NumOps;
+if(ppAlignOps != NULL)
+	*ppAlignOps = m_pMAAlignOps;
 return(NumOps);
 }
 
@@ -3284,120 +3317,3 @@ return(Score);
 }
 
 
-const UINT32 cQSWPGap =     0x80000000;      // if set then gap has been opened in probe
-const UINT32 cQSWTGap =     0x40000000;      // if set then gap has been opened in targ
-const UINT32 cQSWScoreMsk = 0x00ffffff; 
-
-int								// highest score for path anchored at the pProbe[0] and pTarg[0]  
-CSSW::ChkStartPath(int Scorethres, // looking for a path of at least this SW score
-		  int SeqLen,			// both pProbe and pTarg are at least this length, max of 100 will be processed
-		  etSeqBase *pProbe,	// SW this sequence against
-		  etSeqBase *pTarg,		// this sequence
-		  int SeedScore,		// seed the path with this initial score >= 1
-		  int MatchScore,		// exact match score
-          int MismatchPenalty,	// mismatch penalty
-		  int GapOpenPenalty,	// gap open penalty
-		  int GapExtnPenalty)   // gap extension penalty
-{
-int IdxP;
-int IdxT;
-etSeqBase *pTBase;
-etSeqBase PBase;
-etSeqBase TBase;
-
-bool bMatch;
-int DiagScore;
-int PrevScore;
-int LeftScore;
-int DownScore;
-int HighestScore;
-
-UINT32 LeftCell;
-UINT32 DiagCell;
-UINT32 PrevCell;
-UINT32 *pCell;
-UINT32 QSWCells[100+1];
-
-memset(QSWCells,0,sizeof(QSWCells));
-LeftCell = 0;
-DiagCell = 0;
-HighestScore = 0;
-for(IdxP = 0; IdxP < SeqLen; IdxP++)
-	{
-	PBase = *pProbe++ & ~cRptMskFlg;
-	pTBase = pTarg;
-	pCell = QSWCells;
-	for(IdxT = 0; IdxT < SeqLen; IdxT++)
-		{
-		TBase = *pTBase++ & ~cRptMskFlg;
-		bMatch = PBase == TBase;
-		if(IdxT > 0 && IdxP > 0)
-			{
-			DiagCell = LeftCell;
-			LeftCell = *pCell;
-			PrevScore = DiagCell & cQSWScoreMsk;
-			DiagScore = PrevScore + (bMatch ? MatchScore : MismatchPenalty);
-			}
-		else
-			{
-			LeftCell = 0;
-			DiagCell = 0;
-			if(IdxT == 0 && IdxP == 0)
-				{
-				if(bMatch)
-					*pCell = SeedScore + m_MatchScore;
-				else
-					*pCell = SeedScore + MismatchPenalty;
-				}
-			else
-				*pCell = 0;
-			continue;
-			}
-
-
-		// leftscore is either GapExtnPenalty (if gap already opened and gap at least m_DlyGapExtn) or GapOpenScore added to prev left score
-        // leftscore relative to diagscore and downscore determines if an insertion into probe is called
-		int GapExtnPenalty;
-		PrevCell = LeftCell;
-		PrevScore = PrevCell & cQSWScoreMsk;
-		GapExtnPenalty = 0;
-		if(PrevCell & cQSWPGap)  // was there a gap previously opened?
-			LeftScore = PrevScore + GapExtnPenalty; 
-		else
-			LeftScore = PrevScore + m_GapOpenPenalty;
-
-		// down score is either GapExtnPenalty (if gap already opened) or GapOpenScore added to prev down score
-        // downscore relative to diagscore and leftscore determines if a deletion from probe is called
-		PrevCell = pCell[-1];
-		PrevScore = PrevCell & cQSWScoreMsk;
-		GapExtnPenalty = 0;
-		if(PrevCell & cQSWTGap)  // was there a gap previously opened?
-			DownScore = PrevScore + GapExtnPenalty; 
-		else
-			DownScore = PrevScore + m_GapOpenPenalty;
-		
-		// if no score was > 0 then reset cell, path can't be extended
-		if(DiagScore <= 0 && DownScore <= 0 && LeftScore <= 0)
-			{
-			*pCell=0;	
-			continue;		
-			}
-
-		if(DiagScore >= DownScore && DiagScore >= LeftScore)
-			*pCell = (UINT32)DiagScore;
-		else
-			if(DownScore >= LeftScore)
-				*pCell = (UINT32)DownScore | cQSWTGap;
-			else
-				*pCell = (UINT32)LeftScore | cQSWPGap;
-		}
-
-	}
-pCell = QSWCells;
-for(IdxP = 0; IdxP < SeqLen; IdxP++,pCell++)
-	{
-	if((DiagScore = (*pCell & cQSWScoreMsk)) > HighestScore)
-		HighestScore = DiagScore;
-	}
-return(HighestScore);
-}

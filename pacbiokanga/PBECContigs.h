@@ -29,7 +29,7 @@ const int cDfltMinHCSeqOverlap = 1000;		// default min high confidence sequence 
 
 const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
 const int cDfltMaxArtefactDev = 20;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
-const int cDfltScaffMaxArtefactDev = 5;		// but when scaffolding with error corrected reads there should be very little percentage deviation from the mean
+const int cDfltScaffMaxArtefactDev = 10;		// but when scaffolding with error corrected reads there should be less percentage deviation from the mean
 const int cMaxMaxArtefactDev = 25;			// user can specify up to this maximum 
 
 
@@ -99,6 +99,7 @@ typedef struct TAG_sPBScaffNode {
 	UINT32 NodeID;					// uniquely identifies this node
 	UINT32 VertexID;				// assembly graph vertex identifier
 	UINT32 EntryID;					// suffix array entry identifier for indexed sequence
+	UINT32 RefSeqID;				// consensus class identifier for this sequence
 	UINT32 SeqLen;					// length in bp of this scaffolding node sequence
 	UINT32 flgCurProc:1;			// sequence is currently being processed
 	UINT32 flgContained:1;			// sequence is fully contained within at least one other sequence
@@ -122,7 +123,7 @@ typedef struct TAG_sPBCoreHitCnts {
 	UINT32 NumAHits;				// number of hits onto target sequence from antisense probe
 } sPBCoreHitCnts;
 
-typedef struct TAG_sThreadPBErrCorrect {
+typedef struct TAG_sThreadPBECContigs {
 	int ThreadIdx;					// uniquely identifies this thread
 	void *pThis;					// will be initialised to pt to class instance
 #ifdef _WIN32
@@ -167,15 +168,16 @@ typedef struct TAG_sThreadPBErrCorrect {
 
 	UINT32 AlignErrMem;				// number of times alignments failed because of memory allocation errors
 	UINT32 AlignExcessLen;			// number of times alignments failed because length of probe * target was excessive
+} tsThreadPBECContigs;
 
+#ifdef USETHISCODE
 	UINT32 ErrCorBuffIdx;			// index into m_szErrCorLineBuff at which to next copy a corrected sequence
 	UINT32 AllocdErrCorLineBuff;	// allocation size for m_pszErrCorLineBuff
 	char *pszErrCorLineBuff;		// allocated buffering for error corrected and scored sequences
 	UINT32 MultiAlignBuffIdx;		// index into m_pszMultiAlignLineBuff at which to write next multialignment
 	UINT32 AllocdMultiAlignLineBuff;// allocation size for m_pszMultiAlignLineBuff
 	char *pszMultiAlignLineBuff;	// allocated buffering for multialignments
-} tsThreadPBErrCorrect;
-
+#endif
 
 #pragma pack()
 
@@ -198,17 +200,13 @@ class CPBECContigs
 	int m_SWGapOpenPenalty;					// SW gap opening penalty (-100..0)
 	int m_SWGapExtnPenalty;					// SW gap extension penalty (-100..0)
 	int m_SWProgExtnPenaltyLen;				// only apply gap extension penalty if gap at least this length (1..63) - use if aligning PacBio
+	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 	
 	UINT32 m_NumOverlapProcessed;			// number of PacBio reads processed for overlapping other PacBio reads
-	UINT32 m_ProvOverlapping;               // number of PacBio reads overlapping at least one other PacBio read
-	UINT32 m_ProvOverlapped;				// number of PacBio reads provisionally overlapped, could be containing, another PacBio read
-	UINT32 m_ProvContained;					// number of PacBio reads provisionally contained within another PacBio read
-	UINT32 m_ProvArtefact;					// number of PacBio reads provisionally only partially, likely an alignment artefact, contained within another PacBio read
+	UINT32 m_ProvOverlapping;               // number of high confidence sequences overlapping onto at least one contig to be error corrected
+	UINT32 m_ProvContained;					// number of high confidence sequences provisionally totally contained within at least one contig to be error corrected
+	UINT32 m_ProvArtefact;					// number of high confidence sequences provisionally only partially, likely an alignment artefact, contained within at least one contig to be error corrected
 	UINT32 m_ProvSWchecked;					// number of times SW used to identify overlaps
-
-	UINT32 m_ExactKmerDists[100];			// accumulates exactly matching K-mer length distributions
-	UINT64 m_TotAlignSeqLen;				// were over this total alignment length
-	UINT32 m_TotAlignSeqs;					// between this number of sequence pairs
 
 	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
 	UINT32 m_MinContigLen;					// individual contigs must be of at least this length
@@ -230,14 +228,18 @@ class CPBECContigs
 
 	int m_NumThreads;							// maximum number of worker threads to use
 
+	UINT32 m_MaxTargSeqLen;						// max length of any targeted contig sequence to be error corrected
 	UINT32 m_NumPBScaffNodes;					// m_pPBScaffNodes currently holds many contig nodes to be error corrected
 	UINT32 m_AllocdPBScaffNodes;				// m_pPBScaffNodes allocated to hold this many contig nodes
 	tsPBScaffNode *m_pPBScaffNodes;				// allocated to hold contig nodes
 	UINT32 *m_pMapEntryID2NodeIDs;				// used to map from suffix array entry identifiers to the corresponding contig node identifier
 	CSfxArrayV3 *m_pSfxArray;					// contigs to error correct are indexed in this suffix array
 
-	UINT32 m_NumHiConfSeqs;						// m_pSeqStore currently holds many hi confidence sequences to be used for error correcting 
+	UINT32 m_NumHiConfSeqs;						// m_pSeqStore currently holds many hi confidence sequences to be used for error correcting
+    UINT32 m_MaxHiConfSeqLen;					// max length of any high confidence sequence
 	CSeqStore  *m_pSeqStore;					// high confidence sequences used for errror correcting are loaded into this sequence store
+
+	CMAConsensus *m_pMAConsensus;               // class to call consensus bases in contigs
 
 	void Init(void);							// initialise state to that immediately following construction
 	void Reset(bool bSync);						// reset state, if bSync true then fsync before closing output file handles
@@ -254,11 +256,10 @@ class CPBECContigs
 				bool bSeqStore = false,			// default is to load into suffix array, set true to load into sequence store
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
 
-	int IdentifySequenceOverlaps(int MaxSeqLen,		// max length sequence to be overlapped
-							int NumOvlpThreads);	// identify all overlaps using this many threads
+	int InitiateECContigs(int NumECThreads);	// initiate contig error correction using this many threads
 
 	int IdentifyCoreHits(UINT32 HiConfSeqID,	// identify all overlaps of this probe sequence HiConfSeqID onto target sequences
-				tsThreadPBErrCorrect *pPars);		// thread specific
+				tsThreadPBECContigs *pPars);		// thread specific
 
 	int					// returns index 1..N of just added core hit or -1 if errors
 		AddCoreHit(UINT32 HiConfSeqID,			// core hit was from this probe  
@@ -267,7 +268,7 @@ class CPBECContigs
 			   UINT32 TargNodeID,               // probe core matched onto this target scaffold node
 			   UINT32 TargOfs,                  // probe core matched starting at this target loci
 			   UINT32 HitLen,					// hit was of this length
-               tsThreadPBErrCorrect *pPars);		// thread specific
+               tsThreadPBECContigs *pPars);		// thread specific
 
 	UINT32										// returned tsPBScaffNode node identifier
 		MapEntryID2NodeID(UINT32 EntryID);		// suffix array entry identifier
@@ -301,11 +302,13 @@ static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 	pthread_rwlock_t m_hRwLock;
 #endif
 
+
+
 public:
 	CPBECContigs();
 	~CPBECContigs();
 
-	int ThreadPBErrCorrect(tsThreadPBErrCorrect *pThreadPar);
+	int ThreadPBECContigs(tsThreadPBECContigs *pThreadPar);
 
 	int
 	Process(etPBPMode PMode,	// processing mode
@@ -318,18 +321,13 @@ public:
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
-		int MinContigLen,			// only accepting contigs of at least this length (defaults to 15Kbp)
+		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+		int MinContigLen,			// only accepting contigs of at least this length (defaults to 10Kbp)
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		char *pszContigFile,			// input multifasta contig file
 		char *pszHiConfFile,			// input hiconfidence file
 	    char *pszErrCorFile,		// name of file into which write error corrected contigs
 		int NumThreads);			// maximum number of worker threads to use
-
-		int
-		GenConsensusFromMAF(int MinErrCorrectLen,		// error corrected sequences must be at least this minimum length
-					 int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
-					char *pszErrCorFile,		// name of file into which write error corrected sequences
-					char *pszMultiAlignFile);	// name of file containing multiple alignments to process
 
 };
 

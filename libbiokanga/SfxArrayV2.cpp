@@ -1844,6 +1844,40 @@ for(Idx = 0; Idx < m_pEntriesBlock->NumEntries; Idx++,pEntry++)
 return(TotLen);
 }
 
+// returns minimum length of any sequence in currently loaded entries block
+UINT32 
+CSfxArrayV3::GetMinSeqLen(void)							
+{
+UINT64 Idx;
+UINT32 MinLen;
+tsSfxEntry *pEntry;
+if(m_pEntriesBlock == NULL || !m_pEntriesBlock->NumEntries)
+	return(eBSFerrEntry);
+MinLen = 0;
+pEntry = &m_pEntriesBlock->Entries[0];
+for(Idx = 0; Idx < m_pEntriesBlock->NumEntries; Idx++,pEntry++)
+	if(MinLen == 0 || pEntry->SeqLen < MinLen)
+		MinLen = pEntry->SeqLen;
+return(MinLen);
+}
+
+// returns maximum length of any sequence in currently loaded entries block
+UINT32 
+CSfxArrayV3::GetMaxSeqLen(void)							
+{
+UINT64 Idx;
+UINT32 MaxLen;
+tsSfxEntry *pEntry;
+if(m_pEntriesBlock == NULL || !m_pEntriesBlock->NumEntries)
+	return(eBSFerrEntry);
+MaxLen = 0;
+pEntry = &m_pEntriesBlock->Entries[0];
+for(Idx = 0; Idx < m_pEntriesBlock->NumEntries; Idx++,pEntry++)
+	if(pEntry->SeqLen > MaxLen)
+		MaxLen = pEntry->SeqLen;
+return(MaxLen);
+}
+
 void
 CSfxArrayV3::SerialiseBaseFlags(void)
 {

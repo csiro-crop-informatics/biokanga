@@ -28,7 +28,7 @@ const int cDfltMinHCSeqOverlap = 1000;		// default min high confidence sequence 
 
 const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
 const int cDfltMaxArtefactDev = 20;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
-const int cDfltScaffMaxArtefactDev = 5;		// but when scaffolding with error corrected reads there should be very little percentage deviation from the mean
+const int cDfltScaffMaxArtefactDev = 10;		// but when scaffolding with error corrected reads there should a much smaller percentage deviation from the mean
 const int cMaxMaxArtefactDev = 25;			// user can specify up to this maximum 
 
 
@@ -245,6 +245,7 @@ class CPBErrCorrect
 	int m_NumThreads;							// maximum number of worker threads to use
 
 	UINT32 m_NumPBScaffNodes;					// m_pPBScaffNodes currently holds many scaffolding nodes
+    UINT32 m_MaxPBSeqLen;						// max length of any scaffolding node sequence
 	UINT32 m_AllocdPBScaffNodes;				// m_pPBScaffNodes allocated to hold this many scaffolding nodes
 	tsPBScaffNode *m_pPBScaffNodes;				// allocated to hold scaffolding nodes
 	UINT32 *m_pMapEntryID2NodeIDs;				// used to map from suffix array entry identifiers to the corresponding scaffolding node identifier
