@@ -527,6 +527,7 @@ class CAligner
 	tsConstraintLoci *m_pConstraintLoci; // allocated to hold any read alignment loci constraints
 
 	int m_MinChimericLen;			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+	bool m_bReportChimerics;        // true if individual chimeric sequences to also be reported for diagnostics
 	int m_microInDelLen;			// microInDel length maximum
 	int m_SpliceJunctLen;			// minimum splice junction length when aligning RNAseq reads
 
@@ -738,7 +739,7 @@ class CAligner
 		   UINT32 ChromID,			// read expected to have aligned to this chromosome
 			UINT32 Loci);            // base to be returned is at this alignment loci, base will be complemented if antisense alignment
 
-	int TrimChimeric(void);			// trim back aligned chimeric read flanks
+	int TrimChimeric(char *pszChimericSeqs = NULL);			// trim back aligned chimeric read flanks with option to write chimeric sequences to file pszChimericSeqs
 
 	int AutoTrimFlanks(int MinFlankExacts); // Autotrim back aligned read flanks until there are at least MinFlankExacts exactly matching bases in the flanks
 
@@ -976,7 +977,7 @@ public:
 				bool bPEcircularised,			// experimental - true if processing for PE spanning circularised fragments
 				bool bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 				eALStrand AlignStrand,			// align on to watson, crick or both strands of target
-				int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+				int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
 				int microInDelLen,				// microInDel length maximum
 				int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 				int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci

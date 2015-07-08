@@ -27,9 +27,9 @@ const int cDfltMinHCSeqLen = 1000;			// default min high confidence sequence len
 const int cDfltMinHCSeqOverlap = 1000;		// default min high confidence sequence overlap length onto PacBio sequence
 
 const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
-const int cDfltMaxArtefactDev = 20;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
-const int cDfltScaffMaxArtefactDev = 10;		// but when scaffolding with error corrected reads there should a much smaller percentage deviation from the mean
-const int cMaxMaxArtefactDev = 25;			// user can specify up to this maximum 
+const int cDfltMaxArtefactDev = 50;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
+const int cDfltScaffMaxArtefactDev = 15;		// but when scaffolding with error corrected reads there should a much smaller percentage deviation from the mean
+const int cMaxMaxArtefactDev = 70;			// user can specify up to this maximum 
 
 
 const int cMaxPacBioErrCorLen = 250000;		// allowing for error corrected read sequences of up to this length

@@ -46,7 +46,7 @@ Process(etPMode PMode,					// processing mode
 		bool bPEcircularised,			// experimental - true if processing for PE spaning circularised fragments
 		bool bPEInsertLenDist,			// true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
-		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -136,7 +136,7 @@ int Trim5;					// trim this number of bases from 5' end of reads when loading th
 int Trim3;					// trim this number of bases from 3' end of reads when loading the reads
 int MaxRptSAMSeqsThres;		// report all SAM chroms or sequences to SAM header if number of reference chroms <= this limit (defaults to 10000)
 int AlignStrand;			// align on to watson, crick or both strands of target
-int MinChimericLen;			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+int MinChimericLen;			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
 int microInDelLen;			// microInDel length maximum
 int SpliceJunctLen;			// maximum splice junction length when aligning RNAseq reads
 int MinSNPreads;			// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -664,13 +664,13 @@ if (!argerrors)
 		}
 
 	MinChimericLen = minchimericlen->count ? minchimericlen->ival[0] : 0;
-	if(MinChimericLen != 0 && !(MinChimericLen >= 50 && MinChimericLen <= 99))
+	if(MinChimericLen != 0 && !(abs(MinChimericLen) >= 50 && abs(MinChimericLen) <= 99))
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum chimeric length percentage '-c%d' specified outside of range 50..99\n",MinChimericLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum chimeric length percentage '-c%d' specified outside of range 50..99\n",abs(MinChimericLen));
 		exit(1);
 		}
 
-	if(MinChimericLen > 0 && (bSOLiD || bLocateBestMatches))		// chimeric read processing not currently supported for SOLiD colorspace processing or for reporting multiple best matches
+	if(abs(MinChimericLen) > 0 && (bSOLiD || bLocateBestMatches))		// chimeric read processing not currently supported for SOLiD colorspace processing or for reporting multiple best matches
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Sorry, chimeric read processing not supported in this release if either SOLiD or locating multiple best matches also requested");
 		exit(1);
@@ -1215,8 +1215,8 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allow microInDels of upto this inclusive length: %d",microInDelLen);
 
-	if(MinChimericLen > 0)
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Check for chimeric sequences in reads of at least this percentage length: %d",MinChimericLen);
+	if(MinChimericLen != 0)
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Check for chimeric sequences in reads of at least this percentage length: %d",abs(MinChimericLen));
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum RNA-seq splice junction separation distance: %d",SpliceJunctLen);
 	if(MinSNPreads == 0)

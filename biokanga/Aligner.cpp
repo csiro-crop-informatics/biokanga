@@ -81,7 +81,7 @@ CAligner::Align(etPMode PMode,			// processing mode
 		bool bPEcircularised,			// experimental - true if processing for PE spaning circularised fragments
 		bool bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
-		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length
+		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -116,7 +116,7 @@ CAligner::Align(etPMode PMode,			// processing mode
 		char *pszOutFile,				// where to write alignments
 		char *pszSNPFile,				// Output SNPs (CSV or VCF format) to this file (default is to output file name with '.snp' appended)
 		char *pszMarkerFile,			// Output markers to this file
-		char *pszSNPCentroidFile,		// Output SNP centorids (CSV format) to this file (default is for no centroid processing)
+		char *pszSNPCentroidFile,		// Output SNP centroids (CSV format) to this file (default is for no centroid processing)
 		char *pszSfxFile,				// target as suffix array
 		char *pszStatsFile,				// aligner induced substitutions stats file
 		char *pszMultiAlignFile,		// file to contain reads which are aligned to multiple locations
@@ -211,7 +211,8 @@ else
 	m_InitalAlignSubs = MaxSubs;
 
 m_AlignStrand = AlignStrand;
-m_MinChimericLen = MinChimericLen;
+m_MinChimericLen = abs(MinChimericLen);
+m_bReportChimerics = MinChimericLen >= 0 ? false : true;
 m_microInDelLen = microInDelLen;
 m_SpliceJunctLen = SpliceJunctLen;
 m_MinSNPreads = MinSNPreads;
@@ -470,8 +471,19 @@ if(Rslt < eBSFSuccess)
 	}
 
 
-if(MinChimericLen > 0) // any aligned reads accepted as being chimeric are flank trimmed and subsequently processed as if full length aligned
-	TrimChimeric();
+
+if(m_MinChimericLen > 0) // any aligned reads accepted as being chimeric are flank trimmed and subsequently processed as if full length aligned
+	{
+	char szChimericsFile[_MAX_PATH];
+	if(m_bReportChimerics)
+		{
+		strcpy(szChimericsFile,m_pszOutFile);
+		strcat(szChimericsFile,".chimericseqs.csv");
+		}
+	else
+		szChimericsFile[0] = '\0';
+	TrimChimeric(szChimericsFile);
+	}
 
 // if autodetermining max subs that were allowed from actual reads then let user know what the average read length was
 size_t TotReadsLen = 0;
@@ -1785,10 +1797,15 @@ return(eBSFSuccess);
 }
 
 // TrimChimeric
-// Aligned reads marked as vhimeric aligned are left and right flank trimmed so that in subsequent processing these reads are treated as matching over their full length
+// Aligned reads marked as chimeric aligned are left and right flank trimmed so that in subsequent processing these reads are treated as matching over their full length
+const int cChimericSeqBuffLen = 0x07fffff;  // use this sized buffer when reporting the chimeric sequences
+
 int
-CAligner::TrimChimeric(void) // Autotrim back aligned read flanks until there are at least MinFlankExacts exactly matching bases in the flanks
+CAligner::TrimChimeric(char *pszChimericSeqs)	// trim back aligned chimeric read flanks with option to write chimeric sequences to file pszChimericSeqs 
 {
+int hChimerics;
+char *pszLineBuff;
+int BuffIdx;
 tsReadHit *pReadHit;
 tsReadHit *pCurReadHit;
 tsReadHit *pNxtReadHit;
@@ -1808,6 +1825,35 @@ UINT32 NumReads;
 
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Starting chimeric flank sequence trim processing...");
+hChimerics = -1;
+pszLineBuff = NULL;
+if(pszChimericSeqs != NULL && pszChimericSeqs[0] != '\0')
+	{
+#ifdef _WIN32
+	hChimerics = open(pszChimericSeqs,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE) );
+#else
+	if((hChimerics = open(pszChimericSeqs,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+		if(ftruncate(hChimerics,0)!=0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate chimeric sequences file %s - %s",pszChimericSeqs,strerror(errno));
+			return(eBSFerrCreateFile);
+			}
+#endif
+
+	if(hChimerics < 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate chimeric sequences file '%s'",pszChimericSeqs);
+		return(eBSFerrCreateFile);
+		}	
+	if((pszLineBuff = new char [cChimericSeqBuffLen]) == NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to allocate memory %d for chimeric sequences buffering",cChimericSeqBuffLen);
+		return(eBSFerrMem);
+		}	
+	BuffIdx = sprintf(pszLineBuff,"\"Read Descr\",\"5'TrimLen\",\"5'TrimSeq\",\"AlignLen\",\"AlignSeq\",\"3'TrimLen\",\"3'TrimSeq\"\n");
+	CUtility::SafeWrite(hChimerics,pszLineBuff,BuffIdx);
+	BuffIdx = 0;
+	}
 NumTrimmed = 0;
 NumLeftTrimmed = 0;
 NumRightTrimmed = 0;
@@ -1857,13 +1903,46 @@ while(pCurReadHit != NULL) {
 		NumLeftRightTrimmed += 1;
 
 	MatchLen = pCurReadHit->ReadLen - (TrimLeft + TrimRight);
+	pSeq = &pCurReadHit->Read[pCurReadHit->DescrLen+1];
+	pChimericSeq = pSeq + TrimLeft;
 	if(TrimLeft > 0)
 		{
-		pSeq = &pCurReadHit->Read[pCurReadHit->DescrLen+1];
-		pChimericSeq = pSeq + TrimLeft;
+		if(hChimerics != -1)
+			{
+			BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\"%s\",%d,\"",(char *)pCurReadHit->Read,TrimLeft);
+			CSeqTrans::MapSeq2Ascii(pSeq,TrimLeft,&pszLineBuff[BuffIdx]);
+			BuffIdx += TrimLeft;
+			BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\",%d,\"",MatchLen);
+			CSeqTrans::MapSeq2Ascii(pChimericSeq,MatchLen,&pszLineBuff[BuffIdx]);
+			BuffIdx += MatchLen;
+			BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\",%d,\"",TrimRight);
+			if(TrimRight)
+				CSeqTrans::MapSeq2Ascii(&pChimericSeq[MatchLen],TrimRight,&pszLineBuff[BuffIdx]);
+			BuffIdx += TrimRight;
+			BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\"\n");
+			}
 		for(SeqIdx = 0; SeqIdx < MatchLen; SeqIdx++)
 			*pSeq++ = *pChimericSeq++;
 		}
+	else
+		if(hChimerics != -1)
+			{
+			BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\"%s\",0,\"\",%d,\"",(char *)pCurReadHit->Read,MatchLen);
+			CSeqTrans::MapSeq2Ascii(pSeq,MatchLen,&pszLineBuff[BuffIdx]);
+			BuffIdx += MatchLen;
+			BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\",%d,\"",TrimRight);
+			if(TrimRight)
+				CSeqTrans::MapSeq2Ascii(&pSeq[MatchLen],TrimRight,&pszLineBuff[BuffIdx]);
+			BuffIdx += TrimRight;
+			BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\"\n");
+			}
+
+	if(hChimerics != -1 && BuffIdx > (cChimericSeqBuffLen / 2))
+		{
+		CUtility::SafeWrite(hChimerics,pszLineBuff,BuffIdx);
+		BuffIdx = 0;
+		}
+
 	pCurReadHit->ReadLen = MatchLen;
 	pCurReadHit->HitLoci.Hit.Seg[0].MatchLen = MatchLen;
 	pCurReadHit->HitLoci.Hit.Seg[0].TrimLeft = 0;
@@ -1880,7 +1959,21 @@ while(pCurReadHit != NULL) {
 		pCurReadHit->PrevSizeOf = CopyLen;
 	NumTrimmed += 1;
 	}
+if(hChimerics != -1)
+	{
+	if(BuffIdx)
+		CUtility::SafeWrite(hChimerics,pszLineBuff,BuffIdx);
 
+#ifdef _WIN32
+	_commit(hChimerics);
+#else
+	fsync(hChimerics);
+#endif
+	close(hChimerics);
+	hChimerics = -1;
+	}
+if(pszLineBuff != NULL)
+	delete pszLineBuff;
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed trimming %u chimeric flanks, %u 5', %u 3', %u both 5' and 3' flanks trimmed",NumTrimmed,NumLeftTrimmed,NumRightTrimmed, NumLeftRightTrimmed);
 return(eBSFSuccess);
 }

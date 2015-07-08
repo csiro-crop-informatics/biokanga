@@ -740,10 +740,20 @@ UINT32 IdxT;							// current index into m_Targ[]
 bool bMatch;
 bool bMatchNxt3;
 UINT32 StartIdxT;
-UINT32 EndIdxT;
+UINT32 NumCellsSkipped;
+UINT32 NumCellsChecked;
+UINT32 NumCellsProcessed;
+UINT32 NxtMinIdxT;
+UINT32 CurMinIdxT;
+UINT32 CurMaxIdxT;
+UINT32 LastCheckedIdxT;
 
 UINT32 TargRelLen;
 UINT32 ProbeRelLen;
+
+UINT64 trbsreq;
+size_t memreq;
+void *pAllocd;
 
 int DiagScore;							// putative diagonal score
 int DiagPeakScore;
@@ -759,6 +769,12 @@ etSeqBase *pTarg;
 etSeqBase TargBase;
 int LeftInDelLen;
 int DownInDelLen;
+
+int ProbeCovLen;
+int TargCovLen;
+int CovRatio;
+int ScoreRatio;
+int MeanMatchLen;
 
 tsSSWCell *pCell;
 tsSSWCell *pPrevCell;
@@ -807,11 +823,13 @@ memset(m_pAllocdCells,0,TargRelLen * sizeof(tsSSWCell));
 
 memset(&LeftCell,0,sizeof(tsSSWCell));
 memset(&DiagCell,0,sizeof(tsSSWCell));
-UINT32 NumCellsSkipped = 0;
-UINT32 NumCellsChecked = 0;
-UINT32 LastCheckedIdxT;
-LastCheckedIdxT = TargRelLen;
+
+NumCellsSkipped = 0;
+NumCellsChecked = 0;
+NumCellsProcessed = 0;
+LastCheckedIdxT = m_MaxInitiatePathOfs + 10;
 m_UsedTracebacks = 0;
+NxtMinIdxT = 0;
 pTraceback = m_pAllocdTracebacks;						// NOTE: NULL if tracebacks not required
 pProbe = &m_pProbe[m_ProbeStartRelOfs];
 for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
@@ -830,9 +848,6 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 		ReduceTracebacks(cTrBkFlgRetain,cTrBkFlgRetain);
 		if((m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen))
 			{
-			UINT64 trbsreq;
-			size_t memreq;
-			void *pAllocd;
 			trbsreq = (m_AllocdTracebacks + (TargRelLen * 500));
 			memreq = (size_t)trbsreq * sizeof(tsSSWTraceback);
 
@@ -858,22 +873,24 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 
 	ProbeBase = *pProbe++ & ~cRptMskFlg;
 	StartIdxT = 0;
-	EndIdxT = min(TargRelLen,LastCheckedIdxT+2);
-	pTarg = &m_pTarg[m_TargStartRelOfs];
-	pCell = m_pAllocdCells;
-	for(IdxT = 0; IdxT < EndIdxT; IdxT++,pCell++)
+	CurMaxIdxT = min(TargRelLen,LastCheckedIdxT+2);
+	CurMinIdxT = NxtMinIdxT;
+	NxtMinIdxT = 0;
+	memset(&LeftCell, 0, sizeof(tsSSWCell));
+	memset(&DiagCell, 0, sizeof(tsSSWCell));
+	pCell = &m_pAllocdCells[CurMinIdxT];
+	pTarg = &m_pTarg[m_TargStartRelOfs + CurMinIdxT];
+	for(IdxT = CurMinIdxT; IdxT < CurMaxIdxT; IdxT++,pCell++)
 		{
+		if (pCell->StartPOfs != 0 && IdxP >(UINT32)m_MaxInitiatePathOfs && NxtMinIdxT == 0)	
+			NxtMinIdxT = IdxT - 1;
+
 		// if m_MaxOverlapStartOfs > 0 then only starting new paths if within that max offset
 		// and early terminate low confidence paths; these are paths of longer than 1Kbp with coverage outside of 15% and with mean length of matching subseqs of less than 3.0bp
-		if(m_MaxInitiatePathOfs && IdxT >= (UINT32)m_MaxInitiatePathOfs && IdxP >= (UINT32)m_MaxInitiatePathOfs)
+		if(m_MaxInitiatePathOfs && (IdxT >= (UINT32)m_MaxInitiatePathOfs && IdxP >= (UINT32)m_MaxInitiatePathOfs))
 			{
 			if(pCell->PeakScore > 0 && (pCell->NumGapsIns + pCell->NumGapsDel) > 10) // only check for path termination if a score and there are some InDel events in path
 				{
-				int ProbeCovLen;    
-				int TargCovLen;
-				int CovRatio;
-				int ScoreRatio;
-				int MeanMatchLen;
 				if((ProbeCovLen = (m_ProbeStartRelOfs + IdxP) - pCell->StartPOfs) > 1000 && (TargCovLen = (m_TargStartRelOfs + IdxT) - pCell->StartTOfs) > 1000)
 					{
 					ScoreRatio=(pCell->CurScore * 1000)/pCell->PeakScore; // expecting the score to not have dropped by more than 0.9 from the peak
@@ -898,9 +915,10 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 			NumCellsChecked += 1;
 			}
 
+		NumCellsProcessed += 1;
 		LastCheckedIdxT = IdxT;
-
 		TargBase = *pTarg++ & ~cRptMskFlg;
+
 		bMatch = ProbeBase == TargBase;
 		bMatchNxt3 = (IdxP < ProbeRelLen-4) && (IdxT < TargRelLen - 4) && 
 					((*pProbe & ~cRptMskFlg) == (*pTarg & ~cRptMskFlg) && 
@@ -939,7 +957,7 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 				memset(&LeftCell,0,sizeof(tsSSWCell));
 			memset(pCell,0,sizeof(tsSSWCell));
 			memset(&DiagCell,0,sizeof(tsSSWCell));
-			if(bMatch && bMatchNxt3)
+			if(IdxT <= (UINT32)m_MaxInitiatePathOfs && IdxP <= (UINT32)m_MaxInitiatePathOfs && bMatch && bMatchNxt3)  // requiring seed of at least 4bp before starting path
 				{
 				pCell->StartPOfs = m_ProbeStartRelOfs + IdxP + 1;
 				pCell->StartTOfs = m_TargStartRelOfs + IdxT + 1;
@@ -1022,7 +1040,7 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 			}
 		if(DownScore > DownPeakScore)
 			DownPeakScore = DownScore;
-		
+
 		// if no score was > 0 then reset cell, path can't be extended
 		if(DiagScore <= 0 && DownScore <= 0 && LeftScore <= 0)
 			{
@@ -1033,7 +1051,9 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 		// select highest score into cell together with traceback and gap opened flag..
 		if(DiagScore >= DownScore && DiagScore >= LeftScore) // if diag score at least equal highest then preference matches
 			{
-			if(DiagCell.StartPOfs == 0 && !(bMatch && bMatchNxt3))           // if starting a new path then check if this path starts with at least 4 exacts
+			if(DiagCell.StartPOfs == 0	&&				// if starting a new path then check
+					(IdxP > (UINT32)m_MaxInitiatePathOfs || IdxT > (UINT32)m_MaxInitiatePathOfs ||	// can only start paths if within m_MaxInitiatePathOfs and
+					!(bMatch && bMatchNxt3)))            // path starts with at least 4 exacts
 				{
 				memset(pCell,0,sizeof(tsSSWCell));	
 				continue;		
@@ -1125,7 +1145,8 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 					pCell->NumGapsIns += 1;
 				pCell->CurExactLen = 0; 
 				}
- 
+
+
 		if(pCell->NumExacts >= (UINT32)m_MinNumExactMatches && pCell->CurExactLen >= 4) // only interested in putative paths which are terminating with at least 4 exact matches at terminal end - paths needed at least 4 exacts to start
 			{
 			if(pCell->PeakScore > m_PeakMatchesCell.PeakScore)
@@ -2321,8 +2342,8 @@ if(m_pAllWinScores == NULL)
 		}
 	}
 m_NumWinScores = 0;
-if(MaxArtefactDev > 25)			// clamp to be in range 1 to 25
-	MaxArtefactDev = 25;
+if(MaxArtefactDev > 50)			// clamp to be in range 1 to 50
+	MaxArtefactDev = 50;
 
 // calculate a score over the path using path classification scoring
 // then check for localised significant deviations from the overall rate along the target

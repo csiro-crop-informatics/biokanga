@@ -145,7 +145,7 @@ struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",	
 
 struct arg_int *minconcscore = arg_int0("s","minconcscore","<int>",			     "error corrected sequences trimmed until mean 50bp concensus score is at least this threshold (default 3, range 0 to 9)");
 struct arg_int *minerrcorrectlen = arg_int0("S","minerrcorrectlen","<int>",		 "error corrected and trimmed sequences must be at least this minimum length (default 5000, range 500 to 20000)");
-struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 1Kbp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 25)");
+struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 1Kbp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 70)");
 
 struct arg_file *hiconffiles = arg_filen("I","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be used in error correcton of PacBio reads");
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be error corrected");
@@ -2519,6 +2519,8 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			AcquireSerialise();
 			pThreadPar->pSW = new CSSW;
 			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
+			pThreadPar->pSW->SetCPScores(m_SWMatchScore, m_SWMismatchPenalty, m_SWGapOpenPenalty, m_SWGapExtnPenalty);
+			pThreadPar->pSW->SetMaxInitiatePathOfs(cDfltMaxOverlapFloat);
 			pThreadPar->pSW->PreAllocMaxTargLen(100000,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 			ReleaseSerialise();
 			}

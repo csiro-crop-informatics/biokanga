@@ -76,8 +76,8 @@ tsSubProcess SubProcesses[] = {
 	{"pbsim","Simulate Reads", "Simulate PacBio reads (NOTE: using integrated PBSIM module)", ProcPBSim },
 	{"filter","Filter Reads", "Filter PacBio reads for retained hairpins", ProcFilter },
 	{"ecreads","Error Correct Reads", "Error correct PacBio reads", ProcErrCorrect },
-	{"assemb","Assemb Reads","Assemble error corrected PacBio reads into contigs",ProcAssemb},
-	{"ecassemb","Error Correct Contigs","Error correct assembled PacBio contigs",ProcECContigs}
+	{"contigs","Assemb Contigs","Assemble error corrected PacBio reads into contigs",ProcAssemb},
+	{"eccontigs","Error Correct Contigs","Error correct assembled PacBio contigs",ProcECContigs}
 	};
 const int cNumSubProcesses = (sizeof(SubProcesses) / sizeof(tsSubProcess));
 
