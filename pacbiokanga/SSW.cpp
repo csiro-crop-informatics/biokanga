@@ -468,7 +468,7 @@ m_AllocdTracebacksSize = 0;
 
 if(MaxOverlapLen > 0)
 	{
-	m_AllocdTracebacks = (UINT64)MaxOverlapLen * 500;		
+	m_AllocdTracebacks = (UINT64)MaxOverlapLen * 4000;		
 	m_AllocdTracebacksSize = sizeof(tsSSWTraceback) * m_AllocdTracebacks;
 #ifdef _WIN32
 	m_pAllocdTracebacks = (tsSSWTraceback *) malloc(m_AllocdTracebacksSize);
@@ -848,7 +848,7 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 		ReduceTracebacks(cTrBkFlgRetain,cTrBkFlgRetain);
 		if((m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen))
 			{
-			trbsreq = (m_AllocdTracebacks + (TargRelLen * 500));
+			trbsreq = (m_AllocdTracebacks + (TargRelLen * 4000));
 			memreq = (size_t)trbsreq * sizeof(tsSSWTraceback);
 
 #ifdef _WIN32

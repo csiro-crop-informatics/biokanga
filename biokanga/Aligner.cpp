@@ -1804,9 +1804,13 @@ int
 CAligner::TrimChimeric(char *pszChimericSeqs)	// trim back aligned chimeric read flanks with option to write chimeric sequences to file pszChimericSeqs 
 {
 int hChimerics;
+char Strand;
+char szChromName[128];
+UINT32 Ofs;
+UINT32 PrevChromID;
+
 char *pszLineBuff;
 int BuffIdx;
-tsReadHit *pReadHit;
 tsReadHit *pCurReadHit;
 tsReadHit *pNxtReadHit;
 UINT32 TrimLeft;
@@ -1825,6 +1829,7 @@ UINT32 NumReads;
 
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Starting chimeric flank sequence trim processing...");
+PrevChromID = 0;
 hChimerics = -1;
 pszLineBuff = NULL;
 if(pszChimericSeqs != NULL && pszChimericSeqs[0] != '\0')
@@ -1850,7 +1855,7 @@ if(pszChimericSeqs != NULL && pszChimericSeqs[0] != '\0')
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to allocate memory %d for chimeric sequences buffering",cChimericSeqBuffLen);
 		return(eBSFerrMem);
 		}	
-	BuffIdx = sprintf(pszLineBuff,"\"Read Descr\",\"5'TrimLen\",\"5'TrimSeq\",\"AlignLen\",\"AlignSeq\",\"3'TrimLen\",\"3'TrimSeq\"\n");
+	BuffIdx = sprintf(pszLineBuff,"\"Chrom\",\"Loci\",\"Strand\",\"ReadDescr\",\"5'TrimLen\",\"5'TrimSeq\",\"AlignLen\",\"AlignSeq\",\"3'TrimLen\",\"3'TrimSeq\"\n");
 	CUtility::SafeWrite(hChimerics,pszLineBuff,BuffIdx);
 	BuffIdx = 0;
 	}
@@ -1858,7 +1863,6 @@ NumTrimmed = 0;
 NumLeftTrimmed = 0;
 NumRightTrimmed = 0;
 NumLeftRightTrimmed = 0;
-pReadHit = NULL;
 
 pCurReadHit = m_pReadHits;
 pTo = (UINT8 *)pCurReadHit;
@@ -1905,6 +1909,18 @@ while(pCurReadHit != NULL) {
 	MatchLen = pCurReadHit->ReadLen - (TrimLeft + TrimRight);
 	pSeq = &pCurReadHit->Read[pCurReadHit->DescrLen+1];
 	pChimericSeq = pSeq + TrimLeft;
+	
+	if(hChimerics != -1)
+		{
+		Strand = pCurReadHit->HitLoci.Hit.Seg[0].Strand;
+		Ofs = (UINT32)pCurReadHit->HitLoci.Hit.Seg[0].MatchLoci;
+		if(PrevChromID == 0 || pCurReadHit->HitLoci.Hit.Seg[0].ChromID != PrevChromID)
+			{
+			m_pSfxArray->GetIdentName(pCurReadHit->HitLoci.Hit.Seg[0].ChromID,sizeof(szChromName),szChromName);
+			PrevChromID = pCurReadHit->HitLoci.Hit.Seg[0].ChromID;
+			}
+		BuffIdx += sprintf(&pszLineBuff[BuffIdx],"\"%s\",%d,\"%c\",",szChromName,Ofs,Strand);
+		}
 	if(TrimLeft > 0)
 		{
 		if(hChimerics != -1)
@@ -1981,8 +1997,8 @@ return(eBSFSuccess);
 
 
 // PCR5PrimerCorrect
-// Intent is that this will be useful for aligning with tight substitution constrants whereby end PCR hexamer artefacts dominate the base substitution profile
-// Substutions in the first 5' KLen bases are progressively corrected, using the targeted sequence as template
+// Intent is that this will be useful for aligning with tight substitution constraints whereby end PCR hexamer artefacts dominate the base substitution profile
+// Substitutions in the first 5' KLen bases are progressively corrected, using the targeted sequence as template
 int 
 CAligner::PCR5PrimerCorrect(int MaxAllowedSubRate,	// after corrections overall sub rate for read must be no more than this 
 					int KLen) // progressively correct substitutions in first Klen 5' read bases - assumed to be PCR random primer artefacts - until overall read meets MaxAllowedSubRate

@@ -2615,12 +2615,22 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 #endif
 			ProvSWchecked += 1;
-			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= MinOverlapLen)
+			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= 100)
 				{
-				ProvOverlapping += 1;
 				PeakMatchesCell = *pPeakMatchesCell;
 				ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;
 				TargAlignLength = PeakMatchesCell.EndTOfs - PeakMatchesCell.StartTOfs + 1;
+				}
+			else
+				{
+				memset(&PeakMatchesCell,0,sizeof(PeakMatchesCell));
+				ProbeAlignLength = 0;
+				TargAlignLength = 0;
+				}
+
+			if(((1+ ProbeAlignLength + TargAlignLength) / 2) >= MinOverlapLen)
+				{
+				ProvOverlapping += 1;
 
 				// characterise the overlapped target
 				// eOLCOverlapping if probe accepted as overlapping, either 5' or 3'
