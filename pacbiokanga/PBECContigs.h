@@ -36,8 +36,6 @@ const int cMaxMaxArtefactDev = 25;			// user can specify up to this maximum
 const int cMaxPacBioErrCorLen = 250000;		// allowing for error corrected read sequences of up to this length
 const int cMaxPacBioMAFLen = (cMaxPacBioErrCorLen * 100);	// allowing for multialignment format buffering of up to this length
 
-const int cMaxProbeSWs = 30;				// explore with SW at most this many probe alignments against target sequences
-
 typedef enum TAG_ePBPMode {								// processing mode
 	ePBPMErrCorrect,									// error correct
 	ePBPMConsensus,										// generate consensus from previously generated multiple alignments
@@ -47,32 +45,13 @@ typedef enum TAG_ePBPMode {								// processing mode
 
 #pragma pack(1)
 
-typedef struct TAG_sAntisenseKMerOfs {					// no KMer in antisense strand if both MinOfs and MaxOfs are 0
+typedef struct TAG_sPBECCKMerOfs {					// no KMer in antisense strand if both MinOfs and MaxOfs are 0
 	UINT32 MinOfs;										// at least one antisense KMer is located between this minimum and
 	UINT32 MaxOfs;                                      // and this maximum offset (sub 1) in the antisense sequence
-} tsAntisenseKMerOfs;
-
-const int cMaxClusters = 10;	// at most this many clusters will be processed for any probe core hits on to a target
-typedef	struct TAG_sCluster {
-		UINT32 TargNodeID;		// cluster is with hits to this target
-		UINT32 TargSeqLen;		// target is this length
-		UINT32 ClustProbeOfs;	// first hit in cluster starts at this probe offset
-		UINT32 ClustTargOfs;    // first hit in cluster starts at this target offset
-		UINT32 ClustLen;		// cluster length
-		UINT32 NumClustHits;	// number of consistency checked aligned hits accepted within this cluster
-		UINT32 SumClustHitLens; // sum of all core hit lengths in this cluster  
-		double ClustScore;		// score for this cluster
-		} tsCluster; 
-
-typedef struct TAG_sCoreHitsClusters {
-	UINT32 ProbeID;			// clusters of hits between this probe
-	UINT32 ProbeSeqLen;     // probe is of this length bp
-	int NumClusters;        // number of clusters in Cluster[]
-	tsCluster Clusters[cMaxClusters]; 
-} tsCoreHitsClusters;
+} tsPBECCKMerOfs;
 
 // seed core hits 
-typedef struct TAG_sCoreHit {
+typedef struct TAG_sPBECCCoreHit {
 	UINT32 ProbeNodeID;				// core hit was from this probe  node 
 	UINT32 TargNodeID;				// hit was onto this target  node
 	UINT32 ProbeOfs;                // hit was from this probe offset
@@ -82,34 +61,22 @@ typedef struct TAG_sCoreHit {
 	UINT8 flgRevCpl:1;				// 1 if core sequence was revcpl'd before matching
 	UINT8 flgMulti:1;				// 1 if core sequence was target multiloci and this instance to not be further processed
 	UINT8 flgClustered:1;			// 1 if core hit identified as part of a cluster of hits
-	} tsCoreHit;
+	} tsPBECCCoreHit;
 
-// identified overlap between probe and target sequence
-typedef struct TAG_sPBOverlaps {
-	UINT8 flgAntisense:1;           // probe sequence was reverse complemented
-	UINT32 ProbeEntryID;            // probe sequence suffix array identifier
-	UINT32 TargEntryID;				// overlap from probe was onto this target suffix array identifier
-	UINT32 ProbeStartOfs;           // overlap starts at this probe offset
-	UINT32 TargStartOfs;            // overlap starts at this target offset
-	UINT32 ProbeOverlapLen;         // probe overlap is of this length
-	UINT32 TargOverlapLen;			// target overlap is of this length
-} sPBOverlaps;
-
-typedef struct TAG_sPBScaffNode {
+typedef struct TAG_sPBECCScaffNode {
 	UINT32 NodeID;					// uniquely identifies this node
 	UINT32 VertexID;				// assembly graph vertex identifier
 	UINT32 EntryID;					// suffix array entry identifier for indexed sequence
 	UINT32 RefSeqID;				// consensus class identifier for this sequence
 	UINT32 SeqLen;					// length in bp of this scaffolding node sequence
-	UINT32 flgCurProc:1;			// sequence is currently being processed
-	UINT32 flgContained:1;			// sequence is fully contained within at least one other sequence
-	UINT32 flgContains:1;			// sequence fully contains at least one other sequence
-	UINT32 flgUnderlength:1;        // sequence is under length
-	UINT32 flgHCseq:1;				// loaded as a high confidence (non-PacBio) sequence
-	
-} tsPBScaffNode;
+	UINT8 flgCurProc:1;			// sequence is currently being processed
+	UINT8 flgContained:1;			// sequence is fully contained within at least one other sequence
+	UINT8 flgContains:1;			// sequence fully contains at least one other sequence
+	UINT8 flgUnderlength:1;        // sequence is under length
+	UINT8 flgHCseq:1;				// loaded as a high confidence (non-PacBio) sequence
+} tsPBECCScaffNode;
 
-typedef struct TAG_sPBCoreHitCnts {
+typedef struct TAG_sPBECCCoreHitCnts {
 	UINT32 TargNodeID;				// node identifier for hit target sequence	
 	UINT32	STargStartOfs;			// lowest target offset for any sense hit from probe
 	UINT32	STargEndOfs;			// highest target offset for any sense hit from probe
@@ -121,7 +88,7 @@ typedef struct TAG_sPBCoreHitCnts {
 	UINT32	AProbeEndOfs;			// highest probe offset for any antisense hit onto target
 	UINT32 NumSHits;				// number of hits onto target sequence from sense probe
 	UINT32 NumAHits;				// number of hits onto target sequence from antisense probe
-} sPBCoreHitCnts;
+} sPBECCCoreHitCnts;
 
 typedef struct TAG_sThreadPBECContigs {
 	int ThreadIdx;					// uniquely identifies this thread
@@ -151,20 +118,17 @@ typedef struct TAG_sThreadPBECContigs {
 	UINT32 MinPBSeqLen;				// only process PacBio sequences which are at least this length
 
 	UINT32 NumTargCoreHitCnts;		// current number of summary target core hit counts in TargCoreHitCnts
-	sPBCoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts]; // top targets by core hit counts
+	sPBECCCoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts]; // top targets by core hit counts
 	UINT32 NumCoreHits;				// currently this many core hits in m_pCoreHits
 	UINT32 AllocdCoreHits;				// m_pCoreHits currently allocated to hold at most this many core hits
 	size_t AllocdCoreHitsSize;		// m_pCoreHits current allocation size
-	tsCoreHit *pCoreHits;			// allocated to hold all core hits	
+	tsPBECCCoreHit *pCoreHits;			// allocated to hold all core hits	
 
 	UINT32 AllocdProbeSeqSize;		// current allocation size for buffered probe sequence in pProbeSeq 	
 	etSeqBase *pProbeSeq;			// allocated to hold the current probe sequence
 
 	UINT32 AllocdTargSeqSize;		// current allocation size for buffered target sequence in pTargSeq 	
 	etSeqBase *pTargSeq;			// allocated to hold the current target sequence
-
-	UINT32  AllocdAntisenseKmersSize;  // current allocation size for antisense KMer offset ranges in pAntisenseKmers
-	tsAntisenseKMerOfs *pAntisenseKmers;	// used to hold antisense Kmer offset ranges when filtering
 
 	UINT32 AlignErrMem;				// number of times alignments failed because of memory allocation errors
 	UINT32 AlignExcessLen;			// number of times alignments failed because length of probe * target was excessive
@@ -231,7 +195,7 @@ class CPBECContigs
 	UINT32 m_MaxTargSeqLen;						// max length of any targeted contig sequence to be error corrected
 	UINT32 m_NumPBScaffNodes;					// m_pPBScaffNodes currently holds many contig nodes to be error corrected
 	UINT32 m_AllocdPBScaffNodes;				// m_pPBScaffNodes allocated to hold this many contig nodes
-	tsPBScaffNode *m_pPBScaffNodes;				// allocated to hold contig nodes
+	tsPBECCScaffNode *m_pPBScaffNodes;				// allocated to hold contig nodes
 	UINT32 *m_pMapEntryID2NodeIDs;				// used to map from suffix array entry identifiers to the corresponding contig node identifier
 	CSfxArrayV3 *m_pSfxArray;					// contigs to error correct are indexed in this suffix array
 

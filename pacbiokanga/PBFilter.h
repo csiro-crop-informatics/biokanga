@@ -26,11 +26,22 @@ const int cDfltMinReadLen = 5000;					// default is to only report reads of at l
 
 const int cDfltMaxPacBioSeqLen = 0x1ffff;			// default is to allow for PacBio reads of <= 128Kbp
 const int cAllocOutBuffSize = 0x0fffff;				// m_pOutBuff allocate output buffer size 
-
 const int cMaxInfiles = 50;							// can accept at most this many input filespecs
 
+const int cMinContamSeqLen    = 4000;			    // minimum contaminate sequence length accepted - contaminates normally expected to be clone vectors in the 4-8Kbp size range  
+const int cMinContamOvlpLen   = 1000;			    // requiring contaminants to end overlap by at least this many bp or else be fully contained or containing  
+const int cMaxSeedCoreDepth = 1000;					// explore matching cores to this max depth
+const int cDeltaCoreOfs = 10;						// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
+const int cCoreSeqLen = 15;							// putative overlaps are explored if there are cores of at least this length in any putative overlap
+const int cMinNumCores = 20;						// and if the putative overlap contains at least this many cores
+const int cMinPropBinned = 90;						// and if the putative overlap contains at least this proportion (1..100) of 250bp bins binned cores
+const int cMaxAcceptHitsPerSeedCore = 30;			// limit accepted hits per seed core to no more this many
+const int cDfltMaxProbeSeqLen = cDfltMaxPacBioSeqLen;	// initially allocate for this length probe sequence to be aligned, will be realloc'd as may be required
+
+
 typedef enum TAG_ePBPMode {
-	ePBPMFilter										// filter and optionally trim PacBio reads
+	ePBPMFilter,										// filter and optionally trim PacBio reads
+	ePBPMContam                                         // also remove or trim reads containing contaminate sequences
 	} etPBPMode;
 
 #pragma pack(1)
@@ -47,9 +58,8 @@ typedef struct TAG_sThreadPBFilter {
 #endif
 	int Rslt;						// processing result
 
+	UINT32 SWAlignInstance;			// if contaminate filtering then will be set to the instance of SWAlign to use when aligning to the contaminate sequences
 	CSSW *pSW;						// Smith-Waterman class
-	UINT32 AllocdTargSeqSize;		// current allocation size for buffered target sequence in pTargSeq 	
-	etSeqBase *pTargSeq;			// allocated to hold the current probe sequence
 
 	UINT32 AlignErrMem;				// number of times alignments failed because of memory allocation errors
 	UINT32 AlignExcessLen;			// number of times alignments failed because length of probe * target was excessive
@@ -79,6 +89,11 @@ class CPBFilter
 	int m_AllocOutBuffSize;					// m_pOutBuff allocated to hold at most this many chars
 	int m_OutBuffIdx;						// current number of chars in m_pOutbuff
 
+	char m_szContamFile[_MAX_PATH];			// name of file to load contaminate sequences from
+	int m_ContamARate;						// PacBio expected accuracy event rate, used when contaminate processing
+	int m_ContamOvlpLen;					// minimum contaminate overlap length to check for
+	CSWAlign *m_pSWAlign;					// used when aligning contaminate sequences
+
 	int m_NumThreads;						// maximum number of worker threads to use
 	int m_TotProcessed;						// total reads processed
 	int	m_TotAccepted;						// after filtering accepted this number of reads
@@ -88,7 +103,6 @@ class CPBFilter
 
 	void Init(void);							// initialise state to that immediately following construction
 	void Reset(void);							// reset state
-	int LoadTargetSeqs(char *pszTargFile);		// loading sequences form this file 
 
 	int ProcessFiltering(int MaxSeqLen,			// max length sequence expected
 							int NumOvlpThreads);	// filtering using at most this many threads
@@ -127,19 +141,18 @@ public:
 	int
 	Process(etPBPMode PMode,	// processing mode
 		int MinSMRTBellExacts,		// putative SMRTBell adaptors must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adaptors  
+		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
 		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
-		int MinReadLen,				// read sequences must be at least this length after any end timming
+		int MinReadLen,				// read sequences must be at least this length after any end trimming
+		int ContamARate,			// PacBio expected accuracy event rate, used when contaminate processing
+		int ContamOvlpLen,			// minimum contaminate overlap length to check for
+		char *pszContamFile,		// name of file containing contaminate sequences
 		int NumInputFiles,			// number of input files
 		char *pszInputFiles[],		// names (wildcards allowed) of input files containing reads to be filtered
 		char *pszOutFile,			// name of file in which to write filter accepted and trimmed sequences
 		int NumThreads);			// maximum number of worker threads to use
-
-	int
-	GenTargIndex(UINT32 MinScaffoldLen,	// individual indexed scaffold sequences must be at least this length
-				 char *pszTargFile);	// load sequences from this file
 
 };
 

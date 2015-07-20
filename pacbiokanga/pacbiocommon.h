@@ -31,7 +31,7 @@ const int cQualCoreDelta = (cQualCoreKMerLen * 2) + 1;	 // looking for matching 
 const int cQualCoreThres = 25;							 // require at least this many kmers to be shared between probe and target before accepting core
 const int cQualCoreHomopolymer = 80;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough
 
-const int cDfltBinClusterSize = 250;					// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
+const int cDfltBinClusterSize = 100;					// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
 const int cDfltMinPropBinned = 70;						// must be at least this proportion of bins with at least one core hit over putative overlap length 
 const int cDfltScaffMinPropBinned = 90;					// when scaffolding then must be at least this proportion of bins with at least one core hit over putative overlap length 
 

@@ -1320,7 +1320,7 @@ int Idx;
 UINT32 NumTargSeqs;
 UINT32 CurNodeID;
 UINT32 MaxSeqLen;
-tsPBScaffNode *pCurPBScaffNode;
+tsPBAScaffNode *pCurPBScaffNode;
 
 Reset(false);
 CreateMutexes();
@@ -1402,13 +1402,13 @@ if(NumTargSeqs < 1)
 	return(eBSFerrNoEntries);
 	}
 
-if((m_pPBScaffNodes = new tsPBScaffNode [NumTargSeqs + 1]) == NULL)
+if((m_pPBScaffNodes = new tsPBAScaffNode [NumTargSeqs + 1]) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d scaffold nodes",NumTargSeqs);
 	Reset(false);
 	return(eBSFerrMem);
 	}
-memset(m_pPBScaffNodes,0,sizeof(tsPBScaffNode) * (NumTargSeqs+1));
+memset(m_pPBScaffNodes,0,sizeof(tsPBAScaffNode) * (NumTargSeqs+1));
 m_AllocdPBScaffNodes = NumTargSeqs;
 if((m_pMapEntryID2NodeIDs = new UINT32 [NumTargSeqs + 1]) == NULL)
 	{
@@ -1458,7 +1458,7 @@ if(m_NumPBScaffNodes > 1)
 	{
 	// sort scaffold nodes by sequence length descending
 	m_mtqsort.SetMaxThreads(NumThreads);
-	m_mtqsort.qsort(m_pPBScaffNodes,m_NumPBScaffNodes,sizeof(tsPBScaffNode),SortLenDescending);
+	m_mtqsort.qsort(m_pPBScaffNodes,m_NumPBScaffNodes,sizeof(tsPBAScaffNode),SortLenDescending);
 	}
 
 pCurPBScaffNode = m_pPBScaffNodes;
@@ -1525,8 +1525,8 @@ return(m_pMapEntryID2NodeIDs[EntryID-1]);
 int
 CPBAssemb::SortLenDescending(const void *arg1, const void *arg2)
 {
-tsPBScaffNode *pEl1 = (tsPBScaffNode *)arg1;
-tsPBScaffNode *pEl2 = (tsPBScaffNode *)arg2;
+tsPBAScaffNode *pEl1 = (tsPBAScaffNode *)arg1;
+tsPBAScaffNode *pEl2 = (tsPBAScaffNode *)arg2;
 
 if(pEl1->SeqLen < pEl2->SeqLen)
 	return(1);

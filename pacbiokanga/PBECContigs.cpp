@@ -1135,7 +1135,7 @@ CPBECContigs::Process(etPBPMode PMode,	// processing mode
 int Rslt = eBSFSuccess;
 UINT32 CurNodeID;
 UINT32 MaxSeqLen;
-tsPBScaffNode *pCurPBScaffNode;
+tsPBECCScaffNode *pCurPBScaffNode;
 UINT32 NumTargSeqs;
 UINT64 TotTargSeqLen;
 UINT32 MaxTargSeqLen;
@@ -1306,13 +1306,13 @@ if(MinSeedCoreLen <= cMaxKmerLen)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Initialised for over occurring K-mers");
 	}
 
-if((m_pPBScaffNodes = new tsPBScaffNode [NumTargSeqs + 1]) == NULL)
+if((m_pPBScaffNodes = new tsPBECCScaffNode [NumTargSeqs + 1]) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d nodes",NumTargSeqs);
 	Reset(false);
 	return(eBSFerrMem);
 	}
-memset(m_pPBScaffNodes,0,sizeof(tsPBScaffNode) * (NumTargSeqs+1));
+memset(m_pPBScaffNodes,0,sizeof(tsPBECCScaffNode) * (NumTargSeqs+1));
 m_AllocdPBScaffNodes = NumTargSeqs;
 if((m_pMapEntryID2NodeIDs = new UINT32 [NumTargSeqs + 1]) == NULL)
 	{
@@ -1381,7 +1381,7 @@ if(m_NumPBScaffNodes > 1)
 	{
 	// sort scaffold nodes by sequence length descending
 	m_mtqsort.SetMaxThreads(NumThreads);
-	m_mtqsort.qsort(m_pPBScaffNodes,m_NumPBScaffNodes,sizeof(tsPBScaffNode),SortLenDescending);
+	m_mtqsort.qsort(m_pPBScaffNodes,m_NumPBScaffNodes,sizeof(tsPBECCScaffNode),SortLenDescending);
 	}
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences completed",NumTargSeqs);
 pCurPBScaffNode = m_pPBScaffNodes;
@@ -1522,16 +1522,16 @@ for(ThreadIdx = 0; ThreadIdx < NumECThreads; ThreadIdx++,pThreadPar++)
 	{
 	memset(pThreadPar,0,sizeof(tsThreadPBECContigs));
 	pThreadPar->AllocdCoreHits = cAllocdNumCoreHits;
-	pThreadPar->AllocdCoreHitsSize = cAllocdNumCoreHits * sizeof(tsCoreHit);
+	pThreadPar->AllocdCoreHitsSize = cAllocdNumCoreHits * sizeof(tsPBECCCoreHit);
 #ifdef _WIN32
-	pThreadPar->pCoreHits = (tsCoreHit *)malloc(pThreadPar->AllocdCoreHitsSize);	
+	pThreadPar->pCoreHits = (tsPBECCCoreHit *)malloc(pThreadPar->AllocdCoreHitsSize);	
 	if(pThreadPar->pCoreHits == NULL)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IdentifySequenceOverlaps: Core hits memory allocation of %llu bytes - %s",pThreadPar->AllocdCoreHitsSize,strerror(errno));
 		break;
 		}
 #else
-	if((pThreadPar->pCoreHits = (tsCoreHit *)mmap(NULL,pThreadPar->AllocdCoreHitsSize, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0)) == MAP_FAILED)
+	if((pThreadPar->pCoreHits = (tsPBECCCoreHit *)mmap(NULL,pThreadPar->AllocdCoreHitsSize, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0)) == MAP_FAILED)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IdentifySequenceOverlaps: Core hits memory allocation of %llu bytes - %s",pThreadPar->AllocdCoreHitsSize,strerror(errno));
 		break;
@@ -1573,9 +1573,6 @@ if(ThreadIdx != NumECThreads)	// any errors whilst allocating memory for core hi
 	do {
 		if(pThreadPar->pmtqsort != NULL)
 			delete pThreadPar->pmtqsort;
-
-		if(pThreadPar->pAntisenseKmers != NULL)
-			delete pThreadPar->pAntisenseKmers;
 
 		if(pThreadPar->pCoreHits != NULL)
 			{
@@ -1683,7 +1680,7 @@ UINT32  PropSBinsOverlap;
 UINT32  PropABinsOverlap;
 UINT32 TargLen;
 UINT32 CurTargCoreHitCnts;
-tsPBScaffNode *pTargNode;
+tsPBECCScaffNode *pTargNode;
 UINT32 ProbeAlignLength;
 UINT32 TargAlignLength;
 UINT32 TargSeqLen;
@@ -1698,11 +1695,11 @@ bool bProbeSense;
 UINT32 Idx;
 UINT32 CurSummaryHitCnts;
 UINT32 LowestSummaryHitCnts;
-sPBCoreHitCnts *pLowestSummaryHitCnts;
+sPBECCCoreHitCnts *pLowestSummaryHitCnts;
 UINT32 HitIdx;
 int NumHitsFlgMulti;
-tsCoreHit *pCoreHit;
-tsCoreHit *pFirstCoreHit;
+tsPBECCCoreHit *pCoreHit;
+tsPBECCCoreHit *pFirstCoreHit;
 UINT32 CurTargNodeID;
 UINT32 CurProbeNodeID;
 UINT32 CurProbeOfs;
@@ -1725,7 +1722,7 @@ UINT32 ProvContained;
 UINT32 ProvArtefact;
 UINT32 ProvSWchecked;
 UINT32 MinOverlapLen;
-sPBCoreHitCnts *pSummaryCnts;
+sPBECCCoreHitCnts *pSummaryCnts;
 UINT32 HiConfSeqID;
 UINT32 HiConfSeqFlags;
 UINT32 HiConfSeqLen;
@@ -1738,15 +1735,15 @@ NumInMultiAlignment = 0;
 for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 	{
 	pThreadPar->NumCoreHits = 0;
-	AcquireLock(false);
+	AcquireLock(true);
 	HiConfSeqFlags = m_pSeqStore->GetFlags(HiConfSeqID);
 	if(HiConfSeqFlags & cflgAlgnd)    // another thread already aligning or completed aligning this sequence? 
        	{
-		ReleaseLock(false);
+		ReleaseLock(true);
 		continue;
 		}
 	m_pSeqStore->SetFlags(HiConfSeqID,cflgAlgnd);
-	ReleaseLock(false);
+	ReleaseLock(true);
 	HiConfSeqLen = m_pSeqStore->GetLen(HiConfSeqID);
 
 	pThreadPar->bRevCpl = false;
@@ -1769,7 +1766,7 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 		if(pThreadPar->NumCoreHits > 1)
 			{
 			// sort core hits by ProbeNodeID.ProbeOfs.TargNodeID.TargOfs ascending so multiple hits onto a target from single probe offset can be detected
-			pThreadPar->pmtqsort->qsort(pThreadPar->pCoreHits,pThreadPar->NumCoreHits,sizeof(tsCoreHit),SortCoreHitsByProbeTargOfs);
+			pThreadPar->pmtqsort->qsort(pThreadPar->pCoreHits,pThreadPar->NumCoreHits,sizeof(tsPBECCCoreHit),SortCoreHitsByProbeTargOfs);
 			CurProbeNodeID = 0;
 			CurProbeOfs = 0;
 			CurTargNodeID = 0;
@@ -1796,7 +1793,7 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 				}
 
 			// resort core hits by TargNodeID.TargOfs.ProbeNodeID.ProbeOfs ascending
-			pThreadPar->pmtqsort->qsort(pThreadPar->pCoreHits,pThreadPar->NumCoreHits,sizeof(tsCoreHit),SortCoreHitsByTargProbeOfs);
+			pThreadPar->pmtqsort->qsort(pThreadPar->pCoreHits,pThreadPar->NumCoreHits,sizeof(tsPBECCCoreHit),SortCoreHitsByTargProbeOfs);
 			CurTargNodeID = 0;
 			CurTargOfs = 0;
 			pCoreHit = pThreadPar->pCoreHits;
@@ -1840,8 +1837,8 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 		// with large target sequences then can have many artefactual core hits
 		// process and mark these probable artefact hits by identifying the most spatially related cluster of hits; hits outside of
 		// the most spatially related cluster are marked as being artefactual 
-		tsCoreHit *pNxtCoreHit;
-		tsCoreHit *pMaxCoreHit;
+		tsPBECCCoreHit *pNxtCoreHit;
+		tsPBECCCoreHit *pMaxCoreHit;
 		UINT32 MaxWinSize;
 		UINT32 RelWinSize;
 		CurTargNodeID = 0;
@@ -2026,7 +2023,7 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 		}
  
 	if(pThreadPar->NumTargCoreHitCnts > 1)
-		pThreadPar->pmtqsort->qsort(pThreadPar->TargCoreHitCnts,pThreadPar->NumTargCoreHitCnts,sizeof(sPBCoreHitCnts),SortCoreHitsDescending);
+		pThreadPar->pmtqsort->qsort(pThreadPar->TargCoreHitCnts,pThreadPar->NumTargCoreHitCnts,sizeof(sPBECCCoreHitCnts),SortCoreHitsDescending);
 
 	NumInMultiAlignment = 0;
 	if(pThreadPar->NumTargCoreHitCnts > 0)
@@ -2233,7 +2230,7 @@ CPBECContigs::AddCoreHit(UINT32 ProbeNodeID,			// core hit was from this probe s
 			   UINT32 HitLen,					// hit was of this length
                tsThreadPBECContigs *pPars)			// thread specific
 {
-tsCoreHit *pCoreHit;
+tsPBECCCoreHit *pCoreHit;
 
 if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory to hold additional cores?
 	{
@@ -2242,7 +2239,7 @@ if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory t
 	size_t memreq;
 	void *pAllocd;
 	coresreq = (int)(((INT64)pPars->AllocdCoreHits * 125) / (INT64)100);
-	memreq = coresreq * sizeof(tsCoreHit);
+	memreq = coresreq * sizeof(tsPBECCCoreHit);
 
 #ifdef _WIN32
 		pAllocd = realloc(pPars->pCoreHits,memreq);
@@ -2258,7 +2255,7 @@ if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory t
 			return(eBSFerrMem);
 			}
 
-		pPars->pCoreHits = (tsCoreHit *)pAllocd;
+		pPars->pCoreHits = (tsPBECCCoreHit *)pAllocd;
 		pPars->AllocdCoreHitsSize = memreq;
 		pPars->AllocdCoreHits = coresreq; 
 		}
@@ -2272,7 +2269,7 @@ pCoreHit->ProbeOfs = ProbeOfs;
 pCoreHit->TargNodeID = TargNodeID;
 pCoreHit->HitLen = HitLen;
 pCoreHit->TargOfs = TargOfs;
-memset(&pCoreHit[1],0,sizeof(tsCoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
+memset(&pCoreHit[1],0,sizeof(tsPBECCCoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
 return(pPars->NumCoreHits);
 }
 
@@ -2310,7 +2307,7 @@ UINT32 LastCoreProbeOfs;
 int ChkOvrLapCoreStartIdx;
 
 etSeqBase *pCoreSeq;
-tsPBScaffNode *pTargNode;
+tsPBECCScaffNode *pTargNode;
 
 if(HiConfSeqID < 1 || HiConfSeqID > m_NumHiConfSeqs)
 	return(eBSFerrParams);
@@ -2387,8 +2384,8 @@ return(pPars->NumCoreHits);
 int
 CPBECContigs::SortLenDescending(const void *arg1, const void *arg2)
 {
-tsPBScaffNode *pEl1 = (tsPBScaffNode *)arg1;
-tsPBScaffNode *pEl2 = (tsPBScaffNode *)arg2;
+tsPBECCScaffNode *pEl1 = (tsPBECCScaffNode *)arg1;
+tsPBECCScaffNode *pEl2 = (tsPBECCScaffNode *)arg2;
 
 if(pEl1->SeqLen < pEl2->SeqLen)
 	return(1);
@@ -2407,8 +2404,8 @@ return(0);
 int
 CPBECContigs::SortCoreHitsByTargProbeOfs(const void *arg1, const void *arg2)
 {
-tsCoreHit *pEl1 = (tsCoreHit *)arg1;
-tsCoreHit *pEl2 = (tsCoreHit *)arg2;
+tsPBECCCoreHit *pEl1 = (tsPBECCCoreHit *)arg1;
+tsPBECCCoreHit *pEl2 = (tsPBECCCoreHit *)arg2;
 
 if(pEl1->ProbeNodeID < pEl2->ProbeNodeID)
 	return(-1);
@@ -2436,8 +2433,8 @@ return(0);
 int
 CPBECContigs::SortCoreHitsByProbeTargOfs(const void *arg1, const void *arg2)
 {
-tsCoreHit *pEl1 = (tsCoreHit *)arg1;
-tsCoreHit *pEl2 = (tsCoreHit *)arg2;
+tsPBECCCoreHit *pEl1 = (tsPBECCCoreHit *)arg1;
+tsPBECCCoreHit *pEl2 = (tsPBECCCoreHit *)arg2;
 
 if(pEl1->ProbeNodeID < pEl2->ProbeNodeID)
 	return(-1);
@@ -2465,8 +2462,8 @@ return(0);
 int
 CPBECContigs::SortCoreHitsDescending(const void *arg1, const void *arg2)
 {
-sPBCoreHitCnts *pEl1 = (sPBCoreHitCnts *)arg1;
-sPBCoreHitCnts *pEl2 = (sPBCoreHitCnts *)arg2;
+sPBECCCoreHitCnts *pEl1 = (sPBECCCoreHitCnts *)arg1;
+sPBECCCoreHitCnts *pEl2 = (sPBECCCoreHitCnts *)arg2;
 
 UINT32 El1NumHits;
 UINT32 El2NumHits;

@@ -95,8 +95,9 @@ PBFilter.o: PBFilter.cpp /usr/include/stdc-predef.h stdafx.h ../config.h \
  /usr/include/x86_64-linux-gnu/bits/wchar2.h \
  ../libbiokanga/././Contaminants.h ../libbiokanga/././ProcRawReads.h \
  ../libbiokanga/././GTFFile.h ../libbiokanga/././GFFFile.h \
- ../libbiokanga/././sqlite3.h pacbiokanga.h SQLiteSummaries.h \
- ../libbiokanga/bgzf.h SSW.h PBFilter.h pacbiocommon.h PacBioUtility.h
+ ../libbiokanga/././sqlite3.h pacbiokanga.h SQLiteSummaries.h SWAlign.h \
+ SSW.h ../libbiokanga/bgzf.h SeqStore.h PBFilter.h pacbiocommon.h \
+ PacBioUtility.h
 
 /usr/include/stdc-predef.h:
 
@@ -410,9 +411,13 @@ pacbiokanga.h:
 
 SQLiteSummaries.h:
 
-../libbiokanga/bgzf.h:
+SWAlign.h:
 
 SSW.h:
+
+../libbiokanga/bgzf.h:
+
+SeqStore.h:
 
 PBFilter.h:
 

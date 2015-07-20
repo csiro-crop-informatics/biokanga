@@ -73,10 +73,10 @@ typedef struct TAG_sGraphVertex {
 		UINT32 SeqLen;			//  sequence is this length
 		UINT32 RecurseDepth;		// recurse depth at which this vertex is processed - used to determine circular reference
 		tComponentID ComponentID; // vertex is a member of this disconnected component
-		UINT32 DegreeOut:8;		// number of outgoing edges from this vertex to any adjacent vertices, clamped to max cMaxEdges (currently 250)
-		UINT32 DegreeIn:8;		// number of incoming edges from any adjacent vertices, clamped to max cMaxEdges (currently 250)
-		UINT32 flgEmitted:1;	// sequence has been emitted as part of a fragment;	
-		UINT32 flgRmvEdges:1;   // sequence may contain SMRTbell hairpin as this read aligns at least twice to the same other read
+		UINT8 DegreeOut;		// number of outgoing edges from this vertex to any adjacent vertices, clamped to max cMaxEdges (currently 250)
+		UINT8 DegreeIn;			// number of incoming edges from any adjacent vertices, clamped to max cMaxEdges (currently 250)
+		UINT8 flgEmitted:1;		// sequence has been emitted as part of a fragment;	
+		UINT8 flgRmvEdges:1;	// sequence may contain SMRTbell hairpin as this read aligns at least twice to the same other read
 		UINT8 flgPathAccepted:1;	// this vertex has been accepted as part of a highest scoring path
 		tsRelSense RelSensePaths[2]; // 0: sense relative, 1: antisense relative
 	} tsGraphVertex;
@@ -95,18 +95,17 @@ typedef struct TAG_sGraphOutEdge {
 	UINT32 ToSeq3Ofs;		// overlap onto ToVertexID from FromVertexID ends at this base relative to ToVertexID 5' start
 	UINT32 Score;			// score associated with this overlap, higher scores represent higher confidence in the overlap
 	UINT32 ScoreAlignLen;	// scored for this alignment length: (1 + ProbeAlignLen + TargAlignLen) / 2
-	UINT32 OverlapClass:2;  // original classification (eOverlapClass)
-	UINT32 flgContains:1;	// set if FromVertexID completely contains ToVertexID
-	UINT32 flgContained:1;	// set if ToVertexID completely contains FromVertexID
-	UINT32 flgArtefact:1;	// set if FromVertexID overlap onto ToVertexID classified as being artefactual
+	UINT16 OverlapClass:2;  // original classification (eOverlapClass)
+	UINT16 flgContains:1;	// set if FromVertexID completely contains ToVertexID
+	UINT16 flgContained:1;	// set if ToVertexID completely contains FromVertexID
+	UINT16 flgArtefact:1;	// set if FromVertexID overlap onto ToVertexID classified as being artefactual
 
-	UINT32 flgsOvlSense:2;  // 0 - if From:sense overlapping To:sense, 1: if From:antisense overlapping To:sense, 2: if From:sense overlapping To:antisense, 3: if From:antisense overlapping To:antisense
+	UINT16 flgsOvlSense:2;  // 0 - if From:sense overlapping To:sense, 1: if From:antisense overlapping To:sense, 2: if From:sense overlapping To:antisense, 3: if From:antisense overlapping To:antisense
 
-	UINT32 flgRemove:1;		// set if this edge marked for removal
-	UINT32 flgTravFwd:1;	// set after this edge has been traversed from FromVertexID to ToVertexID
-	UINT32 flgTravRev:1;	// set after this edge has been traversed from ToVertexID to FromVertexID
-	UINT32 flgInfBackEdge:1;// set if this is an inferred back edge, if 0 then edge was result of actual alignment
-	UINT32 AuxFlgs:21;		// currently unassigned (ensure flags total to <= 32 so as to all fit within UINT32)
+	UINT16 flgRemove:1;		// set if this edge marked for removal
+	UINT16 flgTravFwd:1;	// set after this edge has been traversed from FromVertexID to ToVertexID
+	UINT16 flgTravRev:1;	// set after this edge has been traversed from ToVertexID to FromVertexID
+	UINT16 flgInfBackEdge:1;// set if this is an inferred back edge, if 0 then edge was result of actual alignment
 	} tsGraphOutEdge;
 
 typedef struct TAG_sOverlappedSeq {

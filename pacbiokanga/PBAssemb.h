@@ -33,13 +33,8 @@ typedef enum TAG_ePBPMode {
 
 #pragma pack(1)
 
-typedef struct TAG_sAntisenseKMerOfs {					// no KMer in antisense strand if both MinOfs and MaxOfs are 0
-	UINT32 MinOfs;										// at least one antisense KMer is located between this minimum and
-	UINT32 MaxOfs;                                      // and this maximum offset (sub 1) in the antisense sequence
-} tsAntisenseKMerOfs;
-
 // identified overlap between probe and target sequence
-typedef struct TAG_sPBOverlaps {
+typedef struct TAG_sPBAOverlaps {
 	UINT8 flgAntisense:1;           // probe sequence was reverse complemented
 	UINT32 ProbeEntryID;            // probe sequence suffix array identifier
 	UINT32 TargEntryID;				// overlap from probe was onto this target suffix array identifier
@@ -47,17 +42,17 @@ typedef struct TAG_sPBOverlaps {
 	UINT32 TargStartOfs;            // overlap starts at this target offset
 	UINT32 ProbeOverlapLen;         // probe overlap is of this length
 	UINT32 TargOverlapLen;			// target overlap is of this length
-} sPBOverlaps;
+} sPBAOverlaps;
 
-typedef struct TAG_sPBScaffNode {
+typedef struct TAG_sPBAScaffNode {
 	UINT32 NodeID;					// uniquely identifies this node
 	UINT32 VertexID;				// assembly graph vertex identifier
 	UINT32 EntryID;					// suffix array entry identifier for indexed sequence
 	UINT32 SeqLen;					// length in bp of this scaffolding node sequence
-	UINT32 flgCurProc:1;			// sequence is currently being processed
-	UINT32 flgContained:1;			// sequence is fully contained within another sequence
-	UINT32 flgUnderlength:1;        // sequence is under length
-} tsPBScaffNode;
+	UINT8 flgCurProc:1;				// sequence is currently being processed
+	UINT8 flgContained:1;			// sequence is fully contained within another sequence
+	UINT8 flgUnderlength:1;			// sequence is under length
+} tsPBAScaffNode;
 
 #pragma pack()
 
@@ -97,7 +92,7 @@ class CPBAssemb
 
 	UINT32 m_NumPBScaffNodes;					// m_pPBScaffNodes currently holds many scaffolding nodes
 	UINT32 m_AllocdPBScaffNodes;				// m_pPBScaffNodes allocated to hold this many scaffolding nodes
-	tsPBScaffNode *m_pPBScaffNodes;				// allocated to hold scaffolding nodes
+	tsPBAScaffNode *m_pPBScaffNodes;				// allocated to hold scaffolding nodes
 	UINT32 *m_pMapEntryID2NodeIDs;				// used to map from suffix array entry identifiers to the corresponding scaffolding node identifier
 
 	CSeqStore *m_pSeqStore;						// sequence store

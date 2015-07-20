@@ -27,9 +27,9 @@
 #endif
 
 #include "pacbiokanga.h"
-
+#include "SWAlign.h"
 #include "../libbiokanga/bgzf.h"
-//#include "./Kangadna.h"
+#include "SeqStore.h"
 #include "SSW.h"
 #include "PBFilter.h"
 
@@ -42,6 +42,9 @@ ProcPacBioFilter(etPBPMode PMode,	// processing mode
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
+		int ContamARate,			// PacBio expected accuracy event rate, used when contaminate processing
+		int ContamOvlpLen,			// minimum contaminate overlap length to check for
+		char *pszContamFile,		// name of file containing contaminate sequences
 		int NumInputFiles,			// number of input files
 		char *pszInputFiles[],		// names (wildcards allowed) of input files containing reads to be filtered
 		char *pszOutFile,			// name of file in which to write filter accepted and trimmed sequences
@@ -75,9 +78,14 @@ int Trim5;					// 5' trim accepted reads by this many bp
 int Trim3;					// 3' trim accepted reads by this many bp
 int MinReadLen;				// read sequences must be at least this length after any end trimming
 
+int ContamARate;			// PacBio sequences accuracy rate, used when contaminate processing
+int ContamOvlpLen;				// minimum contaminate overlap length to check for
+
+
 int NumInputFiles;			// number of input files
 char *pszInputFiles[cMaxInfiles];	// names (wildcards allowed) of input files containing reads to be filtered
 char szOutFile[_MAX_PATH];	// name of file in which to write filter accepted and trimmed sequences
+char szContamFile[_MAX_PATH];	// name of file containing contaminate sequences
 
 int NumberOfProcessors;		// number of installed CPUs
 int NumThreads;				// number of threads (0 defaults to number of CPUs)
@@ -91,13 +99,17 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","pmode","<int>",			"processing mode - 0 default");
+struct arg_int *pmode = arg_int0("m","pmode","<int>",			"processing mode - 0 default, 1 remove contaminate containing sequences");
 struct arg_int *minsmrtbellexacts = arg_int0("s","minsmrtbellexacts","<int>",	"putative SMRTBell adaptors must contain at least this many exactly matching bases (default 30, range 20 to 46)");
 struct arg_int *smrtbellflankseqlen = arg_int0("S","smrtbellflankseqlen","<int>",	"processing flanking sequences of this length around putative SMRTBell adaptors (default 500, range 200 to 1000)");
 struct arg_int *minrevcplexacts = arg_int0("a","minantisenseexacts","<int>",	"flanking 5' and antisense 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases (default smrtbellflankseqlen/2, range 100 to 1000)");
 struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 250, range 0 to 10000)");
 struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 250, range 0 to 10000)");
 struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 5000, range 1000 to 20000)");
+
+struct arg_file *contamfile = arg_file0("I","contam","<file>",		"file containing contaminate sequences");
+struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences minimum accuracy rate (default 97, range 85 to 99");
+struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",		"Minimum contaminate overlap length (default 1000, range 500 to 5000");
 
 struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file(s) containing PacBio long reads to be filtered");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output accepted filtered reads to this file");
@@ -112,7 +124,7 @@ struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					pmode,minsmrtbellexacts,smrtbellflankseqlen,minrevcplexacts,trim5,trim3,minreadlen,summrslts,experimentname,experimentdescr,
-					inputfiles,outfile,threads,
+					contamarate,contamovlplen,contamfile,	inputfiles,outfile,threads,
 					end};
 
 char **pAllArgs;
@@ -183,7 +195,9 @@ if (!argerrors)
 	szSQLiteDatabase[0] = '\0';
 	szExperimentName[0] = '\0';
 	szExperimentDescr[0] = '\0';
-
+	szContamFile[0] = '\0';
+	ContamARate = 0;
+	ContamOvlpLen = 0;
 
 	if(experimentname->count)
 		{
@@ -250,9 +264,9 @@ if (!argerrors)
 		}
 
 	PMode = (etPBPMode)(pmode->count ? pmode->ival[0] : (int)ePBPMFilter);
-	if(PMode < ePBPMFilter || PMode > ePBPMFilter)
+	if(PMode < ePBPMFilter || PMode > ePBPMContam)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Processing mode '-m%d' must be in range 0..%d",PMode,ePBPMFilter);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Processing mode '-m%d' must be in range 0..%d",PMode,ePBPMContam);
 		return(1);
 		}
 
@@ -298,6 +312,41 @@ if (!argerrors)
 		return(1);
 		}
 
+	if(PMode == ePBPMContam)
+		{
+		ContamARate = contamarate->count ? contamarate->ival[0] : 97;
+		if(ContamARate < 85 || ContamARate > 100)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: PacBio sequences accuracy rate '-c%d' must be in range 85..99",ContamARate);
+			return(1);
+			}
+		if(ContamARate == 100)	// whilst accepting user input of 100% accuracy internally the limit is 99%
+			ContamARate = 99;
+		ContamOvlpLen = contamovlplen->count ? contamovlplen->ival[0] : 1000;
+		if(ContamOvlpLen < 500 || ContamOvlpLen > 5000)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum read length after any trim '-C%d' must be in range 500..5000",ContamOvlpLen);
+			return(1);
+			}
+
+		if(contamfile->count)
+			{
+			strncpy(szContamFile,contamfile->filename[0],_MAX_PATH);
+			szContamFile[_MAX_PATH-1] = '\0';
+			CUtility::TrimQuotedWhitespcExtd(szContamFile);
+			if(strlen(szContamFile) == 0)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace no contaminate sequences file specified with '-I<contamfile>'");
+				return(1);
+				}
+			}
+		else
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Contaminate filtering requested but no contaminate sequences file specified with '-I<contamfile>'");
+			return(1);
+			}
+		}
+
 	if (!inputfiles->count)
 		{
 		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: No input file(s) specified with with '-i<filespec>' option)");
@@ -323,6 +372,13 @@ if (!argerrors)
 		}
 
 	strcpy(szOutFile,outfile->filename[0]);
+	szOutFile[_MAX_PATH-1] = '\0';
+	CUtility::TrimQuotedWhitespcExtd(szOutFile);
+	if(strlen(szOutFile) == 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace no output file specified with '-o<outfile>'");
+		return(1);
+		}
 
 #ifdef _WIN32
 	SYSTEM_INFO SystemInfo;
@@ -348,6 +404,10 @@ if (!argerrors)
 		case ePBPMFilter:									// identify PacBio reads which have retained hairpins
 			pszMode = (char *)"Filter reads";
 			break;
+		case ePBPMContam:									// identify PacBio reads which have retained hairpins
+			pszMode = (char *)"Trim or remove contaminate containing reads";
+			break;
+
 	}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing mode: '%s'",pszMode);
@@ -358,6 +418,13 @@ if (!argerrors)
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"5' trim accepted reads by: %dbp",Trim5);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"3' trim accepted reads by: %dbp",Trim3);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"read sequences must be at least this length after any end trimming: %dbp",MinReadLen);
+
+	if(PMode == ePBPMContam)
+		{
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"PacBio sequences minimum accuracy rate: %d",ContamARate);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum contaminate overlap length: %d",ContamOvlpLen);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing for contaminant sequences in file: '%s'",szContamFile);
+		}
 
 	for (Idx = 0; Idx < NumInputFiles; Idx++)
 			gDiagnostics.DiagOutMsgOnly(eDLInfo, "Input reads file (%d) : '%s'", Idx + 1, pszInputFiles[Idx]);
@@ -381,7 +448,12 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim5),"trim5",&Trim5);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim3),"trim3",&Trim3);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinReadLen),"minreadlen",&MinReadLen);
-
+		if(PMode == ePBPMContam)
+			{
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szContamFile),"contamfile",szContamFile);
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(ContamARate),"contamarate",&ContamARate);
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(ContamOvlpLen),"contamovlplen",&ContamOvlpLen);
+			}
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTInt32, sizeof(NumInputFiles), "NumInputFiles", &NumInputFiles);
 		for (Idx = 0; Idx < NumInputFiles; Idx++)
 			ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTText, (int)strlen(pszInputFiles[Idx]), "inpe1", pszInputFiles[Idx]);
@@ -401,7 +473,8 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioFilter((etPBPMode)PMode,MinSMRTBellExacts,SMRTBellFlankSeqLen,MinRevCplExacts,Trim5,Trim3,MinReadLen,NumInputFiles,pszInputFiles,szOutFile,NumThreads);
+	Rslt = ProcPacBioFilter((etPBPMode)PMode,MinSMRTBellExacts,SMRTBellFlankSeqLen,MinRevCplExacts,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,
+												szContamFile,NumInputFiles,pszInputFiles,szOutFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -433,6 +506,9 @@ ProcPacBioFilter(etPBPMode PMode,	// processing mode
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
+		int ContamARate,			// PacBio expected accuracy event rate, used when contaminate processing
+		int ContamOvlpLen,			// minimum contaminate overlap length to check for
+		char *pszContamFile,		// name of file containing contaminate sequences
 		int NumInputFiles,			// number of input files
 		char *pszInputFiles[],		// names (wildcards allowed) of input files containing reads to be filtered
 		char *pszOutFile,			// name of file in which to write filter accepted and trimmed sequences
@@ -446,7 +522,7 @@ if((pPacBioer = new CPBFilter)==NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CPBFilter");
 	return(eBSFerrObj);
 	}
-Rslt = pPacBioer->Process(PMode,MinSMRTBellExacts,SMRTBellFlankSeqLen,MinRevCplExacts,Trim5,Trim3,MinReadLen,NumInputFiles,pszInputFiles,pszOutFile,NumThreads);
+Rslt = pPacBioer->Process(PMode,MinSMRTBellExacts,SMRTBellFlankSeqLen,MinRevCplExacts,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,pszContamFile,NumInputFiles,pszInputFiles,pszOutFile,NumThreads);
 delete pPacBioer;
 return(Rslt);
 }
@@ -456,6 +532,7 @@ CPBFilter::CPBFilter() // relies on base classes constructors
 m_bMutexesCreated = false;
 m_hOutFile = -1;
 m_pOutBuff = NULL;
+m_pSWAlign = NULL;
 Init();
 }
 
@@ -478,10 +555,16 @@ if(m_hOutFile != -1)
 	close(m_hOutFile);
 	m_hOutFile = -1;
 	}
-if(m_pOutBuff)
+if(m_pOutBuff != NULL)
 	{
 	delete m_pOutBuff;
 	m_pOutBuff = NULL;
+	}
+
+if(m_pSWAlign != NULL)
+	{
+	delete m_pSWAlign;
+	m_pSWAlign = NULL;
 	}
 
 m_PMode = ePBPMFilter;
@@ -502,6 +585,7 @@ m_AllocOutBuffSize=0;
 m_NumInputFiles = 0;
 m_ppszInputFiles = NULL;			
 m_szOutFile[0] = '\0';			
+m_szContamFile[0] = '0';
 
 m_NumThreads = 0;
 if(m_bMutexesCreated)
@@ -513,7 +597,6 @@ m_PacBioUtility.Reset();
 void
 CPBFilter::Reset(void)
 {
-
 Init();
 }
 
@@ -660,6 +743,9 @@ CPBFilter::Process(etPBPMode PMode,	// processing mode
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
+		int ContamARate,			// PacBio expected accuracy event rate, used when contaminate processing
+		int ContamOvlpLen,			// minimum contaminate overlap length to check for
+		char *pszContamFile,		// name of file containing contaminate sequences
 		int NumInputFiles,			// number of input files
 		char *pszInputFiles[],		// names (wildcards allowed) of input files containing reads to be filtered
 		char *pszOutFile,			// name of file in which to write filter accepted and trimmed sequences
@@ -677,7 +763,6 @@ m_MinRevCplExacts = MinRevCplExacts;
 m_Trim5 = Trim5;					
 m_Trim3 = Trim3;					
 m_MinReadLen = MinReadLen;	
-		
 m_NumInputFiles = NumInputFiles;
 m_ppszInputFiles = 	pszInputFiles;
 strncpy(m_szOutFile,pszOutFile,sizeof(m_szOutFile));
@@ -685,6 +770,52 @@ m_szOutFile[sizeof(m_szOutFile)-1] = '\0';
 
 m_NumThreads = NumThreads;	
 m_PacBioUtility.Reset();
+
+if(pszContamFile == NULL || pszContamFile[0] == '\0')
+	{
+	m_ContamARate = 0;
+	m_ContamOvlpLen = 0;
+	m_szContamFile[0] = '\0';
+	}
+else
+	{
+	strcpy(m_szContamFile,pszContamFile);
+	m_ContamARate = ContamARate;
+	m_ContamOvlpLen = ContamOvlpLen;
+	if((m_pSWAlign = new CSWAlign) == NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate instance of CSWAlign");
+		Reset();
+		return(eBSFerrInternal);
+		}
+
+	UINT32 DeltaCoreOfs;				// ranges between 2 and 9
+	UINT32 CoreSeqLen;                  // ranges between 12 and 17
+	UINT32 MinNumCores;                 // ranges between 5 and 10 
+	UINT32 MinPropBinned;               // requiring 70
+
+	DeltaCoreOfs = 2 + (ContamARate - 85)/2;
+	CoreSeqLen = 12 + (1 + ContamARate - 85)/3;
+	MinNumCores = 5  + (1 + ContamARate - 85)/3;
+	MinPropBinned = 70;
+
+
+	if((m_pSWAlign->Initialise(NumThreads,m_ContamOvlpLen,cMaxSeedCoreDepth,DeltaCoreOfs,CoreSeqLen,MinNumCores,MinPropBinned,cMaxAcceptHitsPerSeedCore,cDfltMaxProbeSeqLen)) != eBSFSuccess)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to initialise m_pSWAlign");
+		Reset();
+		return(eBSFerrOpnFile);
+		}
+	if((m_pSWAlign->LoadTargetSeqs(cMinContamSeqLen, pszContamFile)) <= 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to load any contaminate sequences from file: '%s'",pszContamFile);
+		Reset();
+		return(eBSFerrOpnFile);
+		}
+
+	}
+	
+
 if((Rslt = m_PacBioUtility.StartAsyncLoadSeqs(NumInputFiles,pszInputFiles)) < eBSFSuccess)
 	{
 	Reset();
@@ -729,16 +860,7 @@ pThreadPutOvlps = new tsThreadPBFilter [NumOvlpThreads];
 
 pThreadPar = pThreadPutOvlps;
 for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
-	{
 	memset(pThreadPar,0,sizeof(tsThreadPBFilter));
-
-	pThreadPar->AllocdTargSeqSize = max(cAllocdQuerySeqLen,MaxSeqLen);
-	if((pThreadPar->pTargSeq = new etSeqBase [pThreadPar->AllocdTargSeqSize + 10])==NULL)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Core hits target sequence memory allocation of %d bytes - %s",pThreadPar->AllocdTargSeqSize,strerror(errno));
-		break;
-		}
-	}
 
 if(ThreadIdx != NumOvlpThreads)	// any errors whilst allocating memory?
 	{
@@ -837,9 +959,6 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 	{
 	if(pThreadPar->pSW != NULL)
 		delete pThreadPar->pSW;
-
-	if(pThreadPar->pTargSeq != NULL)
-		delete pThreadPar->pTargSeq;
 	}
 
 delete pThreadPutOvlps;
@@ -906,7 +1025,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		{
 		Trim5AtOfs = m_Trim5;
 		Trim3AtOfs = QuerySeqLen - (m_Trim3 + 1);
-		// check for at most 20 putatively retained SMRTBell adaptors
+		// check for at most 20 putatively retained SMRTBell adaptors in any read sequence
 		pThreadPar->pSW->SetScores(1,-5,-4,-2,3,6,3);		// these scores are for ref sequence vs pacbio so use expected PacBio error rates
 		pThreadPar->pSW->SetMaxInitiatePathOfs(0);
 		pThreadPar->pSW->SetMinNumExactMatches(m_MinSMRTBellExacts);
@@ -988,6 +1107,20 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		continue;
 		}
 
+
+	if(m_PMode == ePBPMContam)
+		{
+		if(pThreadPar->SWAlignInstance == 0)
+			pThreadPar->SWAlignInstance = m_pSWAlign->InitInstance();
+		if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq)!=eBSFSuccess)
+			{
+			AcquireLock(true);
+			m_TotRejected += 1;
+			ReleaseLock(true);
+			continue;
+			}
+		}
+
 	AcquireLock(true);
 	m_TotAccepted += 1;
 	ReleaseLock(true);
@@ -1048,7 +1181,10 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 return(0);
 }
 
-// sort putative SMRTBell adaptors by StartTOfs ascending with NumExacts descending
+
+
+
+// sort putative SMRTBell adapters by StartTOfs ascending with NumExacts descending
 int
 CPBFilter::SortSSWCells(const void *arg1, const void *arg2)
 {
