@@ -98,7 +98,8 @@ class CPBFilter
 	int m_TotProcessed;						// total reads processed
 	int	m_TotAccepted;						// after filtering accepted this number of reads
 	int m_TotPutativeSMRTBells;             // number of putative SMRTBell adaptors
-	int	m_TotRejected;                      // rejected this number of reads because of retained PacBio SMRTBell adaptors etc
+	int	m_TotRejected;                      // rejected this number of reads because of retained PacBio SMRTBell adaptors
+	int m_TotContamRejected;                // rejected this number of reads because of BAC vectors - contained, containing, or overlapping
 	int m_TotUnderLen;						// this number reads not accepted because they were underlength
 
 	void Init(void);							// initialise state to that immediately following construction

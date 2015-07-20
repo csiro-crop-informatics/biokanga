@@ -412,8 +412,8 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing mode: '%s'",pszMode);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"putative SMRTBell adaptors must contain at least this many exactly matching bases: %dbp",MinSMRTBellExacts);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing flanking sequences of this length around putative SMRTBell adaptors: %dbp",SMRTBellFlankSeqLen);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"putative SMRTBell adapters must contain at least this many exactly matching bases: %dbp",MinSMRTBellExacts);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing flanking sequences of this length around putative SMRTBell adapters: %dbp",SMRTBellFlankSeqLen);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"5' to antisense 3' flanking sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases: %dbp",MinRevCplExacts);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"5' trim accepted reads by: %dbp",Trim5);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"3' trim accepted reads by: %dbp",Trim3);
@@ -578,6 +578,7 @@ m_MinReadLen = cDfltMinReadLen;
 m_TotProcessed = 0;
 m_TotAccepted = 0;
 m_TotRejected = 0;
+m_TotContamRejected = 0;
 m_TotUnderLen = 0;
 m_TotPutativeSMRTBells = 0;	
 m_OutBuffIdx = 0;
@@ -923,7 +924,7 @@ sleep(10);
 #endif
 
 AcquireLock(false);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected,m_TotContamRejected);
 ReleaseLock(false);
 
 pThreadPar = pThreadPutOvlps;
@@ -933,7 +934,7 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 60000))
 		{
 		AcquireLock(false);
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected, m_TotContamRejected);
 		ReleaseLock(false);
 		};
 	CloseHandle(pThreadPar->threadHandle);
@@ -945,14 +946,14 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while ((JoinRlt = pthread_timedjoin_np(pThreadPar->threadID, NULL, &ts)) != 0)
 		{
 		AcquireLock(false);
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected,m_TotContamRejected);
 		ReleaseLock(false);
 		ts.tv_sec += 60;
 		}
 #endif
 	}
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected, m_TotContamRejected);
 
 pThreadPar = pThreadPutOvlps;
 for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
@@ -1115,7 +1116,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq)!=eBSFSuccess)
 			{
 			AcquireLock(true);
-			m_TotRejected += 1;
+			m_TotContamRejected += 1;
 			ReleaseLock(true);
 			continue;
 			}
