@@ -521,44 +521,8 @@ CPBAssemb::CreateMutexes(void)
 if(m_bMutexesCreated)
 	return(eBSFSuccess);
 
-#ifdef _WIN32
-InitializeSRWLock(&m_hRwLock);
-#else
-if(pthread_rwlock_init (&m_hRwLock,NULL)!=0)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create rwlock");
-	return(eBSFerrInternal);
-	}
-#endif
-
-#ifdef _WIN32
-if((m_hMtxIterReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxIterReads,NULL)!=0)
-	{
-	pthread_rwlock_destroy(&m_hRwLock);
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-	return(eBSFerrInternal);
-	}
-
-#ifdef _WIN32
-if((m_hMtxMHReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxMHReads,NULL)!=0)
-	{
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-#ifdef _WIN32
-	CloseHandle(m_hMtxIterReads);
-#else
-	pthread_rwlock_destroy(&m_hRwLock);
-	pthread_mutex_destroy(&m_hMtxIterReads);
-#endif
-	return(eBSFerrInternal);
-	}
+m_CASSerialise = 0;
+m_CASLock = 0;
 
 m_bMutexesCreated = true;
 return(eBSFSuccess);
@@ -569,85 +533,89 @@ CPBAssemb::DeleteMutexes(void)
 {
 if(!m_bMutexesCreated)
 	return;
-#ifdef _WIN32
-CloseHandle(m_hMtxIterReads);
-CloseHandle(m_hMtxMHReads);
-#else
-pthread_mutex_destroy(&m_hMtxIterReads);
-pthread_mutex_destroy(&m_hMtxMHReads);
-pthread_rwlock_destroy(&m_hRwLock);
-#endif
 m_bMutexesCreated = false;
 }
 
+
 void
-CPBAssemb::AcquireSerialise(void)
+CPBAssemb::AcquireCASSerialise(void)
 {
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
 #ifdef _WIN32
-WaitForSingleObject(m_hMtxIterReads,INFINITE);
+while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #else
-pthread_mutex_lock(&m_hMtxIterReads);
+while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
 void
-CPBAssemb::ReleaseSerialise(void)
+CPBAssemb::ReleaseCASSerialise(void)
 {
 #ifdef _WIN32
-ReleaseMutex(m_hMtxIterReads);
+InterlockedCompareExchange(&m_CASSerialise,0,1);
 #else
-pthread_mutex_unlock(&m_hMtxIterReads);
+__sync_val_compare_and_swap(&m_CASSerialise,1,0);
+#endif
+}
+
+
+void
+CPBAssemb::AcquireCASLock(void)
+{
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
+#ifdef _WIN32
+while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
+#else
+while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
 void
-CPBAssemb::AcquireSerialiseMH(void)
+CPBAssemb::ReleaseCASLock(void)
 {
 #ifdef _WIN32
-WaitForSingleObject(m_hMtxMHReads,INFINITE);
+InterlockedCompareExchange(&m_CASLock,0,1);
 #else
-pthread_mutex_lock(&m_hMtxMHReads);
+__sync_val_compare_and_swap(&m_CASLock,1,0);
 #endif
 }
 
-void
-CPBAssemb::ReleaseSerialiseMH(void)
-{
-#ifdef _WIN32
-ReleaseMutex(m_hMtxMHReads);
-#else
-pthread_mutex_unlock(&m_hMtxMHReads);
-#endif
-}
-
-void
-CPBAssemb::AcquireLock(bool bExclusive)
-{
-#ifdef _WIN32
-if(bExclusive)
-	AcquireSRWLockExclusive(&m_hRwLock);
-else
-	AcquireSRWLockShared(&m_hRwLock);
-#else
-if(bExclusive)
-	pthread_rwlock_wrlock(&m_hRwLock);
-else
-	pthread_rwlock_rdlock(&m_hRwLock);
-#endif
-}
-
-void
-CPBAssemb::ReleaseLock(bool bExclusive)
-{
-#ifdef _WIN32
-if(bExclusive)
-	ReleaseSRWLockExclusive(&m_hRwLock);
-else
-	ReleaseSRWLockShared(&m_hRwLock);
-#else
-pthread_rwlock_unlock(&m_hRwLock);
-#endif
-}
 
 
 UINT32												//  returns number of overlaps loaded and accepted, if > cMaxValidID then cast to teBSFrsltCodes for actual error 

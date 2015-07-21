@@ -121,24 +121,13 @@ static int SortLenDescending(const void *arg1, const void *arg2); // Sort scaffo
 	bool m_bMutexesCreated;			// will be set true if synchronisation mutexes have been created
 	int CreateMutexes(void);
 	void DeleteMutexes(void);
-	void AcquireSerialise(void);
-    void ReleaseSerialise(void);
-    void AcquireSerialiseMH(void);
-	void ReleaseSerialiseMH(void);
-	void AcquireLock(bool bExclusive);
-	void ReleaseLock(bool bExclusive);
 
-
-#ifdef _WIN32
-	HANDLE m_hMtxIterReads;
-	HANDLE m_hMtxMHReads;
-	SRWLOCK m_hRwLock;
-	HANDLE m_hThreadLoadQuerySeqs;
-#else
-	pthread_mutex_t m_hMtxIterReads;
-	pthread_mutex_t m_hMtxMHReads;
-	pthread_rwlock_t m_hRwLock;
-#endif
+	volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	void AcquireCASSerialise(void);
+	void ReleaseCASSerialise(void);
+	volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
+	void AcquireCASLock(void);
+	void ReleaseCASLock(void);
 
 public:
 	CPBAssemb();

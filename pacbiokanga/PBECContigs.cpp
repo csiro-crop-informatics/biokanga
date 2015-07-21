@@ -684,44 +684,8 @@ CPBECContigs::CreateMutexes(void)
 if(m_bMutexesCreated)
 	return(eBSFSuccess);
 
-#ifdef _WIN32
-InitializeSRWLock(&m_hRwLock);
-#else
-if(pthread_rwlock_init (&m_hRwLock,NULL)!=0)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create rwlock");
-	return(eBSFerrInternal);
-	}
-#endif
-
-#ifdef _WIN32
-if((m_hMtxIterReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxIterReads,NULL)!=0)
-	{
-	pthread_rwlock_destroy(&m_hRwLock);
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-	return(eBSFerrInternal);
-	}
-
-#ifdef _WIN32
-if((m_hMtxMHReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxMHReads,NULL)!=0)
-	{
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-#ifdef _WIN32
-	CloseHandle(m_hMtxIterReads);
-#else
-	pthread_rwlock_destroy(&m_hRwLock);
-	pthread_mutex_destroy(&m_hMtxIterReads);
-#endif
-	return(eBSFerrInternal);
-	}
+m_CASSerialise = 0;
+m_CASLock = 0;
 
 m_bMutexesCreated = true;
 return(eBSFSuccess);
@@ -732,86 +696,87 @@ CPBECContigs::DeleteMutexes(void)
 {
 if(!m_bMutexesCreated)
 	return;
-#ifdef _WIN32
-CloseHandle(m_hMtxIterReads);
-CloseHandle(m_hMtxMHReads);
-#else
-pthread_mutex_destroy(&m_hMtxIterReads);
-pthread_mutex_destroy(&m_hMtxMHReads);
-pthread_rwlock_destroy(&m_hRwLock);
-#endif
 m_bMutexesCreated = false;
 }
 
 void
-CPBECContigs::AcquireSerialise(void)
+CPBECContigs::AcquireCASSerialise(void)
 {
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
 #ifdef _WIN32
-WaitForSingleObject(m_hMtxIterReads,INFINITE);
+while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #else
-pthread_mutex_lock(&m_hMtxIterReads);
+while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
 void
-CPBECContigs::ReleaseSerialise(void)
+CPBECContigs::ReleaseCASSerialise(void)
 {
 #ifdef _WIN32
-ReleaseMutex(m_hMtxIterReads);
+InterlockedCompareExchange(&m_CASSerialise,0,1);
 #else
-pthread_mutex_unlock(&m_hMtxIterReads);
+__sync_val_compare_and_swap(&m_CASSerialise,1,0);
+#endif
+}
+
+
+void
+CPBECContigs::AcquireCASLock(void)
+{
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
+#ifdef _WIN32
+while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
+#else
+while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
 void
-CPBECContigs::AcquireSerialiseMH(void)
+CPBECContigs::ReleaseCASLock(void)
 {
 #ifdef _WIN32
-WaitForSingleObject(m_hMtxMHReads,INFINITE);
+InterlockedCompareExchange(&m_CASLock,0,1);
 #else
-pthread_mutex_lock(&m_hMtxMHReads);
+__sync_val_compare_and_swap(&m_CASLock,1,0);
 #endif
 }
-
-void
-CPBECContigs::ReleaseSerialiseMH(void)
-{
-#ifdef _WIN32
-ReleaseMutex(m_hMtxMHReads);
-#else
-pthread_mutex_unlock(&m_hMtxMHReads);
-#endif
-}
-
-void
-CPBECContigs::AcquireLock(bool bExclusive)
-{
-#ifdef _WIN32
-if(bExclusive)
-	AcquireSRWLockExclusive(&m_hRwLock);
-else
-	AcquireSRWLockShared(&m_hRwLock);
-#else
-if(bExclusive)
-	pthread_rwlock_wrlock(&m_hRwLock);
-else
-	pthread_rwlock_rdlock(&m_hRwLock);
-#endif
-}
-
-void
-CPBECContigs::ReleaseLock(bool bExclusive)
-{
-#ifdef _WIN32
-if(bExclusive)
-	ReleaseSRWLockExclusive(&m_hRwLock);
-else
-	ReleaseSRWLockShared(&m_hRwLock);
-#else
-pthread_rwlock_unlock(&m_hRwLock);
-#endif
-}
-
 
 
 // ProcessFastaFile
@@ -1620,10 +1585,10 @@ for (ThreadIdx = 0; ThreadIdx < NumECThreads; ThreadIdx++, pThreadPar++)
 #ifdef _WIN32
 	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 60000))
 		{
-		AcquireSerialise();
+		AcquireCASSerialise();
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Contained: %u, Artefact: %u",
 							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvContained,m_ProvArtefact);
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		};
 	CloseHandle(pThreadPar->threadHandle);
 #else
@@ -1633,10 +1598,10 @@ for (ThreadIdx = 0; ThreadIdx < NumECThreads; ThreadIdx++, pThreadPar++)
 	ts.tv_sec += 60;
 	while ((JoinRlt = pthread_timedjoin_np(pThreadPar->threadID, NULL, &ts)) != 0)
 		{
-		AcquireSerialise();
+		AcquireCASSerialise();
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Contained: %u, Artefact: %u",
 							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvContained,m_ProvArtefact);
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		ts.tv_sec += 60;
 		}
 #endif
@@ -1735,15 +1700,15 @@ NumInMultiAlignment = 0;
 for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 	{
 	pThreadPar->NumCoreHits = 0;
-	AcquireLock(true);
+	AcquireCASLock();
 	HiConfSeqFlags = m_pSeqStore->GetFlags(HiConfSeqID);
 	if(HiConfSeqFlags & cflgAlgnd)    // another thread already aligning or completed aligning this sequence? 
        	{
-		ReleaseLock(true);
+		ReleaseCASLock();
 		continue;
 		}
 	m_pSeqStore->SetFlags(HiConfSeqID,cflgAlgnd);
-	ReleaseLock(true);
+	ReleaseCASLock();
 	HiConfSeqLen = m_pSeqStore->GetLen(HiConfSeqID);
 
 	pThreadPar->bRevCpl = false;
@@ -2032,11 +1997,11 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 		LongAAligns = 0;
 		if(pThreadPar->pSW == NULL)
 			{
-			AcquireSerialise();
+			AcquireCASSerialise();
 			pThreadPar->pSW = new CSSW;
 			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
 			pThreadPar->pSW->PreAllocMaxTargLen(m_MaxTargSeqLen + 100,(m_MaxHiConfSeqLen * 11) / 10);
-			ReleaseSerialise();
+			ReleaseCASSerialise();
 			}
 
 		pSummaryCnts = &pThreadPar->TargCoreHitCnts[0];
@@ -2155,12 +2120,12 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 							Class = (int)eOLCcontains;
 					if(Class != eOLCOverlapping)
 						{
-						AcquireLock(true);
+						AcquireCASLock();
 						if(Class == (int)eOLCcontained)
 							pTargNode->flgContains = 1;
 						else
 							pTargNode->flgContained = 1;
-						ReleaseLock(true);	
+						ReleaseCASLock();	
 						ProvContained += 1;
 						}
 					}
@@ -2172,12 +2137,12 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 					NumAlignOps = pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,&pAlignOps);
 
-					AcquireLock(true);
+					AcquireCASLock();
 					m_pMAConsensus->AddMultiAlignment(pTargNode->RefSeqID,
 															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,
 															PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 															pThreadPar->pProbeSeq,NumAlignOps,pAlignOps);	
-					ReleaseLock(true);								
+					ReleaseCASLock();								
 					NumInMultiAlignment += 1;
 					}
 
@@ -2191,7 +2156,7 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 			}
 		}
 
-	AcquireSerialise();
+	AcquireCASSerialise();
 	if(ProvOverlapping > 0)
 		m_ProvOverlapping += 1;
 	if(ProvContained > 0)
@@ -2201,7 +2166,7 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 	if(ProvSWchecked > 0)
 		m_ProvSWchecked += ProvSWchecked;
 	m_NumOverlapProcessed += 1;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	ProvOverlapping = 0;
 	ProvOverlapped = 0;
 	ProvContained = 0;
@@ -2348,14 +2313,10 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=pPars->DeltaCoreOfs,pCoreSe
 		PrevHitIdx = NextHitIdx;
 		pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
 		HitSeqLen = pTargNode->SeqLen; 
-		AcquireLock(false);
-		if( pTargNode->flgUnderlength == 1 ||	// not interested in underlength targets
+
+		if( pTargNode->flgUnderlength == 1 ||	// not interested in under length targets
 							HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
-			{
-			ReleaseLock(false);
 			continue;
-			}
-		ReleaseLock(false);
 
   		AddCoreHit(HiConfSeqID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
 		HitsThisCore += 1;

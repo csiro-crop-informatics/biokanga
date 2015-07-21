@@ -113,20 +113,16 @@ class CPBFilter
 	void DeleteMutexes(void);
 	void AcquireSerialise(void);
     void ReleaseSerialise(void);
-    void AcquireSerialiseMH(void);
-	void ReleaseSerialiseMH(void);
 	void AcquireLock(bool bExclusive);
 	void ReleaseLock(bool bExclusive);
 
 
 #ifdef _WIN32
 	HANDLE m_hMtxIterReads;
-	HANDLE m_hMtxMHReads;
 	SRWLOCK m_hRwLock;
 	HANDLE m_hThreadLoadQuerySeqs;
 #else
 	pthread_mutex_t m_hMtxIterReads;
-	pthread_mutex_t m_hMtxMHReads;
 	pthread_rwlock_t m_hRwLock;
 #endif
 

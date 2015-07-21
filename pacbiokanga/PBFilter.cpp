@@ -630,23 +630,6 @@ if(pthread_mutex_init (&m_hMtxIterReads,NULL)!=0)
 	return(eBSFerrInternal);
 	}
 
-#ifdef _WIN32
-if((m_hMtxMHReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxMHReads,NULL)!=0)
-	{
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-#ifdef _WIN32
-	CloseHandle(m_hMtxIterReads);
-#else
-	pthread_rwlock_destroy(&m_hRwLock);
-	pthread_mutex_destroy(&m_hMtxIterReads);
-#endif
-	return(eBSFerrInternal);
-	}
-
 m_bMutexesCreated = true;
 return(eBSFSuccess);
 }
@@ -658,10 +641,8 @@ if(!m_bMutexesCreated)
 	return;
 #ifdef _WIN32
 CloseHandle(m_hMtxIterReads);
-CloseHandle(m_hMtxMHReads);
 #else
 pthread_mutex_destroy(&m_hMtxIterReads);
-pthread_mutex_destroy(&m_hMtxMHReads);
 pthread_rwlock_destroy(&m_hRwLock);
 #endif
 m_bMutexesCreated = false;
@@ -684,26 +665,6 @@ CPBFilter::ReleaseSerialise(void)
 ReleaseMutex(m_hMtxIterReads);
 #else
 pthread_mutex_unlock(&m_hMtxIterReads);
-#endif
-}
-
-void
-CPBFilter::AcquireSerialiseMH(void)
-{
-#ifdef _WIN32
-WaitForSingleObject(m_hMtxMHReads,INFINITE);
-#else
-pthread_mutex_lock(&m_hMtxMHReads);
-#endif
-}
-
-void
-CPBFilter::ReleaseSerialiseMH(void)
-{
-#ifdef _WIN32
-ReleaseMutex(m_hMtxMHReads);
-#else
-pthread_mutex_unlock(&m_hMtxMHReads);
 #endif
 }
 

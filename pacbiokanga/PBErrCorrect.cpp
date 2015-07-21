@@ -1070,45 +1070,8 @@ CPBErrCorrect::CreateMutexes(void)
 if(m_bMutexesCreated)
 	return(eBSFSuccess);
 
-#ifdef _WIN32
-InitializeSRWLock(&m_hRwLock);
-#else
-if(pthread_rwlock_init (&m_hRwLock,NULL)!=0)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create rwlock");
-	return(eBSFerrInternal);
-	}
-#endif
-
-#ifdef _WIN32
-if((m_hMtxIterReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxIterReads,NULL)!=0)
-	{
-	pthread_rwlock_destroy(&m_hRwLock);
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-	return(eBSFerrInternal);
-	}
-
-#ifdef _WIN32
-if((m_hMtxMHReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxMHReads,NULL)!=0)
-	{
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-#ifdef _WIN32
-	CloseHandle(m_hMtxIterReads);
-#else
-	pthread_rwlock_destroy(&m_hRwLock);
-	pthread_mutex_destroy(&m_hMtxIterReads);
-#endif
-	return(eBSFerrInternal);
-	}
-
+m_CASSerialise = 0;
+m_CASLock = 0;
 m_bMutexesCreated = true;
 return(eBSFSuccess);
 }
@@ -1118,85 +1081,90 @@ CPBErrCorrect::DeleteMutexes(void)
 {
 if(!m_bMutexesCreated)
 	return;
-#ifdef _WIN32
-CloseHandle(m_hMtxIterReads);
-CloseHandle(m_hMtxMHReads);
-#else
-pthread_mutex_destroy(&m_hMtxIterReads);
-pthread_mutex_destroy(&m_hMtxMHReads);
-pthread_rwlock_destroy(&m_hRwLock);
-#endif
 m_bMutexesCreated = false;
 }
 
+
 void
-CPBErrCorrect::AcquireSerialise(void)
+CPBErrCorrect::AcquireCASSerialise(void)
 {
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
 #ifdef _WIN32
-WaitForSingleObject(m_hMtxIterReads,INFINITE);
+while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #else
-pthread_mutex_lock(&m_hMtxIterReads);
+while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
 void
-CPBErrCorrect::ReleaseSerialise(void)
+CPBErrCorrect::ReleaseCASSerialise(void)
 {
 #ifdef _WIN32
-ReleaseMutex(m_hMtxIterReads);
+InterlockedCompareExchange(&m_CASSerialise,0,1);
 #else
-pthread_mutex_unlock(&m_hMtxIterReads);
+__sync_val_compare_and_swap(&m_CASSerialise,1,0);
+#endif
+}
+
+
+void
+CPBErrCorrect::AcquireCASLock(void)
+{
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
+#ifdef _WIN32
+while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
+#else
+while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
 void
-CPBErrCorrect::AcquireSerialiseMH(void)
+CPBErrCorrect::ReleaseCASLock(void)
 {
 #ifdef _WIN32
-WaitForSingleObject(m_hMtxMHReads,INFINITE);
+InterlockedCompareExchange(&m_CASLock,0,1);
 #else
-pthread_mutex_lock(&m_hMtxMHReads);
+__sync_val_compare_and_swap(&m_CASLock,1,0);
 #endif
 }
 
-void
-CPBErrCorrect::ReleaseSerialiseMH(void)
-{
-#ifdef _WIN32
-ReleaseMutex(m_hMtxMHReads);
-#else
-pthread_mutex_unlock(&m_hMtxMHReads);
-#endif
-}
 
-void
-CPBErrCorrect::AcquireLock(bool bExclusive)
-{
-#ifdef _WIN32
-if(bExclusive)
-	AcquireSRWLockExclusive(&m_hRwLock);
-else
-	AcquireSRWLockShared(&m_hRwLock);
-#else
-if(bExclusive)
-	pthread_rwlock_wrlock(&m_hRwLock);
-else
-	pthread_rwlock_rdlock(&m_hRwLock);
-#endif
-}
-
-void
-CPBErrCorrect::ReleaseLock(bool bExclusive)
-{
-#ifdef _WIN32
-if(bExclusive)
-	ReleaseSRWLockExclusive(&m_hRwLock);
-else
-	ReleaseSRWLockShared(&m_hRwLock);
-#else
-pthread_rwlock_unlock(&m_hRwLock);
-#endif
-}
 
 
 // ProcessBioseqFile
@@ -2131,10 +2099,10 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 #ifdef _WIN32
 	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 60000))
 		{
-		AcquireSerialise();
+		AcquireCASSerialise();
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
 							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		};
 	CloseHandle(pThreadPar->threadHandle);
 #else
@@ -2144,10 +2112,10 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	ts.tv_sec += 60;
 	while ((JoinRlt = pthread_timedjoin_np(pThreadPar->threadID, NULL, &ts)) != 0)
 		{
-		AcquireSerialise();
+		AcquireCASSerialise();
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
 							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		ts.tv_sec += 60;
 		}
 #endif
@@ -2273,17 +2241,17 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	{
 	pThreadPar->NumCoreHits = 0;
 	pCurPBScaffNode = &m_pPBScaffNodes[CurNodeID-1];
-	AcquireLock(true);
+	AcquireCASLock();
 	if(pCurPBScaffNode->flgCurProc == 1 ||    // another thread already processing this sequence? 
 			pCurPBScaffNode->flgHCseq ||	  // not error correcting already assumed to be high confidence sequences 
 		    pCurPBScaffNode->flgUnderlength == 1 || // must be of a user specified minimum length 
 			pCurPBScaffNode->SeqLen < (UINT32)pThreadPar->MinPBSeqLen) 
        	{
-		ReleaseLock(true);
+		ReleaseCASLock();
 		continue;
 		}
 	pCurPBScaffNode->flgCurProc = 1;
-	ReleaseLock(true);
+	ReleaseCASLock();
 	pThreadPar->bRevCpl = false;
 	IdentifyCoreHits(CurNodeID,pThreadPar);
 
@@ -2513,13 +2481,13 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 		LongAAligns = 0;
 		if(pThreadPar->pSW == NULL)
 			{
-			AcquireSerialise();
+			AcquireCASSerialise();
 			pThreadPar->pSW = new CSSW;
 			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
 			pThreadPar->pSW->SetCPScores(m_SWMatchScore, m_SWMismatchPenalty, m_SWGapOpenPenalty, m_SWGapExtnPenalty);
 			pThreadPar->pSW->SetMaxInitiatePathOfs(cDfltMaxOverlapFloat);
 			pThreadPar->pSW->PreAllocMaxTargLen(100000,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
-			ReleaseSerialise();
+			ReleaseCASSerialise();
 			}
 
 		if(m_PMode == ePBPMErrCorrect && pThreadPar->NumTargCoreHitCnts >= 2)
@@ -2659,12 +2627,12 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 							Class = (int)eOLCcontained;
 					if(Class != eOLCOverlapping)
 						{
-						AcquireLock(true);
+						AcquireCASLock();
 						if(Class == (int)eOLCcontains)
 							pTargNode->flgContains = 1;
 						else
 							pTargNode->flgContained = 1;
-						ReleaseLock(true);	
+						ReleaseCASLock();	
 						ProvContained += 1;
 						}
 					}
@@ -2680,7 +2648,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				
 					char szKMerDists[2000];
 					int KMerDistsIdx;
-					AcquireSerialise();
+					AcquireCASSerialise();
 					for(int TTx = 0; TTx < 70; TTx += 1)
 						m_ExactKmerDists[TTx] += CurExactKmerDists[TTx];
 					m_TotAlignSeqLen += (PeakMatchesCell.PLastAnchorEndOfs - PeakMatchesCell.PFirstAnchorStartOfs);	
@@ -2692,7 +2660,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 							KMerDistsIdx += sprintf(&szKMerDists[KMerDistsIdx],",%d",m_ExactKmerDists[TTx]);
 						gDiagnostics.DiagOut(eDLInfo,gszProcName,szKMerDists);
 						}
-					ReleaseSerialise();
+					ReleaseCASSerialise();
 #endif
 					pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
@@ -2706,7 +2674,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				if(m_PMode == ePBPMOverlapDetail && m_hErrCorFile != -1)
 					{
 					m_pSfxArray->GetIdentName(pTargNode->EntryID,sizeof(szTargSeqName)-1,szTargSeqName);
-					AcquireSerialise();
+					AcquireCASSerialise();
 					if(m_ScaffLineBuffIdx > (sizeof(m_szScaffLineBuff) - 1000))
 						{
 						CUtility::SafeWrite(m_hErrCorFile,m_szScaffLineBuff,m_ScaffLineBuffIdx);
@@ -2758,7 +2726,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					for(int ExactLenIdx = 0; ExactLenIdx < cExactMatchLenDist; ExactLenIdx++)
 						m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",%d",PeakMatchesCell.ExactMatchLenDist[ExactLenIdx]);
 #endif
-					ReleaseSerialise();
+					ReleaseCASSerialise();
 					}
 				ProvOverlapped += 1;
 				}
@@ -2768,7 +2736,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	if(m_PMode == ePBPMErrCorrect && pThreadPar->pSW != NULL && NumInMultiAlignment >= 1 &&  (m_hMultiAlignFile != -1 || m_hErrCorFile != -1))
 		{
 		pThreadPar->pSW->GenMultialignConcensus();
-		AcquireSerialise();
+		AcquireCASSerialise();
 		if(m_hErrCorFile != -1)
 			{
 			if((pThreadPar->ErrCorBuffIdx=pThreadPar->pSW->MAlignCols2fasta(pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff)) > 0)
@@ -2787,9 +2755,9 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 				pThreadPar->MultiAlignBuffIdx = 0;
 				}
 			}
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		}
-	AcquireSerialise();
+	AcquireCASSerialise();
 	if(ProvOverlapping > 0)
 		m_ProvOverlapping += 1;
 	if(ProvOverlapped > 0)
@@ -2801,7 +2769,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	if(ProvSWchecked > 0)
 		m_ProvSWchecked += ProvSWchecked;
 	m_NumOverlapProcessed += 1;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	ProvOverlapping = 0;
 	ProvOverlapped = 0;
 	ProvContained = 0;
@@ -2811,7 +2779,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	pThreadPar->NumTargCoreHitCnts = 0;
 	pThreadPar->NumCoreHits = 0;
 	}
-AcquireSerialise();
+AcquireCASSerialise();
 if(m_PMode == ePBPMErrCorrect && m_hErrCorFile != -1 && pThreadPar->ErrCorBuffIdx > 0)
 	{
 	CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx);
@@ -2827,7 +2795,7 @@ if(m_PMode == ePBPMOverlapDetail && m_ScaffLineBuffIdx > 0)
 	CUtility::SafeWrite(m_hErrCorFile,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 	m_ScaffLineBuffIdx = 0;
 	}
-ReleaseSerialise();
+ReleaseCASSerialise();
 
 if(pThreadPar->pSW != NULL)
 	{
@@ -2985,15 +2953,11 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=pPars->DeltaCoreOfs,pCoreSe
 		PrevHitIdx = NextHitIdx;
 		pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
 		HitSeqLen = pTargNode->SeqLen; 
-		AcquireLock(false);
+
 		if((pPars->bSelfHits ? pTargNode->NodeID != pProbeNode->NodeID : pTargNode->NodeID == pProbeNode->NodeID) || 
-				 pTargNode->flgUnderlength == 1 ||	// not interested in selfhits or underlength targets
+				 pTargNode->flgUnderlength == 1 ||	// not interested in selfhits or under length targets
 							HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
-			{
-			ReleaseLock(false);
 			continue;
-			}
-		ReleaseLock(false);
 
   		AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
 		HitsThisCore += 1;

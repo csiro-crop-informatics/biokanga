@@ -45,6 +45,8 @@ m_pTransitStack = NULL;
 m_pComponents = NULL;
 m_pPathTraceBacks = NULL;
 m_bMutexesCreated = false;
+m_CASSerialise = 0;
+m_CASLock = 0;
 Reset();
 }
 
@@ -58,42 +60,8 @@ CAssembGraph::CreateMutexes(void)
 {
 if(m_bMutexesCreated)
 	return(eBSFSuccess);
-
-#ifdef _WIN32
-InitializeSRWLock(&m_hRwLock);
-#else
-if(pthread_rwlock_init (&m_hRwLock,NULL)!=0)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create rwlock");
-	return(eBSFerrInternal);
-	}
-#endif
-
-#ifdef _WIN32
-if(!InitializeCriticalSectionAndSpinCount(&m_hSCritSect,1000))
-	{
-#else
-if(pthread_spin_init(&m_hSpinLock,PTHREAD_PROCESS_PRIVATE)!=0)
-	{
-	pthread_rwlock_destroy(&m_hRwLock);
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-	return(eBSFerrInternal);
-	}
-
-#ifdef _WIN32
-if((m_hMtxMHReads = CreateMutex(NULL,false,NULL))==NULL)
-	{
-#else
-if(pthread_mutex_init (&m_hMtxMHReads,NULL)!=0)
-	{
-#endif
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to create mutex");
-#ifndef _WIN32
-	pthread_rwlock_destroy(&m_hRwLock);
-#endif
-	return(eBSFerrInternal);
-	}
+m_CASSerialise = 0;
+m_CASLock = 0;
 
 m_bMutexesCreated = true;
 return(eBSFSuccess);
@@ -104,79 +72,91 @@ CAssembGraph::DeleteMutexes(void)
 {
 if(!m_bMutexesCreated)
 	return;
-#ifdef _WIN32
-CloseHandle(m_hMtxMHReads);
-
-#else
-pthread_mutex_destroy(&m_hMtxMHReads);
-pthread_rwlock_destroy(&m_hRwLock);
-
-#endif
 m_bMutexesCreated = false;
 }
 
+
 void
-CAssembGraph::AcquireSerialise(void)
+CAssembGraph::AcquireCASSerialise(void)
 {
-int SpinCnt = 1000;
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
 #ifdef _WIN32
-while(!TryEnterCriticalSection(&m_hSCritSect))
+while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
 	{
 	if(SpinCnt -= 1)
 		continue;
-	SwitchToThread();
-	SpinCnt = 100;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
 	}
 #else
-while(pthread_spin_trylock(&m_hSpinLock)==EBUSY)
+while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
 	{
 	if(SpinCnt -= 1)
 		continue;
-	pthread_yield();
-	SpinCnt = 100;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
 	}
 #endif
 }
 
 void
-CAssembGraph::ReleaseSerialise(void)
+CAssembGraph::ReleaseCASSerialise(void)
 {
 #ifdef _WIN32
-LeaveCriticalSection(&m_hSCritSect);
+InterlockedCompareExchange(&m_CASSerialise,0,1);
 #else
-pthread_spin_unlock(&m_hSpinLock);
+__sync_val_compare_and_swap(&m_CASSerialise,1,0);
 #endif
 }
 
-void 
-inline CAssembGraph::AcquireLock(bool bExclusive)
+
+void
+CAssembGraph::AcquireCASLock(void)
 {
+int SpinCnt = 5000;
+int BackoffMS = 5;
+
 #ifdef _WIN32
-if(bExclusive)
-	AcquireSRWLockExclusive(&m_hRwLock);
-else
-	AcquireSRWLockShared(&m_hRwLock);
+while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #else
-if(bExclusive)
-	pthread_rwlock_wrlock(&m_hRwLock);
-else
-	pthread_rwlock_rdlock(&m_hRwLock);
+while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 1000;
+	if(BackoffMS < 500)
+		BackoffMS += 2;
+	}
 #endif
 }
 
 void
-inline CAssembGraph::ReleaseLock(bool bExclusive)
+CAssembGraph::ReleaseCASLock(void)
 {
-
 #ifdef _WIN32
-if(bExclusive)
-	ReleaseSRWLockExclusive(&m_hRwLock);
-else
-	ReleaseSRWLockShared(&m_hRwLock);
+InterlockedCompareExchange(&m_CASLock,0,1);
 #else
-pthread_rwlock_unlock(&m_hRwLock);
+__sync_val_compare_and_swap(&m_CASLock,1,0);
 #endif
 }
+
+
+
 
 void 
 CAssembGraph::Reset(void)	
@@ -323,17 +303,17 @@ tVertID OverlappedVertexID;
 
 if(NumSeqs == 0 || pOverlappedSeqs == NULL)
 	return((UINT32)eBSFerrParams);
-AcquireSerialise();
+AcquireCASSerialise();
 if(m_bTerminate)		// check if should early exit
 	{
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrInternal);
 	}
 if((m_UsedGraphOutEdges + NumSeqs) > cMaxValidID)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: too many edges, can only accept at most %u",cMaxValidID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrMaxEntries);
 	}
 
@@ -358,7 +338,7 @@ if(m_pGraphOutEdges == NULL)				// initialisation may be required
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: graph forward edge (%d bytes per edge) allocation of %d edges failed - %s",
 								(int)sizeof(tsGraphOutEdge),cInitialAllocVertices,strerror(errno));
 		m_bTerminate = true;
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		return((UINT32)eBSFerrMem);
 		}
 #else
@@ -368,7 +348,7 @@ if(m_pGraphOutEdges == NULL)				// initialisation may be required
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: graph forward edge (%d bytes per edge) allocation of %d edges failed - %s",
 								(int)sizeof(tsGraphOutEdge),cInitialAllocVertices,strerror(errno));
 		m_bTerminate = true;
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		return(eBSFerrMem);
 		}
 #endif
@@ -400,7 +380,7 @@ else
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: graph forward edge (%d bytes per edge) re-allocation to %lld edges from %lld failed - %s",
 														(int)sizeof(tsGraphOutEdge),AllocMem,m_AllocGraphOutEdges,AllocEdges,strerror(errno));
 			m_bTerminate = true;
-			ReleaseSerialise();
+			ReleaseCASSerialise();
 			return((UINT32)eBSFerrMem);
 			}
 		m_AllocGraphOutEdges += (UINT32)ReallocEdges;
@@ -427,7 +407,7 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: unable to locate vertex for SeqID %u", CurOverlapSeqID);
 			m_bTerminate = true;
-			ReleaseSerialise();
+			ReleaseCASSerialise();
 			return((UINT32)eBSFerrParams);
 			}
 		OverlappingVertexID = pFromVertex->VertexID;
@@ -439,7 +419,7 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: Inconsistencies in overlap offsets for SeqID %u", CurOverlapSeqID);
 		m_bTerminate = true;
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		return((UINT32)eBSFerrParams);
 		}
 
@@ -451,7 +431,7 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: unable to locate vertex for SeqID %u", CurOverlappedSeqID);
 			m_bTerminate = true;
-			ReleaseSerialise();
+			ReleaseCASSerialise();
 			return((UINT32)eBSFerrParams);
 			}
 		OverlappedVertexID = pToVertex->VertexID;
@@ -463,7 +443,7 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: Inconsistencies in overlap offsets for SeqID %u", CurOverlappedSeqID);
 		m_bTerminate = true;
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		return((UINT32)eBSFerrParams);
 		}
 
@@ -503,7 +483,7 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 m_bReduceEdges = true;
 m_bOutEdgeSorted = false;
 m_bInEdgeSorted = false;
-ReleaseSerialise();
+ReleaseCASSerialise();
 return(m_UsedGraphOutEdges);
 }
 
@@ -538,14 +518,13 @@ if(FromSeqID < 1 || ToSeqID < 1 || FromSeqID > cMaxValidID || ToSeqID > cMaxVali
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: Sequence identifiers must be in range 1..%u",cMaxValidID);
 	m_bTerminate = true;
-	ReleaseSerialise();
 	return((UINT32)eBSFerrMaxEntries);
 	}
 
-AcquireSerialise();
+AcquireCASSerialise();
 if(m_bTerminate)		// check if should early exit
 	{
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSErrSession);
 	}
 
@@ -553,7 +532,7 @@ if(m_UsedGraphOutEdges >= cMaxValidID)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: too many edges, can only accept at most %u",cMaxValidID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrMaxEntries);
 	}
 
@@ -573,7 +552,7 @@ if(pFromVertex == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: unable to locate vertex for SeqID %u", FromSeqID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrParams);
 	}
 
@@ -581,7 +560,7 @@ if(pFromVertex->SeqLen != FromSeqLen)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: FromSeqLen: %u not equal to vertex sequence length: %u for FromSeqID: %u",FromSeqLen, pFromVertex->SeqLen,FromSeqID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrParams);
 	}
 
@@ -591,7 +570,7 @@ if((int)FromSeq5Ofs < 0 || (FromSeq5Ofs + 100) > pFromVertex->SeqLen ||
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: Inconsistencies in overlap offsets for SeqID %u", FromSeqID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrParams);
 	}
 OverlappingVertexID = pFromVertex->VertexID;
@@ -601,7 +580,7 @@ if(pToVertex == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: unable to locate vertex for SeqID %u", ToSeqID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrParams);
 	}
 
@@ -609,7 +588,7 @@ if(pToVertex->SeqLen != ToSeqLen)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: ToSeqLen: %u not equal to vertex sequence length: %u for ToSeqID: %u",ToSeqLen, pToVertex->SeqLen,ToSeqID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrParams);
 	}
 
@@ -619,7 +598,7 @@ if((int)ToSeq5Ofs < 0 || (ToSeq5Ofs + 100) > pToVertex->SeqLen ||
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdges: Inconsistencies in overlap offsets for SeqID %u", ToSeqID);
 	m_bTerminate = true;
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	return((UINT32)eBSFerrParams);
 	}
 OverlappedVertexID = pToVertex->VertexID;
@@ -634,7 +613,7 @@ if(m_pGraphOutEdges == NULL)				// initialisation may be required
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: graph forward edge (%d bytes per edge) allocation of %d edges failed - %s",
 								(int)sizeof(tsGraphOutEdge),cInitialAllocVertices,strerror(errno));
 		m_bTerminate = true;
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		return((UINT32)eBSFerrMem);
 		}
 #else
@@ -644,7 +623,7 @@ if(m_pGraphOutEdges == NULL)				// initialisation may be required
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: graph forward edge (%d bytes per edge) allocation of %d edges failed - %s",
 								(int)sizeof(tsGraphOutEdge),cInitialAllocVertices,strerror(errno));
 		m_bTerminate = true;
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		return((UINT32)eBSFerrMem);
 		}
 #endif
@@ -674,7 +653,7 @@ else
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: graph forward edge (%d bytes per edge) re-allocation to %lld edges from %lld failed - %s",
 													(int)sizeof(tsGraphOutEdge),AllocMem,m_AllocGraphOutEdges,AllocEdges,strerror(errno));
 			m_bTerminate = true;
-			ReleaseSerialise();
+			ReleaseCASSerialise();
 			return((UINT32)eBSFerrMem);
 			}
 		m_AllocGraphOutEdges += (UINT32)ReallocEdges;
@@ -749,7 +728,7 @@ if(!bAntisense)
 	}
 
 m_bReduceEdges = true;
-ReleaseSerialise();
+ReleaseCASSerialise();
 return(m_UsedGraphOutEdges);
 }
 
@@ -760,12 +739,12 @@ CAssembGraph::AddVertex(UINT32 SeqLen,		// sequence length
 size_t AllocMem;
 tVertID VertexID;
 tsGraphVertex *pVertex;
-AcquireSerialise();
 
+AcquireCASSerialise();
 if(m_UsedGraphVertices >= cMaxValidID)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddSeqOverlap: too many vertices, can only accept at most %u",cMaxValidID);
-	ReleaseSerialise();
+	ReleaseCASSerialise();
 	Reset();
 	return((UINT32)eBSFerrMaxEntries);
 	}
@@ -779,7 +758,7 @@ if(m_pGraphVertices == NULL)		// initial allocation may be required
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddVertex: graph vertices (%d bytes per vertex) allocation of %u vertices failed - %s",
 													(int)sizeof(tsGraphVertex),cInitialAllocVertices,strerror(errno));
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		Reset();
 		return((UINT32)eBSFerrMem);
 		}
@@ -790,7 +769,7 @@ if(m_pGraphVertices == NULL)		// initial allocation may be required
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddVertex: graph vertices (%d bytes per vertex) allocation of %u vertices failed - %s",
 													(int)sizeof(tsGraphVertex),cInitialAllocVertices,strerror(errno));
 		m_pGraphVertices = NULL;
-		ReleaseSerialise();
+		ReleaseCASSerialise();
 		Reset();
 		return(eBSFerrMem);
 		}
@@ -819,7 +798,7 @@ else
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddVertex: graph vertices (%d bytes per vertex) re-allocation from %u to %u failed - %s",
 														(int)sizeof(tsGraphVertex),m_UsedGraphVertices,m_UsedGraphVertices + ReallocVertices,strerror(errno));
-			ReleaseSerialise();
+			ReleaseCASSerialise();
 			return((UINT32)eBSFerrMem);
 			}
 		memset(&pTmp[m_AllocGraphVertices],0,memreq - (m_AllocGraphVertices * sizeof(tsGraphVertex)));
@@ -835,7 +814,7 @@ memset(pVertex,0,sizeof(tsGraphVertex));
 pVertex->VertexID = VertexID;
 pVertex->SeqID = SeqID;
 pVertex->SeqLen = SeqLen;
-ReleaseSerialise();
+ReleaseCASSerialise();
 return(VertexID);
 }
 
@@ -1168,9 +1147,9 @@ UINT32
 CAssembGraph::GetNumGraphVertices(void)		// returns current number of graph vertices
 {
 UINT32 Num;
-AcquireSerialise();
+AcquireCASSerialise();
 Num = m_UsedGraphVertices;
-ReleaseSerialise();
+ReleaseCASSerialise();
 return(Num);
 }
 
@@ -1178,9 +1157,9 @@ UINT32
 CAssembGraph::GetNumGraphOutEdges(void)		// returns current number of graph forward edges
 {
 UINT32 Num;
-AcquireSerialise();
+AcquireCASSerialise();
 Num = m_UsedGraphOutEdges;
-ReleaseSerialise();
+ReleaseCASSerialise();
 return(Num);
 }
 
@@ -1188,9 +1167,9 @@ UINT32
 CAssembGraph::GetNumReducts(void)		// returns current number of edge reductions
 {
 UINT32 Num;
-AcquireSerialise();
+AcquireCASSerialise();
 Num = m_NumReducts;
-ReleaseSerialise();
+ReleaseCASSerialise();
 return(Num);
 }
 
@@ -2612,9 +2591,9 @@ for(Idx = 0; Idx < m_UsedGraphOutEdges; Idx++,pEdge++)
 		NumRemoved +=1;
 	}
 m_UsedGraphOutEdges -= NumRemoved;
-AcquireSerialise();
+AcquireCASSerialise();
 m_NumReducts = NumRemoved;
-ReleaseSerialise();
+ReleaseCASSerialise();
 m_UsedGraphInEdges = m_UsedGraphOutEdges;
 pStaticGraphInEdges = m_pGraphInEdges;
 pStaticGraphOutEdges = m_pGraphOutEdges;

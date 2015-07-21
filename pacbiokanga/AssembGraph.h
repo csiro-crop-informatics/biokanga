@@ -198,22 +198,17 @@ class CAssembGraph
 	UINT32 m_NumReducts;			// number of graph node reductions
 	bool m_bReduceEdges;			// if true then attempt to reduce extraneous graph edges when current graph is full and more node memory needs to be allocated  
 
-	void AcquireSerialise(void);
-	void ReleaseSerialise(void);
-	void AcquireLock(bool bExclusive);				// defaults as read only lock
-	void ReleaseLock(bool bExclusive);
-
 	int m_NumThreads;				// use at most this number threads for graph processing
 	bool m_bMutexesCreated;			// set true if mutexes and rwlocks created/initialised
-#ifdef _WIN32
-	CRITICAL_SECTION m_hSCritSect;
-	HANDLE m_hMtxMHReads;
-	SRWLOCK m_hRwLock;
-#else
-	pthread_spinlock_t m_hSpinLock;
-	pthread_mutex_t m_hMtxMHReads;
-	pthread_rwlock_t m_hRwLock;
-#endif
+
+	volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	void AcquireCASSerialise(void);
+	void ReleaseCASSerialise(void);
+	volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
+	void AcquireCASLock(void);
+	void ReleaseCASLock(void);
+
+
 	static int SortOutEdgeFromVertexID(const void *arg1, const void *arg2);
 	static int SortOutEdgeFromVertexIDSeqOfs(const void *arg1, const void *arg2);
 	static int SortInEdgesToVertexID(const void *arg1, const void *arg2);
