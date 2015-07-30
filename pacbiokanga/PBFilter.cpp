@@ -103,13 +103,13 @@ struct arg_int *pmode = arg_int0("m","pmode","<int>",			"processing mode - 0 def
 struct arg_int *minsmrtbellexacts = arg_int0("s","minsmrtbellexacts","<int>",	"putative SMRTBell adaptors must contain at least this many exactly matching bases (default 30, range 20 to 46)");
 struct arg_int *smrtbellflankseqlen = arg_int0("S","smrtbellflankseqlen","<int>",	"processing flanking sequences of this length around putative SMRTBell adaptors (default 500, range 200 to 1000)");
 struct arg_int *minrevcplexacts = arg_int0("a","minantisenseexacts","<int>",	"flanking 5' and antisense 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases (default smrtbellflankseqlen/2, range 100 to 1000)");
-struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 250, range 0 to 10000)");
-struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 250, range 0 to 10000)");
+struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 1000, range 0 to 10000)");
+struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 1000, range 0 to 10000)");
 struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 5000, range 1000 to 20000)");
 
 struct arg_file *contamfile = arg_file0("I","contam","<file>",		"file containing contaminate sequences");
-struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences minimum accuracy rate (default 97, range 85 to 99");
-struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",		"Minimum contaminate overlap length (default 1000, range 500 to 5000");
+struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences minimum accuracy rate (default 85, range 85 to 99");
+struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",		"Minimum contaminate overlap length (default 500, range 500 to 5000");
 
 struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file(s) containing PacBio long reads to be filtered");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output accepted filtered reads to this file");
@@ -314,15 +314,15 @@ if (!argerrors)
 
 	if(PMode == ePBPMContam)
 		{
-		ContamARate = contamarate->count ? contamarate->ival[0] : 97;
+		ContamARate = contamarate->count ? contamarate->ival[0] : 85;
 		if(ContamARate < 85 || ContamARate > 100)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: PacBio sequences accuracy rate '-c%d' must be in range 85..99",ContamARate);
 			return(1);
 			}
-		if(ContamARate == 100)	// whilst accepting user input of 100% accuracy internally the limit is 99%
+		if(ContamARate == 100)	// whilst accepting user input of 100% accuracy internally allowing the odd error event!
 			ContamARate = 99;
-		ContamOvlpLen = contamovlplen->count ? contamovlplen->ival[0] : 1000;
+		ContamOvlpLen = contamovlplen->count ? contamovlplen->ival[0] : 500;
 		if(ContamOvlpLen < 500 || ContamOvlpLen > 5000)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum read length after any trim '-C%d' must be in range 500..5000",ContamOvlpLen);
@@ -577,6 +577,7 @@ m_MinReadLen = cDfltMinReadLen;
 
 m_TotProcessed = 0;
 m_TotAccepted = 0;
+m_TotContamTrimmed = 0;
 m_TotRejected = 0;
 m_TotContamRejected = 0;
 m_TotUnderLen = 0;
@@ -751,16 +752,45 @@ else
 		return(eBSFerrInternal);
 		}
 
-	UINT32 DeltaCoreOfs;				// ranges between 2 and 9
-	UINT32 CoreSeqLen;                  // ranges between 12 and 17
+	UINT32 DeltaCoreOfs;				// ranges between 1 and 8
+	UINT32 CoreSeqLen;                  // ranges between 10 and 15
 	UINT32 MinNumCores;                 // ranges between 5 and 10 
-	UINT32 MinPropBinned;               // requiring 70
+	UINT32 MinPropBinned;               // ranges between 50 and 78
+	int MaxInitiatePathOfs;	// require SW paths to have started within this many bp (0 to disable) on either the probe or target - effectively anchoring the SW 
+	int OverlapFloat;		// with this overlap float
 
-	DeltaCoreOfs = 2 + (ContamARate - 85)/2;
-	CoreSeqLen = 12 + (1 + ContamARate - 85)/3;
+	int MatchScore = 3;                 // PacBio has high proportion of InDels relative to simple base subs         
+	int MismatchPenalty = -7;    
+	int GapOpenPenalty = -4;     
+	int GapExtnPenalty = -1;     
+	int DlyGapExtn = 2;          
+
+	if(ContamARate > 97)
+		{
+		MatchScore = 1;
+		MismatchPenalty = -2;
+		GapOpenPenalty = -3;
+		GapExtnPenalty = -1;
+		DlyGapExtn = 1;
+		}
+	else 	
+		if (ContamARate > 92)
+			{
+			MatchScore = 2;
+			MismatchPenalty = -4;
+			GapOpenPenalty = -3;
+			GapExtnPenalty = -1;
+			DlyGapExtn = 1;
+			}
+
+
+	DeltaCoreOfs = 1 + (ContamARate - 85)/2;
+	CoreSeqLen = 10 + (1 + ContamARate - 85)/3;
 	MinNumCores = 5  + (1 + ContamARate - 85)/3;
-	MinPropBinned = 70;
+	MinPropBinned = 50 + (2 * (ContamARate - 85));
 
+	MaxInitiatePathOfs = cDfltSSWDInitiatePathOfs + (2 * (990 - (ContamARate * 10)));
+	OverlapFloat = (MaxInitiatePathOfs+1) / 2;
 
 	if((m_pSWAlign->Initialise(NumThreads,m_ContamOvlpLen,cMaxSeedCoreDepth,DeltaCoreOfs,CoreSeqLen,MinNumCores,MinPropBinned,cMaxAcceptHitsPerSeedCore,cDfltMaxProbeSeqLen)) != eBSFSuccess)
 		{
@@ -768,6 +798,10 @@ else
 		Reset();
 		return(eBSFerrOpnFile);
 		}
+	m_pSWAlign->SetScores(MatchScore, MismatchPenalty, GapOpenPenalty, GapExtnPenalty, DlyGapExtn);
+	m_pSWAlign->SetCPScores();
+	m_pSWAlign->SetMaxInitiatePathOfs(MaxInitiatePathOfs, OverlapFloat);
+
 	if((m_pSWAlign->LoadTargetSeqs(cMinContamSeqLen, pszContamFile)) <= 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to load any contaminate sequences from file: '%s'",pszContamFile);
@@ -885,7 +919,7 @@ sleep(10);
 #endif
 
 AcquireLock(false);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected,m_TotContamRejected);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d",m_TotProcessed,m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected,m_TotContamRejected);
 ReleaseLock(false);
 
 pThreadPar = pThreadPutOvlps;
@@ -895,7 +929,7 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 60000))
 		{
 		AcquireLock(false);
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected, m_TotContamRejected);
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d", m_TotProcessed, m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen, m_TotPutativeSMRTBells, m_TotRejected, m_TotContamRejected);
 		ReleaseLock(false);
 		};
 	CloseHandle(pThreadPar->threadHandle);
@@ -907,14 +941,14 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while ((JoinRlt = pthread_timedjoin_np(pThreadPar->threadID, NULL, &ts)) != 0)
 		{
 		AcquireLock(false);
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected,m_TotContamRejected);
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d", m_TotProcessed, m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen, m_TotPutativeSMRTBells, m_TotRejected, m_TotContamRejected);
 		ReleaseLock(false);
 		ts.tv_sec += 60;
 		}
 #endif
 	}
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed %d - accepted %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors %d",m_TotProcessed,m_TotAccepted,m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected, m_TotContamRejected);
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d", m_TotProcessed, m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen, m_TotPutativeSMRTBells, m_TotRejected, m_TotContamRejected);
 
 pThreadPar = pThreadPutOvlps;
 for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
@@ -1069,17 +1103,61 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		continue;
 		}
 
+	int Trim5AtContam;
+	int Trim3AtContam;
+
+	Trim5AtContam = 0;
+	Trim3AtContam = QuerySeqLen - 1;
 
 	if(m_PMode == ePBPMContam)
 		{
 		if(pThreadPar->SWAlignInstance == 0)
 			pThreadPar->SWAlignInstance = m_pSWAlign->InitInstance();
-		if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq)!=eBSFSuccess)
+		tsSSWCell Matched;
+		if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq,false,&Matched)!=eBSFSuccess)
 			{
-			AcquireLock(true);
-			m_TotContamRejected += 1;
-			ReleaseLock(true);
-			continue;
+			int Trim5ContamLen;
+			int Trim3ContamLen;
+			bool bTrimContam = false;
+			if(Matched.StartPOfs > 0 && Matched.EndPOfs > 0)
+				{
+				Matched.StartPOfs -= 1;
+				Matched.EndPOfs -= 1;
+				if((int)Matched.StartPOfs > Trim5AtOfs)
+					Trim5ContamLen = (int)Matched.StartPOfs - Trim5AtOfs;
+				else
+					Trim5ContamLen = 0;
+				if((int)Matched.EndPOfs < Trim3AtOfs)
+					Trim3ContamLen = Trim3AtOfs - (int)Matched.EndPOfs;
+				else
+					Trim3ContamLen = 0;
+
+				if(Trim5ContamLen >= m_MinReadLen || Trim3ContamLen >= m_MinReadLen)
+					{
+					if(Trim5ContamLen >= Trim3ContamLen)
+						{
+						Trim3AtContam = Matched.StartPOfs;
+						Trim5AtContam = 0;
+						}
+					else
+						{
+						Trim3AtContam = QuerySeqLen - 1;
+						Trim5AtContam = Matched.EndPOfs;
+						}
+					AcquireLock(true);
+					m_TotContamTrimmed += 1;
+					ReleaseLock(true);
+					bTrimContam = true;
+					}
+				}
+		
+			if(!bTrimContam)
+				{
+				AcquireLock(true);
+				m_TotContamRejected += 1;
+				ReleaseLock(true);
+				continue;
+				}
 			}
 		}
 
@@ -1102,7 +1180,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		m_OutBuffIdx += sprintf(&m_pOutBuff[m_OutBuffIdx],">%s\n",szQuerySeqIdent);
 		LineLen = 0;
 		pBuff = &m_pOutBuff[m_OutBuffIdx]; 
-		for(SeqIdx = Trim5AtOfs; SeqIdx <= Trim3AtOfs; SeqIdx++)
+		for(SeqIdx = max(Trim5AtOfs, Trim5AtContam); SeqIdx <= min(Trim3AtOfs, Trim3AtContam); SeqIdx++)
 			{
 			switch(pQuerySeq[SeqIdx]) {
 				case eBaseA:

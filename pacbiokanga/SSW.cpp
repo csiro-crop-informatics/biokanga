@@ -453,7 +453,7 @@ if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 1000)))
 	}
 
 	// now prealloc for the tracebacks
-if(MaxOverlapLen && (MaxOverlapLen < m_AllocdTracebacks || m_pAllocdTracebacks == NULL))
+if(MaxOverlapLen && (m_pAllocdTracebacks == NULL || ((UINT64)MaxOverlapLen * 3000) > m_AllocdTracebacks))
 	{
 	if(m_pAllocdTracebacks != NULL)
 		{
@@ -468,7 +468,7 @@ if(MaxOverlapLen && (MaxOverlapLen < m_AllocdTracebacks || m_pAllocdTracebacks =
 	m_AllocdTracebacks = 0;
 	m_AllocdTracebacksSize = 0;
 
-	m_AllocdTracebacks = (UINT64)MaxOverlapLen * 4000;		
+	m_AllocdTracebacks = (UINT64)MaxOverlapLen * 3500;		
 	m_AllocdTracebacksSize = sizeof(tsSSWTraceback) * m_AllocdTracebacks;
 #ifdef _WIN32
 	m_pAllocdTracebacks = (tsSSWTraceback *) malloc(m_AllocdTracebacksSize);
@@ -670,6 +670,32 @@ return(NumMarked);
 }
 
 
+UINT32											// number of tracedbacks which were reset
+CSSW::ResetTracebackFlags(UINT32 ResetFlags)	// reset these flags in all tracebacks
+{
+UINT32 Idx;
+UINT32 NumReset;
+tsSSWTraceback *pCur;
+
+if (!m_UsedTracebacks || m_AllocdTracebacks == 0 || m_pAllocdTracebacks == NULL)
+	return(0);
+
+ResetFlags &= cTrBkFlgsMsk;
+
+pCur = m_pAllocdTracebacks;
+NumReset = 0;
+for (Idx = 0; Idx < m_UsedTracebacks; Idx++, pCur++)
+	{
+	if(pCur->IdxT & ResetFlags)
+		{
+		pCur->IdxT &= ~ResetFlags;
+		NumReset += 1;
+		}
+	}
+return(NumReset);
+
+}
+
 UINT32                                      // after reduction there are this many tracebacks retained
 CSSW::ReduceTracebacks(UINT32 RetainFlag,	// reduce tracebacks by removing tracebacks which have NOT been marked with this flag in IdxT
 				 UINT32 ResetFlags)		    // and reset these flags in the retained traceback in IdxT
@@ -834,6 +860,7 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 	if(m_pAllocdTracebacks != NULL && (m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen)) // ensure that sufficent memory has been allocated to hold any tracebacks in next sweep over the target
 		{
 		// try to reduce the number of tracebacks
+		ResetTracebackFlags();
 		if(m_PeakMatchesCell.PeakScore > 0)  // peak scoring cell's path may have already terminated so mark that independently of those still in m_pAllocdCells[]
 			MarkTracebackPath(cTrBkFlgRetain,m_PeakMatchesCell.EndPOfs,m_PeakMatchesCell.EndTOfs);
 		pCell = m_pAllocdCells;

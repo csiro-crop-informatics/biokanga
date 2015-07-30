@@ -21,9 +21,11 @@ const int cAllocTProbetSeqSize = 100000;			// allocation buffer size to hold pro
 const int cDfltMinTargetSeqLen    = 1000;			// minimum target sequence length accepted  
 const int cDfltMinTargetOvlpLen   = 500;			// requiring target sequences to end overlap by at least this many bp or else be fully contained or containing  
 const int cDfltMaxArtefactDev = 20;					// default percentage deviation from the mean allowed when classing overlaps as being artefactual
+const int cDfltSSWDInitiatePathOfs = 250;			// default is to require SW paths to have started within this many bp on either the probe or target - effectively anchoring the SW
+const int cDfltSSWDOvlpFloat = 100;					// allowed float in bp on SW overlaps
 
 const int cMaxProbePBSSWs = 30;						// explore with SW at most this many probe alignments against target sequences
-const int cPBSSWSummaryTargCoreHitCnts = 100;			// summary core hit counts on at most this many targets
+const int cPBSSWSummaryTargCoreHitCnts = 100;		// summary core hit counts on at most this many targets
 
 #pragma pack(1)
 
@@ -40,8 +42,10 @@ typedef struct TAG_sPBSSWCoreHit {
 	UINT32 ProbeOfs;                // hit was from this probe offset
 	UINT32 TargOfs;					// onto this target offset
 	UINT32 HitLen;					// hit was of this length
+	UINT32 WinHits;					// number of core hits onto target relative to this core which are within a window of probelen
 	UINT8 flgRevCpl:1;				// 1 if core sequence was revcpl'd before matching
 	UINT8 flgMulti:1;				// 1 if core sequence was target multiloci and this instance to not be further processed
+	UINT8 flgClustered:1;			// 1 if core hit identified as part of a cluster of hits
 	} tsPBSSWACoreHit;
 
 typedef struct TAG_sPBSSWCoreHitCnts {
@@ -90,13 +94,22 @@ class CSWAlign
 	int m_SWGapOpenPenalty;					// SW gap opening penalty (-100..0)
 	int m_SWGapExtnPenalty;					// SW gap extension penalty (-100..0)
 	int m_SWProgExtnPenaltyLen;				// only apply gap extension penalty if gap at least this length (1..63) - use if aligning PacBio
+	int m_SWDlyGapExtn;						// delayed gap penalties, only apply gap extension penalty if gap at least this length
+	int m_SWProgPenaliseGapExtn;			// if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
+	int m_SWAnchorLen;						// identified first and last anchors in alignment to be of at least this length
 
-	UINT32 m_MinOverlapLen;			// the putative overlap would be of at least this length
-	UINT32 m_MaxSeedCoreDepth;		// only further extend a seed core if there are no more than this number of matching cores in all targeted sequences
-	UINT32 m_DeltaCoreOfs;			// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
-	UINT32 m_SeedCoreLen;			// putative overlaps are explored if there are cores of at least this length in any putative overlap
-	UINT32 m_MinNumCores;			// and if the putative overlap contains at least this many cores
-	UINT32 m_MaxAcceptHitsPerSeedCore; // limit accepted hits per seed core to no more this many
+	int m_CPMatchScore;						// path class, ClassifyPath(), score for matching bases (0..100)
+	int m_CPMismatchPenalty;				// path class mismatch penalty (-100..0)
+	int m_CPGapOpenPenalty;					// path class gap opening penalty (-100..0)
+	int m_CPGapExtnPenalty;					// path class gap extension penalty (-100..0)
+	int m_MaxInitiatePathOfs;				// if non-zero then only allow new paths to start if within that offset (0 to disable) on either probe or target - effectively an anchored SW
+
+	UINT32 m_MinOverlapLen;					// the putative overlap would be of at least this length
+	UINT32 m_MaxSeedCoreDepth;				// only further extend a seed core if there are no more than this number of matching cores in all targeted sequences
+	UINT32 m_DeltaCoreOfs;					// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
+	UINT32 m_SeedCoreLen;					// putative overlaps are explored if there are cores of at least this length in any putative overlap
+	UINT32 m_MinNumCores;					// and if the putative overlap contains at least this many cores
+	UINT32 m_MaxAcceptHitsPerSeedCore;		// limit accepted hits per seed core to no more this many
 	UINT32 m_MinNumSeedCores;				// require at least this many seed cores between overlapping scaffold sequences
 	UINT32 m_BinClusterSize;				// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
 	UINT32 m_MinPropBinned;					// require that the putative overlap contains at least this proportion (1..100) of m_BinClusterSize clustered binned cores
@@ -169,13 +182,31 @@ public:
 			char *pszTargSeqsFile,		// load target sequences from this file
 			int NumThreads = 4);		// use at most this number of threads when indexing target sequences
 
-	UINT32			// returned alignment instance identifier
-			InitInstance(void);	
+	UINT32			// returned alignment instance identifier or 0 if errors
+			InitInstance(void);        // initialise instance - uses scores etc., as previously set with SetScores() and/or SetCPScores() and/or SetMaxInitiatePathOfs()
+
+	bool SetScores(int MatchScore = cSSWDfltMatchScore,			// score for match
+				   int MismatchPenalty = cSSWDfltMismatchPenalty,	// penalty for mismatch
+				   int GapOpenPenalty = cSSWDfltGapOpenPenalty,	// penalty for opening a gap
+				   int GapExtnPenalty = cSSWDfltGapExtnPenalty,	// penalty if extending already opened gap
+				   int DlyGapExtn = cSSWDfltDlyGapExtn,			// delayed gap penalties, only apply gap extension penalty if gap at least this length
+				   int ProgPenaliseGapExtn = cSSWDfltProgPenaliseGapExtn,	// if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
+				   int AnchorLen = cSSWDfltAnchorLen);				// identified first and last anchors in alignment to be of at least this length
+
+	bool SetCPScores(int MatchScore = cSSWDfltMatchScore,		// ClassifyPath() score for match
+					 int MismatchPenalty = cSSWDfltMismatchPenalty,	// ClassifyPath() penalty for mismatch
+					 int GapOpenPenalty = cSSWDfltGapOpenPenalty,	// ClassifyPath() penalty for opening a gap
+					 int GapExtnPenalty = cSSWDfltGapExtnPenalty);	// ClassifyPath() penalty if extending already opened gap
+
+	bool SetMaxInitiatePathOfs(int MaxInitiatePathOfs = cDfltSSWDInitiatePathOfs,	// require SW paths to have started within this many bp (0 to disable) on either the probe or target - effectively anchoring the SW 
+								int OverlapFloat = cDfltSSWDOvlpFloat);		// with this overlap float 
 
 	int
 			AlignProbeSeq(UINT32 SWAInstance,			// using this alignment instance
 							UINT32 ProbeSeqLen,			// sequence to align is this length
 							etSeqBase *pProbeSeq,      // probe sequence to align
-							bool bSenseOnly = false);		   // true if to align probe sense only, false to align both sense and antisense		
+							bool bSenseOnly = false,   // true if to align probe sense only, false to align both sense and antisense
+	    					tsSSWCell *pRetMatched = NULL);    // optional (if not NULL) returned match detail
+		
 };
 

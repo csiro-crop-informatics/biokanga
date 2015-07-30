@@ -242,7 +242,7 @@ struct arg_int *sweepstart = arg_int0("b","sweepstart","<int>",	"process startin
 struct arg_int *sweepend = arg_int0("B","sweepend","<int>",		"complete processing at this sweep instance inclusive (default = 0 for all remaining, or >= Sweep start)");
 struct arg_int *seqlen = arg_int0("K","seqlen","<int>",			"Hamming edit distances for these length k-mer subsequences (range 20..500, default is 100)");
 struct arg_file *infile = arg_file1("i","in","<file>",			"in mode 0 input sfx file, in mode 1 and 2, bioseq genome assembly file or in mode 3 merge from this input Hamming file");
-struct arg_file *inseqfile = arg_file0("I","seq","<file>",		"if restricted hamming hamming processing then optional file containing source kmer sequences");
+struct arg_file *inseqfile = arg_file0("I","seq","<file>",		"if restricted hamming processing then optional file containing source kmer sequences");
 
 struct arg_int *sample = arg_int0("k","sample","<int>",		    "sample every -S<N> sweep instances (default is 1) useful if only interested in overall distributions\n\t\tin restricted Hamming processing then sample every Nth (max 100) K-mer");
 
@@ -379,7 +379,7 @@ if (!argerrors)
 		CoreLen = SeqLen/(RHamm+1);
 		if(CoreLen < cMinCoreLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Restricted hamming limit '-r%d' is incompatiable with k-mer sequence length '-k%d'",RHamm,SeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Restricted hamming limit '-r%d' is incompatible with k-mer sequence length '-k%d'",RHamm,SeqLen);
 			exit(1);
 			}
 
@@ -2074,7 +2074,7 @@ if(pszInSeqFile != NULL && pszInSeqFile[0] != '\0')
 else
 	bProcSepKMers = false;
 
-// if specified that kmer sequences are to be seperately loaded then load from that file
+// if specified that kmer sequences are to be separately loaded then load from that file
 if(bProcSepKMers)
 	{
 	if((m_pBioSeqFile = new CBioSeqFile) == NULL)

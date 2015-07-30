@@ -20,8 +20,8 @@ const int cMinSMRTBellExacts = 20;					// user specified min mumber of exactly m
 const int cDfltMinSMRTBellExacts = 30;				// default mumber of exactly matching bases in putative SMRTBell adaptor
 const int cMaxSMRTBellExacts = 46;				    // user specified max mumber of exactly matching bases in putative SMRTBell adaptor
 
-const int cDfltTrim5 = 250;							// default is to after any filtering then to trim 5' end by this many bp
-const int cDfltTrim3 = 250;							// default is to after any filtering then to trim 5' end by this many bp
+const int cDfltTrim5 = 1000;						// default is to after any filtering then to trim 5' end by this many bp
+const int cDfltTrim3 = 1000;						// default is to after any filtering then to trim 5' end by this many bp
 const int cDfltMinReadLen = 5000;					// default is to only report reads of at least this minimum read length after any end trimming
 
 const int cDfltMaxPacBioSeqLen = 0x1ffff;			// default is to allow for PacBio reads of <= 128Kbp
@@ -97,6 +97,7 @@ class CPBFilter
 	int m_NumThreads;						// maximum number of worker threads to use
 	int m_TotProcessed;						// total reads processed
 	int	m_TotAccepted;						// after filtering accepted this number of reads
+	int m_TotContamTrimmed;					// this number of accepted reads were contaminate trimmed
 	int m_TotPutativeSMRTBells;             // number of putative SMRTBell adaptors
 	int	m_TotRejected;                      // rejected this number of reads because of retained PacBio SMRTBell adaptors
 	int m_TotContamRejected;                // rejected this number of reads because of BAC vectors - contained, containing, or overlapping

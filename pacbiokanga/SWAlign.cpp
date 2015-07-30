@@ -108,7 +108,23 @@ m_NumSWInstances=0;
 m_AllocdSWInstances=0;			
 m_MaxTargSeqLen=0;		
 
-m_OverlapFloat = cDfltMaxOverlapFloat;
+
+m_SWMatchScore = cSSWDfltMatchScore;
+m_SWMismatchPenalty = cSSWDfltMismatchPenalty;
+m_SWGapOpenPenalty = cSSWDfltGapOpenPenalty;
+m_SWGapExtnPenalty = cSSWDfltGapExtnPenalty;
+m_SWDlyGapExtn = cSSWDfltDlyGapExtn;
+m_SWProgPenaliseGapExtn = cSSWDfltProgPenaliseGapExtn;
+m_SWProgExtnPenaltyLen = 0;
+m_SWAnchorLen = cSSWDfltAnchorLen;
+
+m_CPMatchScore = cSSWDfltMatchScore;
+m_CPMismatchPenalty = cSSWDfltMismatchPenalty;
+m_CPGapOpenPenalty = cSSWDfltGapOpenPenalty;
+m_CPGapExtnPenalty = cSSWDfltGapOpenPenalty;
+m_MaxInitiatePathOfs = cDfltSSWDInitiatePathOfs;
+
+m_OverlapFloat = cDfltSSWDOvlpFloat;
 m_MinPBSeqLen = cDfltMinPBSeqLen;	
 m_MinPBSeqOverlap = cDfltMinErrCorrectLen;
 m_MaxArtefactDev = cDfltMaxArtefactDev;
@@ -117,12 +133,6 @@ m_DeltaCoreOfs = cDfltDeltaCoreOfs;
 m_MaxSeedCoreDepth = cDfltMaxSeedCoreDepth;
 m_SeedCoreLen = cDfltSeedCoreLen;
 m_MinNumSeedCores = cDfltNumSeedCores;
-
-m_SWMatchScore = cDfltSWMatchScore;
-m_SWMismatchPenalty = cDfltSWMismatchPenalty;	
-m_SWGapOpenPenalty = cDfltSWGapOpenPenalty;
-m_SWGapExtnPenalty = cDfltSWGapExtnPenalty;
-m_SWProgExtnPenaltyLen = cDfltSWProgExtnLen;	
 
 m_BinClusterSize = cDfltBinClusterSize;
 m_MinPropBinned = cDfltMinPropBinned;
@@ -334,6 +344,68 @@ if(m_SeedCoreLen <= cMaxKmerLen)
 return(NumEntries);
 }
 
+// SetScores
+// Set match, mismatch, gap opening and gap extension scores
+bool
+CSWAlign::SetScores(int MatchScore,			// score for match
+				int MismatchPenalty,	// penalty for mismatch
+				int GapOpenPenalty,		// penalty for opening a gap
+				int GapExtnPenalty,		// penalty if extending already opened gap
+				int DlyGapExtn,			// delayed gap penalties, only apply gap extension penalty if gap at least this length
+				int ProgPenaliseGapExtn, // if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
+				int AnchorLen)			 // identified first and last anchors in alignment to be of at least this length
+{
+if (MatchScore <= 0 || MatchScore > 100 ||
+	DlyGapExtn < 1 || DlyGapExtn > cSSWMaxPenaltyGap ||
+	ProgPenaliseGapExtn < 0 || ProgPenaliseGapExtn > cSSWMaxPenaltyGap ||
+	MismatchPenalty < -100 || MismatchPenalty > 0 ||
+	GapOpenPenalty < -100 || GapOpenPenalty > 0 ||
+	GapExtnPenalty < -100 || GapExtnPenalty > 0 ||
+	AnchorLen < cSSWMinAnchorLen || AnchorLen > cSSWMaxAnchorLen)
+	return(false);
+m_SWMatchScore = MatchScore;
+m_SWMismatchPenalty = MismatchPenalty;
+m_SWGapOpenPenalty = GapOpenPenalty;
+m_SWGapExtnPenalty = GapExtnPenalty;
+m_SWDlyGapExtn = DlyGapExtn;
+if (ProgPenaliseGapExtn > 0 && ProgPenaliseGapExtn < DlyGapExtn)
+	ProgPenaliseGapExtn = DlyGapExtn;
+m_SWProgPenaliseGapExtn = ProgPenaliseGapExtn;
+m_SWAnchorLen = AnchorLen;
+return(true);
+}
+
+
+// SetCPScores
+// Set match, mismatch, gap opening and gap extension scores
+bool
+CSWAlign::SetCPScores(int MatchScore,			// score for match
+				  int MismatchPenalty,	// penalty for mismatch
+				  int GapOpenPenalty,		// penalty for opening a gap
+				  int GapExtnPenalty)		// penalty if extending already opened gap
+{
+if (MatchScore <= 0 || MatchScore > 100 ||
+	MismatchPenalty < -100 || MismatchPenalty > 0 ||
+	GapOpenPenalty < -100 || GapOpenPenalty > 0 ||
+	GapExtnPenalty < -100 || GapExtnPenalty > 0)
+	return(false);
+m_CPMatchScore = MatchScore;
+m_CPMismatchPenalty = MismatchPenalty;
+m_CPGapOpenPenalty = GapOpenPenalty;
+m_CPGapExtnPenalty = GapExtnPenalty;
+return(true);
+}
+
+bool
+CSWAlign::SetMaxInitiatePathOfs(int MaxInitiatePathOfs,	// require SW paths to have started within this many bp (0 to disable) on either the probe or target - effectively anchoring the SW 
+					int OverlapFloat)		// with this overlap float 
+{
+if (MaxInitiatePathOfs < 0 || MaxInitiatePathOfs > 10000)
+	return(false);
+m_MaxInitiatePathOfs = MaxInitiatePathOfs;
+m_OverlapFloat = OverlapFloat;
+return(true);
+}
 
 UINT32			// returned instance identifier
 CSWAlign::InitInstance(void)
@@ -375,9 +447,9 @@ if((pSWInstance->pmtqsort = new CMTqsort) == NULL)
 pSWInstance->pmtqsort->SetMaxThreads(4);
 
 pSWInstance->pSW = new CSSW;
-pSWInstance->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
-pSWInstance->pSW->SetCPScores(m_SWMatchScore, m_SWMismatchPenalty, m_SWGapOpenPenalty, m_SWGapExtnPenalty);
-pSWInstance->pSW->SetMaxInitiatePathOfs(m_OverlapFloat);
+pSWInstance->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3), m_SWAnchorLen);
+pSWInstance->pSW->SetCPScores(m_CPMatchScore, m_CPMismatchPenalty, m_CPGapOpenPenalty, m_CPGapExtnPenalty);
+pSWInstance->pSW->SetMaxInitiatePathOfs(m_MaxInitiatePathOfs); 
 pSWInstance->pSW->PreAllocMaxTargLen(pSWInstance->AllocdTargSeqSize);
 
 pSWInstance->AllocdCoreHits = cAllocdNumCoreHits;
@@ -681,7 +753,9 @@ int												    // 0 if probe aligns to no target sequence, otherwise the tar
 CSWAlign::AlignProbeSeq(UINT32 SWAInstance,         // alignment instance
 						UINT32 ProbeSeqLen,			// sequence to align is this length
 						etSeqBase *pProbeSeq,       // probe sequence to align
-						bool bSenseOnly)		   // true if to align probe sense only, false to align both sense and antisense		
+						bool bSenseOnly,		   // true if to align probe sense only, false to align both sense and antisense	
+    					tsSSWCell *pRetMatched)    // optional (if not NULL) returned match detail
+
 {
 tsPBSSWInstance *pSWAInstance;
 
@@ -709,6 +783,7 @@ UINT32 LowestSummaryHitCnts;
 sPBSSWCoreHitCnts *pLowestSummaryHitCnts;
 UINT32 HitIdx;
 int NumHitsFlgMulti;
+UINT32 NumCoreHits;
 tsPBSSWACoreHit *pCoreHit;
 UINT32 CurTargSeqID;
 UINT32 CurProbeOfs;
@@ -731,11 +806,22 @@ UINT32 ProvContained;
 UINT32 ProvArtefact;
 UINT32 ProvSWchecked;
 UINT32 MinOverlapLen;
+UINT32 AdjOverlapFloat;
+
+tsPBSSWACoreHit *pFirstCoreHit;
+tsPBSSWACoreHit *pNxtCoreHit;
+tsPBSSWACoreHit *pMaxCoreHit;
+UINT32 MaxWinSize;
+UINT32 RelWinSize;
+bool bFirstHitNewTargSeq;
+
 sPBSSWCoreHitCnts *pSummaryCnts;
 int NumInMultiAlignment;
 int Class;
 NumInMultiAlignment = 0;
 
+if(pRetMatched != NULL)
+	memset(pRetMatched,0,sizeof(tsSSWCell));
 if(SWAInstance < 1 || SWAInstance > m_NumSWInstances)
 	return(eBSFerrEntry);
 pSWAInstance = &m_pSWInstances[SWAInstance-1];
@@ -787,7 +873,9 @@ ProvOverlapped = 0;
 ProvContained = 0;
 ProvArtefact = 0;
 ProvSWchecked = 0;
-
+AdjOverlapFloat = m_OverlapFloat + m_SeedCoreLen;
+if(m_SeedCoreLen < cMaxPacBioSeedExtn)
+	AdjOverlapFloat += 120;
 
 pSWAInstance->NumTargCoreHitCnts = 0;
 memset(pSWAInstance->TargCoreHitCnts,0,sizeof(pSWAInstance->TargCoreHitCnts));
@@ -843,6 +931,95 @@ if(pSWAInstance->NumCoreHits)
 			}
 		}
 
+
+	// reduce, remove core hits marked as being multiloci and thus not to be further processed  
+	pCoreHit = pSWAInstance->pCoreHits;
+	pNxtCoreHit = pCoreHit;
+	NumCoreHits = 0;
+	for(HitIdx = 0; HitIdx < pSWAInstance->NumCoreHits; HitIdx++, pCoreHit++)
+		{
+		if(pCoreHit->flgMulti)
+			continue;
+		if(pNxtCoreHit != pCoreHit)
+			*pNxtCoreHit = *pCoreHit;
+		pNxtCoreHit += 1;
+		NumCoreHits += 1;
+		}
+	pSWAInstance->NumCoreHits = NumCoreHits;
+
+
+	CurSEntryIDHits = 0;
+	CurAEntryIDHits = 0;
+	CurTargHitOfs = 0;
+	CurProbeHitOfs = 0;
+	CurSTargStartOfs = 0;
+	CurSTargEndOfs = 0;
+	CurATargStartOfs = 0;
+	CurATargEndOfs = 0;
+	CurSProbeStartOfs = 0;
+	CurSProbeEndOfs = 0;
+	CurAProbeStartOfs = 0;
+	CurAProbeEndOfs = 0;
+
+
+	// with large target sequences then can have many artefactual core hits
+	// process and mark these probable artefact hits by identifying the most spatially related cluster of hits; hits outside of
+	// the most spatially related cluster are marked as being artefactual 
+
+	CurTargSeqID = 0;
+	pFirstCoreHit = NULL;
+	MaxWinSize = (ProbeSeqLen * 115) / 100;
+	pCoreHit = pSWAInstance->pCoreHits;
+	pMaxCoreHit = NULL;
+	for (HitIdx = 0; HitIdx < pSWAInstance->NumCoreHits; HitIdx++, pCoreHit++)
+	{
+		if (CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
+		{
+			pMaxCoreHit = NULL;
+			pFirstCoreHit = pCoreHit;
+			CurTargSeqID = pCoreHit->TargSeqID;
+		}
+
+		// if just checked last core hit for the current target ...
+		if (HitIdx + 1 == pSWAInstance->NumCoreHits || pCoreHit[1].TargSeqID != CurTargSeqID)
+		{
+			while (pFirstCoreHit <= pCoreHit)
+			{
+				pFirstCoreHit->WinHits = 0;
+				pFirstCoreHit->flgClustered = 0;
+				pNxtCoreHit = pFirstCoreHit;
+				RelWinSize = 0;
+				while (pNxtCoreHit <= pCoreHit)
+				{
+					RelWinSize = pNxtCoreHit->TargOfs - pFirstCoreHit->TargOfs;
+					if (RelWinSize > MaxWinSize)
+						break;
+					if (pNxtCoreHit->flgRevCpl == pFirstCoreHit->flgRevCpl)
+						pFirstCoreHit->WinHits += 1;
+					pNxtCoreHit += 1;
+				}
+				if (pMaxCoreHit == NULL || pFirstCoreHit->WinHits > pMaxCoreHit->WinHits)
+					pMaxCoreHit = pFirstCoreHit;
+				pFirstCoreHit += 1;
+			}
+			if (pMaxCoreHit != NULL)
+			{
+				RelWinSize = 0;
+				pNxtCoreHit = pMaxCoreHit;
+				while (pNxtCoreHit <= pCoreHit)
+				{
+					RelWinSize = pNxtCoreHit->TargOfs - pMaxCoreHit->TargOfs;
+					if (RelWinSize > MaxWinSize)
+						break;
+					pNxtCoreHit->flgClustered = 1;
+					pNxtCoreHit->flgMulti = 0;
+					pNxtCoreHit += 1;
+				}
+			}
+			CurTargSeqID = 0;
+		}
+	}
+
 	// iterate and count hits for each TargNodeID whilst recording the loci of the first and last hit so can determine if overlap is a likely artefact
 	CurSEntryIDHits = 0;
 	CurAEntryIDHits = 0;
@@ -858,11 +1035,13 @@ if(pSWAInstance->NumCoreHits)
 	CurAProbeStartOfs = 0;
 	CurAProbeEndOfs = 0;
 
+	bFirstHitNewTargSeq = false;
 	pCoreHit = pSWAInstance->pCoreHits;
 	for(HitIdx = 0; HitIdx < pSWAInstance->NumCoreHits; HitIdx++,pCoreHit++)
 		{
 		if(CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
 			{
+			bFirstHitNewTargSeq = true;
 			CurTargSeqID = pCoreHit->TargSeqID;
 			CurSEntryIDHits = 0;
 			CurAEntryIDHits = 0;
@@ -876,33 +1055,33 @@ if(pSWAInstance->NumCoreHits)
 			CurAProbeEndOfs = 0;
 			}
 
-		if(pCoreHit->TargSeqID == CurTargSeqID) // same target sequence so check for starting/ending offsets and accumulate hit counts 
+		if(pCoreHit->flgClustered && pCoreHit->TargSeqID == CurTargSeqID) // same target sequence so check for starting/ending offsets and accumulate hit counts 
 			{
 			CurTargHitOfs = pCoreHit->TargOfs;
 			CurProbeHitOfs = pCoreHit->ProbeOfs;
 			if(pCoreHit->flgRevCpl == 0)
 				{
-				if(CurSTargEndOfs == 0 || CurTargHitOfs < CurSTargStartOfs)
+				if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurSTargStartOfs)
 					CurSTargStartOfs = CurTargHitOfs;
 				if(CurTargHitOfs > CurSTargEndOfs)
 					CurSTargEndOfs = CurTargHitOfs;	
-				if(CurSProbeEndOfs == 0 || CurProbeHitOfs < CurSProbeStartOfs)
+				if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurSProbeStartOfs)
 					CurSProbeStartOfs = CurProbeHitOfs;
 				if(CurProbeHitOfs > CurSProbeEndOfs)
 					CurSProbeEndOfs = CurProbeHitOfs;
 				}
 			else
 				{
-				if(CurATargEndOfs == 0 || CurTargHitOfs < CurATargStartOfs)
+				if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurATargStartOfs)
 					CurATargStartOfs = CurTargHitOfs;
 				if(CurTargHitOfs > CurATargEndOfs)
 					CurATargEndOfs = CurTargHitOfs;	
-				if(CurAProbeEndOfs == 0 || CurProbeHitOfs < CurAProbeStartOfs)
+				if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurAProbeStartOfs)
 					CurAProbeStartOfs = CurProbeHitOfs;
 				if(CurProbeHitOfs > CurAProbeEndOfs)
 					CurAProbeEndOfs = CurProbeHitOfs;
 				}
-
+			bFirstHitNewTargSeq = false;
 			if(pCoreHit->flgMulti != 1)
 				{
 				if(pCoreHit->flgRevCpl == 0)
@@ -932,13 +1111,13 @@ if(pSWAInstance->NumCoreHits)
 			if(PropSBinsOverlap >= m_MinPropBinned) 
 				{
 				if((CurSProbeStartOfs >= m_OverlapFloat &&  CurSTargStartOfs >= m_OverlapFloat) ||
-						((TargLen - CurSTargEndOfs) >= m_OverlapFloat && (ProbeSeqLen - CurSProbeEndOfs) >= m_OverlapFloat))
+						((TargLen - CurSTargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurSProbeEndOfs) >= AdjOverlapFloat))
 					PropSBinsOverlap = 0;
 				}
 			if(PropABinsOverlap >= m_MinPropBinned)
 				{
 				if((CurAProbeStartOfs >= m_OverlapFloat && CurATargStartOfs >= m_OverlapFloat) ||
-					((TargLen - CurATargEndOfs) >= m_OverlapFloat && (ProbeSeqLen - CurAProbeEndOfs) >= m_OverlapFloat))
+					((TargLen - CurATargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurAProbeEndOfs) >= AdjOverlapFloat))
 					PropABinsOverlap = 0;
 				}
 
@@ -1023,18 +1202,18 @@ if(pSWAInstance->NumCoreHits)
 					pSummaryCnts->SProbeStartOfs = 0;
 				else
 					pSummaryCnts->SProbeStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->SProbeEndOfs + m_OverlapFloat >= ProbeSeqLen)
+				if(pSummaryCnts->SProbeEndOfs + AdjOverlapFloat >= ProbeSeqLen)
 					pSummaryCnts->SProbeEndOfs = ProbeSeqLen - 1;
 				else
-					pSummaryCnts->SProbeEndOfs += m_OverlapFloat;
+					pSummaryCnts->SProbeEndOfs += AdjOverlapFloat;
 				if(pSummaryCnts->STargStartOfs < m_OverlapFloat)
 					pSummaryCnts->STargStartOfs = 0;
 				else
 					pSummaryCnts->STargStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->STargEndOfs + m_OverlapFloat >= TargSeqLen)
+				if(pSummaryCnts->STargEndOfs + AdjOverlapFloat >= TargSeqLen)
 					pSummaryCnts->STargEndOfs = TargSeqLen - 1;
 				else
-					pSummaryCnts->STargEndOfs += m_OverlapFloat;
+					pSummaryCnts->STargEndOfs += AdjOverlapFloat;
 				Rslt = pSWAInstance->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
 											pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs);
 				}
@@ -1052,26 +1231,28 @@ if(pSWAInstance->NumCoreHits)
 					pSummaryCnts->AProbeStartOfs = 0;
 				else
 					pSummaryCnts->AProbeStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->AProbeEndOfs + m_OverlapFloat >= ProbeSeqLen)
+				if(pSummaryCnts->AProbeEndOfs + AdjOverlapFloat >= ProbeSeqLen)
 					pSummaryCnts->AProbeEndOfs = ProbeSeqLen - 1;
 				else
-					pSummaryCnts->AProbeEndOfs += m_OverlapFloat;
+					pSummaryCnts->AProbeEndOfs += AdjOverlapFloat;
 				if(pSummaryCnts->ATargStartOfs < m_OverlapFloat)
 					pSummaryCnts->ATargStartOfs = 0;
 				else
 					pSummaryCnts->ATargStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->ATargEndOfs + m_OverlapFloat >= TargSeqLen)
+				if(pSummaryCnts->ATargEndOfs + AdjOverlapFloat >= TargSeqLen)
 					pSummaryCnts->ATargEndOfs = TargSeqLen - 1;
 				else
-					pSummaryCnts->ATargEndOfs += m_OverlapFloat;
+					pSummaryCnts->ATargEndOfs += AdjOverlapFloat;
 
 				Rslt = pSWAInstance->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
 											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
 				}
+
+
 #ifdef _PEAKSCOREACCEPT_
-			pPeakMatchesCell = pSWAInstance->pSW->Align(&PeakScoreCell,m_MaxTargSeqLen*2);
+			pPeakMatchesCell = pSWAInstance->pSW->Align(&PeakScoreCell, min(ProbeSeqLen,m_MaxTargSeqLen));
 #else
-			pPeakMatchesCell = pSWAInstance->pSW->Align(NULL,m_MaxTargSeqLen*2);
+			pPeakMatchesCell = pSWAInstance->pSW->Align(NULL, min(ProbeSeqLen, m_MaxTargSeqLen));
 #endif
 			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
@@ -1123,6 +1304,8 @@ if(pSWAInstance->NumCoreHits)
 					AcquireLock(true);
 					pSWAInstance->FlgActive = 0;
 					ReleaseLock(true);
+					if(pRetMatched != NULL)
+						*pRetMatched = PeakMatchesCell;
 					return(pSummaryCnts->TargSeqID);
 					}
 				ProvOverlapped += 1;

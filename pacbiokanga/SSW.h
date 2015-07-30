@@ -296,6 +296,11 @@ public:
 		ReduceTracebacks(UINT32 RetainFlag,			// reduce tracebacks by removing tracebacks which have NOT been marked with this flag in IdxT
 					 UINT32 ResetFlags);		    // and reset these flags in the retained traceback in IdxT
 
+
+	UINT32											// number of tracedbacks which were reset
+		ResetTracebackFlags(UINT32 ResetFlags= cTrBkFlgRetain);	// and reset these flags in all tracebacks
+
+
 	int ValidateTracebacks(tsSSWCell *pCell);		// valdate that the path can be traced back for this cell
 
 

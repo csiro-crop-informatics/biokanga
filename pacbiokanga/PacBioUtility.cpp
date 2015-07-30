@@ -407,7 +407,7 @@ for(FileIdx = 0; FileIdx < m_NumInputFiles; FileIdx++)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcLoadReadsFile:  Unable to locate any source reads file matching '%s",m_ppszInputFiles[FileIdx]);
 		AcquireLock(true);
 		m_bAllQuerySeqsLoaded = true;
-		m_LoadQuerySeqsRslt = (teBSFrsltCodes)Rslt;
+		m_LoadQuerySeqsRslt = eBSFerrFileAccess;
 		m_bAsyncLoading = false;
 		ReleaseLock(true);
 		return(Rslt);

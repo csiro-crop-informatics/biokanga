@@ -1395,6 +1395,7 @@ if(m_hErrCorFile != -1)
 	char szLineBuff[2048];
 	char szContig[100];
 	AllocdConsensusSeqSize = 0;
+	LineBuffIdx = 0;
 	pConsensusSeq = NULL;
 	m_pMAConsensus->GenMultialignConcensus();
 	pCurPBScaffNode = m_pPBScaffNodes;
@@ -1417,7 +1418,7 @@ if(m_hErrCorFile != -1)
 		// asciify the consensus and report to m_hErrCorFile
 		BaseIdx = 0;
 		BasesLine = 0;
-		LineBuffIdx = sprintf(szLineBuff,">%sec %d\n",szContig,ConsensusLen);
+		LineBuffIdx += sprintf(&szLineBuff[LineBuffIdx],">%sec %d\n",szContig,ConsensusLen);
 		while(BaseIdx < ConsensusLen)
 			{
 			BasesLine = ConsensusLen - BaseIdx > 80 ? 80 : ConsensusLen - BaseIdx;
@@ -1641,6 +1642,7 @@ CPBECContigs::ThreadPBECContigs(tsThreadPBECContigs *pThreadPar)
 {
 UINT32  OverlapSLen;
 UINT32  OverlapALen;
+UINT32 AdjOverlapFloat;
 UINT32  PropSBinsOverlap;
 UINT32  PropABinsOverlap;
 UINT32 TargLen;
@@ -1657,6 +1659,7 @@ tsSSWCell PeakMatchesCell;
 tsSSWCell PeakScoreCell;
 #endif
 bool bProbeSense;
+bool bFirstHitNewTargSeq;
 UINT32 Idx;
 UINT32 CurSummaryHitCnts;
 UINT32 LowestSummaryHitCnts;
@@ -1665,6 +1668,7 @@ UINT32 HitIdx;
 int NumHitsFlgMulti;
 tsPBECCCoreHit *pCoreHit;
 tsPBECCCoreHit *pFirstCoreHit;
+UINT32 NumCoreHits;
 UINT32 CurTargNodeID;
 UINT32 CurProbeNodeID;
 UINT32 CurProbeOfs;
@@ -1697,6 +1701,10 @@ char szProbeSeqName[cMaxDatasetSpeciesChrom];
 
 pThreadPar->pSW = NULL;
 NumInMultiAlignment = 0;
+AdjOverlapFloat = m_OverlapFloat + pThreadPar->CoreSeqLen;
+if (pThreadPar->CoreSeqLen < cMaxPacBioSeedExtn)
+	AdjOverlapFloat += 120;
+
 for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 	{
 	pThreadPar->NumCoreHits = 0;
@@ -1783,6 +1791,21 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 				}
 			}
 
+		// reduce, remove core hits marked as being multiloci and thus not to be further processed  
+		pCoreHit = pThreadPar->pCoreHits;
+		pFirstCoreHit = pCoreHit;
+		NumCoreHits = 0;
+		for (HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++, pCoreHit++)
+			{
+			if (pCoreHit->flgMulti)
+				continue;
+			if (pFirstCoreHit != pCoreHit)
+				*pFirstCoreHit = *pCoreHit;
+			pFirstCoreHit += 1;
+			NumCoreHits += 1;
+			}
+		pThreadPar->NumCoreHits = NumCoreHits;
+
 		// iterate and count hits for each TargNodeID whilst recording the loci of the first and last hit so can determine if overlap is a likely artefact
 		CurSEntryIDHits = 0;
 		CurAEntryIDHits = 0;
@@ -1859,12 +1882,14 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 				}
 			}
 
+		bFirstHitNewTargSeq = false;
 		CurTargNodeID = 0;
 		pCoreHit = pThreadPar->pCoreHits;
 		for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
 			{
 			if(CurTargNodeID == 0)    // 0 if 1st hit about to be processed for a new target sequence
 				{
+				bFirstHitNewTargSeq = true;
 				pFirstCoreHit = pCoreHit;
 				CurTargNodeID = pCoreHit->TargNodeID;
 				CurSEntryIDHits = 0;
@@ -1885,27 +1910,27 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 				CurProbeHitOfs = pCoreHit->ProbeOfs;
 				if(pCoreHit->flgRevCpl == 0)
 					{
-					if(CurSTargEndOfs == 0 || CurTargHitOfs < CurSTargStartOfs)
+					if(bFirstHitNewTargSeq || CurTargHitOfs < CurSTargStartOfs)
 						CurSTargStartOfs = CurTargHitOfs;
 					if(CurTargHitOfs > CurSTargEndOfs)
 						CurSTargEndOfs = CurTargHitOfs;	
-					if(CurSProbeEndOfs == 0 || CurProbeHitOfs < CurSProbeStartOfs)
+					if(bFirstHitNewTargSeq || CurProbeHitOfs < CurSProbeStartOfs)
 						CurSProbeStartOfs = CurProbeHitOfs;
 					if(CurProbeHitOfs > CurSProbeEndOfs)
 						CurSProbeEndOfs = CurProbeHitOfs;
 					}
 				else
 					{
-					if(CurATargEndOfs == 0 || CurTargHitOfs < CurATargStartOfs)
+					if(bFirstHitNewTargSeq || CurTargHitOfs < CurATargStartOfs)
 						CurATargStartOfs = CurTargHitOfs;
 					if(CurTargHitOfs > CurATargEndOfs)
 						CurATargEndOfs = CurTargHitOfs;	
-					if(CurAProbeEndOfs == 0 || CurProbeHitOfs < CurAProbeStartOfs)
+					if(bFirstHitNewTargSeq || CurProbeHitOfs < CurAProbeStartOfs)
 						CurAProbeStartOfs = CurProbeHitOfs;
 					if(CurProbeHitOfs > CurAProbeEndOfs)
 						CurAProbeEndOfs = CurProbeHitOfs;
 					}
-
+				bFirstHitNewTargSeq = false;
 				if(pCoreHit->flgMulti != 1)
 					{
 					if(pCoreHit->flgRevCpl == 0)
@@ -1934,13 +1959,13 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 				if(PropSBinsOverlap >= pThreadPar->MinPropBinned) 
 					{
 					if((CurSProbeStartOfs >= m_OverlapFloat &&  CurSTargStartOfs >= m_OverlapFloat) ||
-						((TargLen - CurSTargEndOfs) >= m_OverlapFloat && (HiConfSeqLen - CurSProbeEndOfs) >= m_OverlapFloat))
+						((TargLen - CurSTargEndOfs) >= AdjOverlapFloat && (HiConfSeqLen - CurSProbeEndOfs) >= AdjOverlapFloat))
 						PropSBinsOverlap = 0;
 					}
 				if(PropABinsOverlap >= pThreadPar->MinPropBinned)
 					{
 					if((CurAProbeStartOfs >= m_OverlapFloat && CurATargStartOfs >= m_OverlapFloat) ||
-						((TargLen - CurATargEndOfs) >= m_OverlapFloat && (HiConfSeqLen - CurAProbeEndOfs) >= m_OverlapFloat))
+						((TargLen - CurATargEndOfs) >= AdjOverlapFloat && (HiConfSeqLen - CurAProbeEndOfs) >= AdjOverlapFloat))
 						PropABinsOverlap = 0;
 					}
 
@@ -2039,18 +2064,18 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 					pSummaryCnts->SProbeStartOfs = 0;
 				else
 					pSummaryCnts->SProbeStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->SProbeEndOfs + m_OverlapFloat >= HiConfSeqLen)
+				if(pSummaryCnts->SProbeEndOfs + AdjOverlapFloat >= HiConfSeqLen)
 					pSummaryCnts->SProbeEndOfs = HiConfSeqLen - 1;
 				else
-					pSummaryCnts->SProbeEndOfs += m_OverlapFloat;
+					pSummaryCnts->SProbeEndOfs += AdjOverlapFloat;
 				if(pSummaryCnts->STargStartOfs < m_OverlapFloat)
 					pSummaryCnts->STargStartOfs = 0;
 				else
 					pSummaryCnts->STargStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->STargEndOfs + m_OverlapFloat >= TargSeqLen)
+				if(pSummaryCnts->STargEndOfs + AdjOverlapFloat >= TargSeqLen)
 					pSummaryCnts->STargEndOfs = TargSeqLen - 1;
 				else
-					pSummaryCnts->STargEndOfs += m_OverlapFloat;
+					pSummaryCnts->STargEndOfs += AdjOverlapFloat;
 				Rslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
 											pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs);
 				}
@@ -2061,18 +2086,18 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 					pSummaryCnts->AProbeStartOfs = 0;
 				else
 					pSummaryCnts->AProbeStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->AProbeEndOfs + m_OverlapFloat >= HiConfSeqLen)
+				if(pSummaryCnts->AProbeEndOfs + AdjOverlapFloat >= HiConfSeqLen)
 					pSummaryCnts->AProbeEndOfs = HiConfSeqLen - 1;
 				else
-					pSummaryCnts->AProbeEndOfs += m_OverlapFloat;
+					pSummaryCnts->AProbeEndOfs += AdjOverlapFloat;
 				if(pSummaryCnts->ATargStartOfs < m_OverlapFloat)
 					pSummaryCnts->ATargStartOfs = 0;
 				else
 					pSummaryCnts->ATargStartOfs -= m_OverlapFloat;
-				if(pSummaryCnts->ATargEndOfs + m_OverlapFloat >= TargSeqLen)
+				if(pSummaryCnts->ATargEndOfs + AdjOverlapFloat >= TargSeqLen)
 					pSummaryCnts->ATargEndOfs = TargSeqLen - 1;
 				else
-					pSummaryCnts->ATargEndOfs += m_OverlapFloat;
+					pSummaryCnts->ATargEndOfs += AdjOverlapFloat;
 
 				Rslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
 											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
