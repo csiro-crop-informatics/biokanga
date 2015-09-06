@@ -45,7 +45,7 @@ const int cMaxPacBioSeedExtn = 25;                              // if seed core 
 
 const int cPacBioSeedCoreExtn = 100;							// looking for matches over this length seed core extension
 const int cPacBiokExtnKMerLen = 4;								// matches in seed core extension must be of at least this length
-const int cPacBioMinKmersExtn = 70;							    // require at least this many cPacBiokExtnKMerLen-mer matches over cPacBioSeedCoreExtn core extension
+const int cPacBioMinKmersExtn = 15;							    // require at least this many cPacBiokExtnKMerLen-mer matches over cPacBioSeedCoreExtn core extension
 
 
 typedef enum etALStrand {
@@ -620,7 +620,13 @@ public:
 									 UINT32 MinTargLen,			// hit target sequences must be at least this length
 									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
-									 UINT32 *pHitLoci);			// if match then where to return loci
+									 UINT32 *pHitLoci,			// if match then where to return loci
+									 int PacBioMinKmersExtn = cPacBioMinKmersExtn);		// accepting as putative overlap if extension matches at least this many cPacBiokExtnKMerLen (currently 4bp)	
+
+			int
+				QuickScoreOverlap(int SeqLen,				// both probe and target are of this minimum length (must be at least 16bp)
+											   etSeqBase *pProbe,		// scoring overlap of probe sequence onto
+											   etSeqBase *pTarg);		// this target sequence
 
 			 int									// < 0 if errors, 0 if no matches to any other chroms other than ProbeChromID allowing up to MaxTotMM, 1 if matches to any other chrom
 				MatchesOtherChroms( int ProbeChromID,	// probe is from this chrom

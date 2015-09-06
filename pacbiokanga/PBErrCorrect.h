@@ -106,7 +106,7 @@ typedef struct TAG_sThreadPBErrCorrect {
 	UINT32 DeltaCoreOfs;			// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
 	UINT32 CoreSeqLen;				// putative overlaps are explored if there are cores of at least this length in any putative overlap
 	UINT32 MinNumCores;				// and if the putative overlap contains at least this many cores
-	UINT32 MinPropBinned;			// and if the putative overlap contains at least this proportion (1..100) of 250bp bins binned cores
+	UINT32 MinPropBinned;			// and if the putative overlap contains at least this proportion (1..100) of 100bp bins binned cores
 	UINT32 MaxAcceptHitsPerSeedCore; // limit accepted hits per seed core to no more this many
 	UINT32 MinPBSeqLen;				// only process PacBio sequences which are at least this length
 
@@ -171,6 +171,7 @@ class CPBErrCorrect
 
 	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
 	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences must be of at least this length
+	UINT32 m_MaxPBRdSeqLen;					// and no longer than this length
 	UINT32 m_MinPBSeqOverlap;				// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 	UINT32 m_MinHCSeqLen;					// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
@@ -218,14 +219,18 @@ class CPBErrCorrect
 
 	INT64 EstSumSeqLens(int NumTargFiles,char **pszTargFiles);		// guestimate and return total sequence length by simply summing the lengths of each file - likely to grossly over estimate
 
-	int LoadSeqs(int MinSeqLen,int NumTargFiles,char **pszTargFiles,	// parse, and index sequences in this file into memory resident suffix array; file expected to contain either fasta or fastq sequences
+	int LoadSeqs(int MinSeqLen,					 // only accept for indexing sequences of at least this length
+				 int MaxSeqLen,                  // and no longer than this length (bp)
+				int NumTargFiles,char **pszTargFiles,	// parse, and index sequences in this file into memory resident suffix array; file expected to contain either fasta or fastq sequences
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
 
 	int ProcessBioseqFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
+						  int MaxSeqLen,        // and no longer than this length (bp)
 				 char *pszFile,					// file containing sequences
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
 
-	int ProcessFastaFile(int MinSeqLen,			// only accept for indexing sequences of at least this length
+	int ProcessFastaFile(int MinSeqLen,			// only accept for indexing sequences of at least this length (bp)
+                int MaxSeqLen,                  // and no longer than this length (bp)
 				char *pszFile,					// file containing sequences
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
 
@@ -284,7 +289,8 @@ public:
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
-		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 5Kbp)
+		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
+		int MaxPBSeqLen,			// no more than this length (defaults to 30Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)

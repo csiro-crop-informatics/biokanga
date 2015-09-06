@@ -26,7 +26,7 @@ UINT8 MapCpl[] = { eBaseT,		// MapCpl[etBaseA] --> etBaseT
 					eBaseEOS};	// MapCpl[eBaseEOS] --> eBaseEOS
 
 // Watson strand only compares only
-void GHamDistWatson(UINT8 *pHDs,// where to return Hamming differentials for each subsequence 
+void GHamDistWatson(UINT16 *pHDs,// where to return Hamming differentials for each subsequence 
 			  int SubSeqLen,	// generate Hammings edit distances for subsequences of this length
 			  UINT32 SSofs,		// offset between subsequences for current pass
 			  UINT8 *pGenomeSeq, // genome sequence (concatenated chrom seqs, separated by eBaseEOSs) with final chrom terminated by eBaseEOG, not eBaseEOS
@@ -34,7 +34,7 @@ void GHamDistWatson(UINT8 *pHDs,// where to return Hamming differentials for eac
 {
 int Idx;
 
-UINT8 PPHD;		// current Hamming for +/+ subsequence edit distances
+UINT16 PPHD;		// current Hamming for +/+ subsequence edit distances
 UINT8 SS1B;		// subsequence 1 5' first base, plus strand
 UINT8 SS2B;		// subsequence 2 5' first base, plus strand
 
@@ -47,10 +47,10 @@ UINT8 *pSS2;	// pts to 5' start of current subsequence2  on plus strand
 UINT8 *pSE1;	// pts to 3' end of current subsequence1 on plus strand
 UINT8 *pSE2;	// pts to 3' end of current subsequence2  on plus strand
 
-UINT8 *pHSS1;  // pts to current minimum Huffman distance for subsequence starting at pSS1
-UINT8 *pHSS2;  // pts to current minimum Huffman distance for subsequence starting at pSS2
+UINT16 *pHSS1;  // pts to current minimum Huffman distance for subsequence starting at pSS1
+UINT16 *pHSS2;  // pts to current minimum Huffman distance for subsequence starting at pSS2
 
-UINT8 PPEOScnt;  // if > 0 then do not update minimum Hammings on plus strand as current subsequence contains at least one eBaseEOS
+UINT16 PPEOScnt;  // if > 0 then do not update minimum Hammings on plus strand as current subsequence contains at least one eBaseEOS
 
 pHSS1 = pHDs;
 pHSS2 = &pHDs[SSofs];		
@@ -135,16 +135,16 @@ while((SE2B = *pSE2++) < eBaseEOG)
 void
 DumpPairA(int SubSeqLen,int Seq1Idx,int Seq2Idx,etSeqBase *pSeq1,etSeqBase *pSeq2)
 {
-char szSeq1[1000];
-char szSeq2[1000];
+char szSeq1[5000];
+char szSeq2[5000];
 CSeqTrans::MapSeq2Ascii(pSeq1,SubSeqLen,szSeq1);
 CSeqTrans::MapSeq2Ascii(pSeq2,SubSeqLen,szSeq2);
-gDiagnostics.DiagOutMsgOnly(eDLInfo,"%1.3d = %s\n\t%1.3d = %s",Seq1Idx,szSeq1,Seq2Idx,szSeq2);
+gDiagnostics.DiagOutMsgOnly(eDLInfo,"%1.4d = %s\n\t%1.4d = %s",Seq1Idx,szSeq1,Seq2Idx,szSeq2);
 }
 
 // this version uses the sliding window approach
 void 
-GHamDistCrick(UINT8 *pHDs,		// where to return Hamming differentials for each subsequence 
+GHamDistCrick(UINT16 *pHDs,		// where to return Hamming differentials for each subsequence 
 			  int SubSeqLen,	// generate Hammings edit distances for subsequences of this length
 			  UINT32 SSofs,		// offset between subsequences for current pass
 			  UINT8 *pGenomeSeq, // genome sequence (concatenated chrom seqs, separated by eBaseEOSs) with final chrom terminated by eBaseEOG, not eBaseEOS
@@ -152,7 +152,7 @@ GHamDistCrick(UINT8 *pHDs,		// where to return Hamming differentials for each su
 {
 int Idx;
 
-UINT8 PPHD;		// current Hamming for +/- subsequence edit distances
+UINT16 PPHD;	// current Hamming for +/- subsequence edit distances
 UINT8 SS1B;		// subsequence 1 5' first base, plus strand
 UINT8 SS2B;		// subsequence 2 5' first base, minus strand
 
@@ -165,10 +165,10 @@ UINT8 *pSS2;	// pts to 5' start of current subsequence2  on minus strand
 UINT8 *pSE1;	// pts to 3' end of current subsequence1 on plus strand
 UINT8 *pSE2;	// pts to 3' end of current subsequence2  on minus strand
 
-UINT8 *pHSS1;  // pts to current minimum Huffman distance for subsequence starting at pSS1
-UINT8 *pHSS2;  // pts to current minimum Huffman distance for subsequence starting at pSS2
+UINT16 *pHSS1;  // pts to current minimum Huffman distance for subsequence starting at pSS1
+UINT16 *pHSS2;  // pts to current minimum Huffman distance for subsequence starting at pSS2
 
-UINT8 PPEOScnt;  // if > 0 then do not update minimum Hammings on plus/minus strand as current subsequence contains at least one eBaseEOS
+UINT16 PPEOScnt;  // if > 0 then do not update minimum Hammings on plus/minus strand as current subsequence contains at least one eBaseEOS
 
 pHSS1 = pHDs;
 pHSS2 = &pHDs[GenomeLen - SSofs - SubSeqLen];		

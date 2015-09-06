@@ -31,8 +31,15 @@
 
 #include "biokanga.h"
 
+
+// when required to static compile then add '--static -static-libstdc++ -static-libgcc' to the start of the link statement
+#ifdef _LINKSTATIC_
+const char *cpszProgVer = "3.8.1S";		// increment with each release
+const char *cpszProcOverview = "BioKanga NGS Processing Toolset - Static Linked";
+#else
 const char *cpszProgVer = "3.8.1";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset";
+#endif
 
 // Subprocesses 
 extern int Blitz(int argc, char* argv[]);

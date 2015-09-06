@@ -32,13 +32,15 @@ const int cQualCoreThres = 25;							 // require at least this many kmers to be 
 const int cQualCoreHomopolymer = 80;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough
 
 const int cDfltBinClusterSize = 100;					// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
-const int cDfltMinPropBinned = 70;						// must be at least this proportion of bins with at least one core hit over putative overlap length 
-const int cDfltScaffMinPropBinned = 90;					// when scaffolding then must be at least this proportion of bins with at least one core hit over putative overlap length 
+const int cDfltMinPropBinned = 60;						// must be at least this proportion of bins with at least one core hit over putative overlap length 
+const int cDfltScaffMinPropBinned = 80;					// when scaffolding then must be at least this proportion of bins with at least one core hit over putative overlap length 
 
 const int cMinPBSeqLen = 500;						 // allowing for minimum PacBio sequences to be specified down to this length (could be targeting RNA transcriptome)
 const int cDfltMinPBSeqLen = 10000;					 // default is to allow for PacBio sequences down to this minimum length
+const int cDfltMaxPBSeqLen = 35000;					 // default is to allow for PacBio sequences up to to this maximum length
 const int cDfltMinErrCorrectLen = 5000;              // default is for this minimum length error corrected PacBio sequences
 const int cMaxMinPBSeqLen = 100000;					 // allowing for minimum PacBio sequences to be specified up to this length 
+const int cMaxMaxPBSeqLen = 100000;					 // allowing for maximum PacBio sequences to be specified up to this length 
 
 const int cDfltSWMatchScore = 3;						// default SW match score for pacbio alignments
 const int cDfltSWMismatchPenalty = -7;					// default SW mismatch penalty for pacbio alignments
@@ -50,8 +52,8 @@ const int cMaxAllowedSWScore = 50;						// allow SW scores or penalties to be sp
 const int cMinSWPeakScore = 50;							// SW alignments must have peak scores of at least this
 const int cMinSWAlignLen = 50;							// and alignment length of at least this many bases to be further processed
 
-const int cDfltMaxOverlapFloat = 1000;					// allow up to this much float on overlaps to account for the PacBio error profile 
-const int cDfltScaffMaxOverlapFloat = 100;				// but when assembling or correcting contigs with error corrected reads then reduce
+const int cDfltMaxOverlapFloat = 1500;					// allow up to this much float on overlaps to account for the PacBio error profile 
+const int cDfltScaffMaxOverlapFloat = 150;				// but when assembling or correcting contigs with error corrected reads then reduce
 
 const int cAllocdNumCoreHits = 1000000;					 // each thread preallocs for this many core hits, realloc'd as may be required
 const int cAllocdQuerySeqLen = 500000;					 // each thread preallocs to hold query sequences of this length, realloc'd as may be required

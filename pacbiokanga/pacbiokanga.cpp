@@ -13,8 +13,14 @@
 //   to submit modifications to this source
 
 // pacbiokanga.cpp : Defines the entry point for the console application.
-//
+
 #include "stdafx.h"
+// define _USEMPI_ if using MPI
+#undef _USEMPI_ 
+
+#ifdef _USEMPI_
+#include "mpi.h"
+#endif
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -31,7 +37,7 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "0.9.4";		// increment with each release
+const char *cpszProgVer = "1.0.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 
@@ -146,6 +152,7 @@ if(SubProcID < 0 || SubProcID > cNumSubProcesses)
 	printf("\nInvalid SubProcID %d",SubProcID);
 	return(-1);
 	}
+
 // process parameters and remove subprocess specifier
 pArg = argv[1];
 for(Idx = 1; Idx < argc; Idx++,pArg++)
@@ -199,7 +206,40 @@ int Idx;
 int SubProcID;
 char szSubProc[1024];
 char *pszSubProc;
-char *pArg = (char *)argv[1];
+char *pArg;
+int MPIRslt;
+
+int NumMPIprocesses;
+
+#ifdef _USEMPI_
+int Rank;
+char szMPIHost[100];
+int namelen;
+
+MPIRslt = MPI_Init(&argc, &argv);
+MPIRslt = MPI_Get_processor_name(szMPIHost, &namelen);			// on which host is this instance running on?
+MPIRslt = MPI_Comm_rank(MPI_COMM_WORLD, &Rank);
+if (Rank > 0)		// master will have rank of 0, workers will have rank >= 1, only 1 master can be accepted
+	{
+	printf("\nMPI Master only supported; MPI Rank is %d", Rank);
+	return(-1);
+	}
+
+// check how many workers including this master; if only one then not actually using MPI
+MPIRslt = MPI_Comm_size(MPI_COMM_WORLD,&NumMPIprocesses);
+
+if(NumMPIprocesses == 1)
+	{
+	MPI_Finalize();
+	NumMPIprocesses = 0;
+	}
+
+#else
+MPIRslt = 0;
+NumMPIprocesses = 0;
+#endif
+
+pArg  = (char *)argv[1];
 SubProcID = 0;
 for(Idx = 1; Idx < argc; Idx++)
 	{
@@ -217,6 +257,7 @@ for(Idx = 1; Idx < argc; Idx++)
 	if((SubProcID = IsValidSubprocess(szSubProc)) > 0)
 		break;
 	}
+
 if(SubProcID > 0)
 	Rslt = ExecSubProcess(SubProcID,argc,(char **)argv);
 else

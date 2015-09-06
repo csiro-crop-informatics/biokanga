@@ -1,13 +1,6 @@
 // uhamming.cpp : Defines the entry point for the console application.
 // generates Hamming edit distances for all sequences of specified length over a target genome
-// EXPERIMENTAL!
-//
-// 1.0.2  use _commit/fsync prior to closing output file
-// 1.1.1 Started to implement processing for where the hammings of interest are limited to a maximum value by the user
-// 1.1.4 Completed restricted near exhustive hammings implementation
-// 1.1.5 Revised CSV file format to be more compact and added UCSC wiggle track format
-// 1.1.10 Increased restricted Hammings to max 10
-// 1.2.0 Allowed sampling of restricted Hammings
+// 1.4.2 increased Hamming max K-mer from previous 500, now 5000 
 
 #include "stdafx.h"
 
@@ -24,11 +17,11 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.4.1";		// increment with each release
+const char *cpszProgVer = "1.5.0";		// increment with each release
 
 const int cMinSeqLen = 20;				// minimum sequence length for Hamming distances
 const int cDfltSeqLen = 100;			// default sequence length for Hamming distances
-const int cMaxSeqLen = 500;				// maximum sequence length for Hamming distances
+const int cMaxSeqLen = 5000;			// maximum sequence K-mer length for exhustative Hamming distances
 
 const int cMinRHamming = 1;				// restricted hamming lower limit
 const int cDfltRHamming = 3;			// restricted hamming default limit
@@ -36,7 +29,6 @@ const int cMaxRHamming = 10;			// restricted hamming upper limit
 const int cMaxNthRHamming = 100;		// sampling is to sample every Nth K-mer, with Nth is the range 1..cSampRHamming
 
 const int cMinCoreLen = 8;				// restricted hamming minimum core length supported
-const int cMaxCoreLen = 200;			// restricted hamming max core length supported
 
 const int cMaxWorkerThreads = 128;		// limiting max number of threads to this many
 const int cMaxNumNodes = 10000;			// allow for upto this many nodes if processing is distributed over multiple nodes
@@ -70,12 +62,12 @@ typedef struct TAG_sThreadParams {
 
 #pragma pack(1)
 // Hamming specific structures
-const int cMaxHammingChroms = 200;	// can handle at most this many chromosomes with hammings
+const int cMaxHammingChroms = 1000;		// can handle at most this many chromosomes with hammings
 typedef struct TAG_sHamChrom {
-	UINT32 ChromID;					// uniquely identifies this chromosome
+	UINT32 ChromID;						// uniquely identifies this chromosome
 	UINT8  szChrom[cMaxDatasetSpeciesChrom];	// chrom name
-	UINT32 NumEls;					// number of subsequences with hammings on this chrom
-	UINT8 Dists[1];					// array, in ascending loci order, of hamming distances
+	UINT32 NumEls;						// number of subsequences with hammings on this chrom
+	UINT16 Dists[1];					// array, in ascending loci order, of hamming distances
 } tsHamChrom;
 
 typedef struct TAG_sHamHdr {
@@ -135,13 +127,13 @@ Process(etPMode PMode,			// processing mode
 		char *pszHammingFile);	// writeout Hamming edit distances into this file
 
 int LoadGenome(char *pszBioSeqFile); // load genome from this file
-extern void GHamDistWatson(UINT8 *pHDs,		// where to return Hamming differentials for each subsequence
+extern void GHamDistWatson(UINT16 *pHDs,		// where to return Hamming differentials for each subsequence
 			  int SubSeqLen,	// generate Hammings edit distances for subsequences of this length
 			  UINT32 SSofs,		// offset between subsequences for current pass
 			  UINT8 *pGenomeSeq, // genome sequence (concatenated chrom seqs, separated by eBaseEOSs) with final chrom terminated by eBaseEOG, not eBaseEOS
 			  UINT32 GenomeLen);	 // total genome length including chrom eBaseEOS markers, but exluding start/end eBaseEOG markers
 
-extern void GHamDistCrick(UINT8 *pHDs,		// where to return Hamming differentials for each subsequence
+extern void GHamDistCrick(UINT16 *pHDs,		// where to return Hamming differentials for each subsequence
 			  int SubSeqLen,	// generate Hammings edit distances for subsequences of this length
 			  UINT32 SSofs,		// offset between subsequences for current pass
 			  UINT8 *pGenomeSeq, // genome sequence (concatenated chrom seqs, separated by eBaseEOSs) with final chrom terminated by eBaseEOG, not eBaseEOS
@@ -240,7 +232,7 @@ struct arg_int *node = arg_int0("N","node","<int>",	            "node instance (
 
 struct arg_int *sweepstart = arg_int0("b","sweepstart","<int>",	"process starting from this sweep instance inclusive (default = 1 for 1st)");
 struct arg_int *sweepend = arg_int0("B","sweepend","<int>",		"complete processing at this sweep instance inclusive (default = 0 for all remaining, or >= Sweep start)");
-struct arg_int *seqlen = arg_int0("K","seqlen","<int>",			"Hamming edit distances for these length k-mer subsequences (range 20..500, default is 100)");
+struct arg_int *seqlen = arg_int0("K","seqlen","<int>",			"Hamming edit distances for these length k-mer subsequences (range 20..5000, default is 100)");
 struct arg_file *infile = arg_file1("i","in","<file>",			"in mode 0 input sfx file, in mode 1 and 2, bioseq genome assembly file or in mode 3 merge from this input Hamming file");
 struct arg_file *inseqfile = arg_file0("I","seq","<file>",		"if restricted hamming processing then optional file containing source kmer sequences");
 
@@ -663,7 +655,7 @@ tsGChrom *m_pGChroms;			// pts to gchrom array
 UINT8 *m_pGenomeSeq;			// allocated to hold concatenated (starts with eBaseEOG marker) chromosome sequences terminated by final eBaseEOG
 INT64 m_AllocGenomeSeq;			// allocation size for m_pGenomeSeq
 UINT32 m_GenomeLen;				// total genome length including separator markers but excluding inital and final eBaseEOG
-UINT8 *m_pHamDist;				// allocated to hold Hamming edit distances (expected to be m_NumProcThreads * (m_GenomeLen-2)), start/final eBaseEOG have no hammings
+UINT16 *m_pHamDist;				// allocated to hold Hamming edit distances (expected to be m_NumProcThreads * (m_GenomeLen-2)), start/final eBaseEOG have no hammings
 INT64 m_AllocHamDist;			// allocation size for m_pHamDist
 UINT32 m_NumSubSeqs;			// total number of actual Hamming subsequences in genome
 
@@ -2720,8 +2712,8 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Merging Hamming edit distances...");
 
 int Idx;
 UINT32 SeqIdx;
-UINT8 *pHamDist1;
-UINT8 *pHamDist2;
+UINT16 *pHamDist1;
+UINT16 *pHamDist2;
 
 if(m_NumProcThreads > 1)
 	{
@@ -2809,7 +2801,7 @@ if(pszHammingFile != NULL && pszHammingFile[0] != '\0')
 
 // log basic count distribution.....
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Distribution:\nEditDist,Freq,Proportion");
-int CntHist[256];
+int CntHist[cMaxSeqLen+1];
 memset(CntHist,0,sizeof(CntHist));
 pChrom = &m_pGChroms[0];
 pHamDist1 = m_pHamDist;
@@ -2966,9 +2958,9 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Genome containing %llu total nucleotid
 
 // now allocate and initialise the Hamming edit distance array
 // note that each processing thread will have it's own region of the array so that serialisation of r/w's is not required
-m_AllocHamDist = ((INT64)(m_GenomeLen-2) * m_NumProcThreads); // no hammings for start/end eBaseEOGs
+m_AllocHamDist = ((INT64)(m_GenomeLen-2) * m_NumProcThreads * sizeof(UINT16)); // no hammings for start/end eBaseEOGs
 #ifdef _WIN32
-m_pHamDist = (UINT8 *) malloc((size_t)m_AllocHamDist);
+m_pHamDist = (UINT16 *) malloc((size_t)m_AllocHamDist);
 if(m_pHamDist == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadGenome: Memory allocation of %lld bytes failed",(INT64)m_AllocHamDist);
@@ -2977,7 +2969,7 @@ if(m_pHamDist == NULL)
 	}
 #else
 // gnu malloc is still in the 32bit world and can't handle more than 2GB allocations
-m_pHamDist = (UINT8 *)mmap(NULL,(size_t)m_AllocHamDist, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
+m_pHamDist = (UINT16 *)mmap(NULL,(size_t)m_AllocHamDist, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
 if(m_pHamDist == MAP_FAILED)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadGenome: Memory allocation of %lld bytes through mmap()  failed",(INT64)m_AllocHamDist,strerror(errno));

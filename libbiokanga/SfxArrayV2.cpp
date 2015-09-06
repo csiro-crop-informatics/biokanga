@@ -3122,6 +3122,61 @@ if(!Cmp)
 return(0);		// no more hits
 }
 
+int
+CSfxArrayV3::QuickScoreOverlap(int SeqLen,				// both probe and target are of this minimum length (must be at least 16bp)
+				  etSeqBase *pProbe,		// scoring overlap of probe sequence onto
+				  etSeqBase *pTarg)		// this target sequence
+{
+	int Matches;
+	int Ofs;
+	int Idx;
+	int MaxBases2Cmp;
+	UINT32 Targ16Bases;
+	UINT32 Targ4Bases;
+	UINT32 Probe4Bases;
+
+	if (SeqLen < 16 || pProbe == NULL || pTarg == NULL)
+		return(0);
+
+	Matches = 0;
+	Targ16Bases = 0;
+	Probe4Bases = 0;
+
+	for (Ofs = 0; Ofs < 4; Ofs++)
+	{
+		Probe4Bases <<= 2;
+		Probe4Bases |= *pProbe++ & 0x03;
+	}
+
+	for (Ofs = 0; Ofs < 8; Ofs++)
+	{
+		Targ16Bases <<= 2;
+		Targ16Bases |= *pTarg++ & 0x03;
+	}
+
+	for (Ofs = 0; Ofs < SeqLen; Ofs++)
+	{
+		Targ4Bases = Targ16Bases;
+		MaxBases2Cmp = min(Ofs + 8, 16);
+		for (Idx = 0; Idx < MaxBases2Cmp; Idx++)
+		{
+			if (Probe4Bases == (Targ4Bases & 0x0ff))
+			{
+				Matches += 1;
+				break;
+			}
+			Targ4Bases >>= 2;
+		}
+		Targ16Bases <<= 2;
+		Targ16Bases |= *pTarg++ & 0x03;
+		Probe4Bases <<= 2;
+		Probe4Bases |= *pProbe++ & 0x03;
+		Probe4Bases &= 0x0ff;
+	}
+
+return(Matches);
+}
+
 INT64						// returned hit idex (1..n) or 0 if no hits
 CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
  									UINT32 ProbeLen,			// probe sequence length
@@ -3130,7 +3185,8 @@ CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
 									 UINT32 MinTargLen,			// hit target sequences must be at least this length
 									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
-									 UINT32 *pHitLoci)			// if match then where to return loci
+									 UINT32 *pHitLoci,			// if match then where to return loci
+									 int PacBioMinKmersExtn)	// accepting as putative overlap if extension matches at least this many cPacBiokExtnKMerLen (currently 4bp)
 {
 int Cmp;
 bool bFirst;
@@ -3146,10 +3202,6 @@ int TargKMerLen;
 
 etSeqBase *pQAnchor;
 etSeqBase *pTAnchor;
-etSeqBase *pQBase;
-etSeqBase *pTBase;
-int TAnchorIdx;
-int TMaxAnchorIdx;
 int MatchBaseLen;
 int QAnchorIdx;
 
@@ -3248,7 +3300,6 @@ while(1)
 		}
 
 	// see if the target sequence, using the initial matching core can be extended
-	int CurKMerMatchLen;
 	QAnchorIdx = SeedCoreLen;
 	pQAnchor = &pProbeSeq[QAnchorIdx];
 	pTAnchor = &pEl2[QAnchorIdx];
@@ -3257,48 +3308,10 @@ while(1)
 		if((*pQAnchor & 0x07) != (*pTAnchor & 0x07))
 			break;
 		}
-	if(MatchBaseLen < cPacBioMinKmersExtn)
-		{
-		int SyncIdx = QAnchorIdx;
-		for(TAnchorIdx = QAnchorIdx; QAnchorIdx <= cPacBioSeedCoreExtn; QAnchorIdx++)
-			{
-			pQAnchor = &pProbeSeq[QAnchorIdx];
-			TAnchorIdx = max(SyncIdx,QAnchorIdx - (QAnchorIdx/5));
-			TMaxAnchorIdx = min(cPacBioSeedCoreExtn+20-TargKMerLen,QAnchorIdx + (QAnchorIdx/5));
-			for(CurKMerMatchLen = 0; TAnchorIdx <= TMaxAnchorIdx; TAnchorIdx++)
-				{
-				pQBase = pQAnchor;
-				pTBase = 	&pEl2[TAnchorIdx];
-				while((*pTBase++ & 0x07) == (*pQBase++ & 0x07))
-					{
-					CurKMerMatchLen += 1;
-					if(CurKMerMatchLen >= TargKMerLen)
-						{
-						if(CurKMerMatchLen == TargKMerLen)
-							MatchBaseLen += TargKMerLen;
-						else
-							MatchBaseLen += 1;
-						}
-					if((CurKMerMatchLen + TAnchorIdx) > (cPacBioSeedCoreExtn+20))
-						break;
-					}
+	if(MatchBaseLen < (PacBioMinKmersExtn * 2))
+		MatchBaseLen = QuickScoreOverlap(cPacBioSeedCoreExtn - QAnchorIdx, pQAnchor, pTAnchor);
 
-				if(CurKMerMatchLen >= TargKMerLen)
-					{
-					QAnchorIdx += CurKMerMatchLen;
-					SyncIdx = TAnchorIdx + CurKMerMatchLen;
-					break;
-					}
-				CurKMerMatchLen = 0;
-				}
-			
-			if(MatchBaseLen >= cPacBioMinKmersExtn ||
-				(QAnchorIdx > (cPacBioSeedCoreExtn/4) && ((MatchBaseLen * 2) < (cPacBioMinKmersExtn * QAnchorIdx)/cPacBioSeedCoreExtn)))
-				break;
-			}
-		}
-
-	if(MatchBaseLen < cPacBioMinKmersExtn)
+	if(MatchBaseLen < PacBioMinKmersExtn)
 		{
 		if(!bFirst)
 			PrevHitIdx += 1;
@@ -3311,8 +3324,6 @@ while(1)
 	*pHitLoci = HitLoci;
 	return(bFirst ? PrevHitIdx : PrevHitIdx+1);
 	}
-
-
 return(0);		// no more hits
 }
 
