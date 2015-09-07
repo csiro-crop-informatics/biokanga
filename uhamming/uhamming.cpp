@@ -1,6 +1,5 @@
 // uhamming.cpp : Defines the entry point for the console application.
 // generates Hamming edit distances for all sequences of specified length over a target genome
-// 1.4.2 increased Hamming max K-mer from previous 500, now 5000 
 
 #include "stdafx.h"
 
@@ -17,7 +16,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.5.0";		// increment with each release
+const char *cpszProgVer = "1.5.1";		// increment with each release
 
 const int cMinSeqLen = 20;				// minimum sequence length for Hamming distances
 const int cDfltSeqLen = 100;			// default sequence length for Hamming distances
@@ -2852,6 +2851,7 @@ int ChromIdx;
 tsGChrom *pChrom;
 etSeqBase *pSeq;
 etSeqBase *pGseq;
+UINT16 *pHamDist;
 
 
 if((m_pBioSeqFile = new CBioSeqFile) == NULL)
@@ -2979,7 +2979,9 @@ if(m_pHamDist == MAP_FAILED)
 	}
 #endif
 
-memset(m_pHamDist,m_SubSeqLen+1,(size_t)m_AllocHamDist);	// m_SubSeqLen+1 used as marker to show no hammings written to this loci
+pHamDist = m_pHamDist;
+for(Len = 0; Len < (m_AllocHamDist / sizeof(UINT16)); Len++)
+	*pHamDist++ = m_SubSeqLen + 1;
 
 if((m_pThreadParams = new tsThreadParams [m_NumProcThreads]) == NULL)
 	{
