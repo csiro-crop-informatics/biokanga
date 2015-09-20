@@ -192,6 +192,7 @@ public:
 	teBSFrsltCodes LoadSeqsOnly(bool bSenseStrandOnly,			// process sequences as strand specific
 								bool bSingleEnded,				// treat all sequences as being single ended even if loaded as paired ends
 								int OrientatePE,					// PE end orientations 0: sense/antisense, 1: sense/sense, 2: antisense/sense, 3: antisense/antisense 
+								int MinPEReadLen,				// PE reads must be at least this many bp long
 								char *pszPE1File,				// input high confidence seed PE1 sequences file
 								char *pszPE2File,				// input high confidence seed PE2 sequences file
 								char *pszSeedContigsFile,		// optional input high confidence seed SE contigs file

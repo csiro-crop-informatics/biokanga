@@ -113,7 +113,7 @@ const int cMaxCmpOverlapBases = (cMaxOvrlapSeqWrds*15);	// handle sequences of t
 const int cMaxSortSfxLen = cMaxCmpOverlapBases;		// sort suffixes out to this maximal suffix (bases)
 const int cMinSeedContigLen = 100;					// will accept seed contigs which are >= this minimum length
 const int cMaxSeedContigLen = cMaxCmpOverlapBases;	// truncate seed contigs which are > this length to this length
-const  int cMinSeqLenToAssemb = 90;			// default is to require any sequence, after any trimming, loaded for assembly to be at least this length in bp 
+const  int cMinDfltSeqLenToAssemb = 90;			// default is to require any sequence, after any trimming, loaded for assembly to be at least this length in bp 
 
 const int cOVLnone = 0x01;					// Overlay classification flags - flags no overlay between Seq1 and Seq2
 
@@ -1129,7 +1129,7 @@ static const int cLevenshteinPacBioMismatch = 2;  // PacBio has very low rates o
 	teBSFrsltCodes	// load high confidence seed contigs used when de Novo assembling 
 					LoadSeedContigs(char *pszContigsFile, // file containing fasta seed contigs
 					int TrimEnds = 0,				// trim input sequences, both 5' and 3' ends by this many bases
-					int MinInputSeqLen = cMinSeqLenToAssemb);	// seed contigs, after any trimming, must be of at least this length to be accepted
+					int MinInputSeqLen = cMinDfltSeqLenToAssemb);	// seed contigs, after any trimming, must be of at least this length to be accepted
 
 
 	teBSFrsltCodes	// load high confidence seed PE1 and PE2 used when de Novo assembling
@@ -1137,7 +1137,7 @@ static const int cLevenshteinPacBioMismatch = 2;  // PacBio has very low rates o
 					   char *pszPE2File,		  // high confidence seed PE2 sequences file
 					   int OrientatePE = 0, 	  // PE end orientations 0: sense/antisense, 1: sense/sense, 2: antisense/sense, 3: antisense/antisense 
 						int TrimEnds = 0,		  // trim input sequences, both 5' and 3' ends by this many bases
-					  int MinInputSeqLen = cMinSeqLenToAssemb);	// seed contigs, after any trimming, must be of at least this length to be accepted
+					  int MinInputSeqLen = cMinDfltSeqLenToAssemb);	// seed contigs, after any trimming, must be of at least this length to be accepted
 
 
 	teBSFrsltCodes 

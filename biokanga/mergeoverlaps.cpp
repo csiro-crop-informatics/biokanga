@@ -335,5 +335,4 @@ if((pMergeReads = new CMergeReadPairs()) == NULL)
 Rslt = pMergeReads->MergeOverlaps(PMode,OFormat,MinOverlap,MaxSubPerc,NumInPE5Files,pszInPE5Files,NumInPE3Files,pszInPE3Files,pszMergeOutFile);
 
 return(Rslt);
-return(Rslt);
 }

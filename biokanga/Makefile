@@ -98,14 +98,15 @@ am_biokanga_OBJECTS = biokanga.$(OBJEXT) csv2sqlite.$(OBJEXT) \
 	FastaNxx.$(OBJEXT) kangax.$(OBJEXT) genmarkerseq.$(OBJEXT) \
 	MarkerSeq.$(OBJEXT) genDESeq.$(OBJEXT) \
 	genpseudogenome.$(OBJEXT) maploci2features.$(OBJEXT) \
-	mergeoverlaps.$(OBJEXT) MergeReadPairs.$(OBJEXT) \
-	fastaextract.$(OBJEXT) Assemble.$(OBJEXT) LocKMers.$(OBJEXT) \
-	genkmarkers.$(OBJEXT) gensnpmarkers.$(OBJEXT) \
-	kmermarkers.$(OBJEXT) MarkerKMers.$(OBJEXT) \
-	PEScaffold.$(OBJEXT) SSRdiscovery.$(OBJEXT) \
-	deNovoAssemb.$(OBJEXT) ArtefactReduce.$(OBJEXT) \
-	Scaffolder.$(OBJEXT) ReadStats.$(OBJEXT) Blitz.$(OBJEXT) \
-	RemapLoci.$(OBJEXT) LocateROI.$(OBJEXT)
+	MapLoci2Feat.$(OBJEXT) mergeoverlaps.$(OBJEXT) \
+	MergeReadPairs.$(OBJEXT) fastaextract.$(OBJEXT) \
+	Assemble.$(OBJEXT) LocKMers.$(OBJEXT) genkmarkers.$(OBJEXT) \
+	gensnpmarkers.$(OBJEXT) kmermarkers.$(OBJEXT) \
+	MarkerKMers.$(OBJEXT) PEScaffold.$(OBJEXT) \
+	SSRdiscovery.$(OBJEXT) deNovoAssemb.$(OBJEXT) \
+	ArtefactReduce.$(OBJEXT) Scaffolder.$(OBJEXT) \
+	ReadStats.$(OBJEXT) Blitz.$(OBJEXT) RemapLoci.$(OBJEXT) \
+	LocateROI.$(OBJEXT)
 biokanga_OBJECTS = $(am_biokanga_OBJECTS)
 biokanga_LDADD = $(LDADD)
 biokanga_DEPENDENCIES = ../libbiokanga/libbiokanga.a \
@@ -269,7 +270,8 @@ top_builddir = ..
 top_srcdir = ..
 biokanga_SOURCES = biokanga.cpp biokanga.h csv2sqlite.cpp SimReads.cpp Markers.cpp Markers.h SQLiteSummaries.cpp SQLiteSummaries.h SQLiteMarkers.cpp SQLiteMarkers.h \
                   SQLiteDE.cpp SQLiteDE.h psl2sqlite.cpp SQLitePSL.cpp SQLitePSL.h kanga.cpp kanga.h Aligner.cpp Aligner.h kangade.cpp Kangadna.cpp Kangadna.h \
-                  FastaNxx.cpp FastaNxx.h kangax.cpp kangax.h genmarkerseq.cpp MarkerSeq.cpp MarkerSeq.h genDESeq.cpp genpseudogenome.cpp maploci2features.cpp \
+                  FastaNxx.cpp FastaNxx.h kangax.cpp kangax.h genmarkerseq.cpp MarkerSeq.cpp MarkerSeq.h genDESeq.cpp genpseudogenome.cpp \
+                  maploci2features.cpp MapLoci2Feat.cpp MapLoci2Feat.h \
 		  mergeoverlaps.cpp MergeReadPairs.cpp MergeReadPairs.h fastaextract.cpp Assemble.cpp \
                   LocKMers.cpp LocKMers.h genkmarkers.cpp gensnpmarkers.cpp kmermarkers.cpp MarkerKMers.cpp MarkerKMers.h \
 		  PEScaffold.cpp PEScaffold.h SSRdiscovery.cpp SSRdiscovery.h \
@@ -377,6 +379,7 @@ include ./$(DEPDIR)/FastaNxx.Po
 include ./$(DEPDIR)/Kangadna.Po
 include ./$(DEPDIR)/LocKMers.Po
 include ./$(DEPDIR)/LocateROI.Po
+include ./$(DEPDIR)/MapLoci2Feat.Po
 include ./$(DEPDIR)/MarkerKMers.Po
 include ./$(DEPDIR)/MarkerSeq.Po
 include ./$(DEPDIR)/Markers.Po

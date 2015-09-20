@@ -96,7 +96,7 @@ maploci2features.o: maploci2features.cpp /usr/include/stdc-predef.h \
  /usr/include/x86_64-linux-gnu/bits/wchar2.h \
  ../libbiokanga/././Contaminants.h ../libbiokanga/././ProcRawReads.h \
  ../libbiokanga/././GTFFile.h ../libbiokanga/././GFFFile.h \
- ../libbiokanga/././sqlite3.h biokanga.h SQLiteSummaries.h
+ ../libbiokanga/././sqlite3.h biokanga.h SQLiteSummaries.h MapLoci2Feat.h
 
 /usr/include/stdc-predef.h:
 
@@ -409,3 +409,5 @@ stdafx.h:
 biokanga.h:
 
 SQLiteSummaries.h:
+
+MapLoci2Feat.h:

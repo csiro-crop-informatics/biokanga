@@ -3447,9 +3447,18 @@ while((Rslt = (teBSFrsltCodes)(PE1ReadLen = FastaPE1.ReadSequence(pPE1RawReadsBu
 			}
 
 		if(PE1ReadLen < (UINT32)(2 * TrimEnds) + MinInputSeqLen)			// after any end trimming require at least MinInputSeqLen before accepting read
+			{
+			NumPE1Underlen += 1;
+			NumPE2Underlen += 1;
 			continue;
+			}
 		if(PE2ReadLen <  (UINT32)(2 * TrimEnds) + MinInputSeqLen)
+			{
+			NumPE2Underlen += 1;
+			NumPE1Underlen += 1;
 			continue;
+			}
+
 		if(TrimEnds)
 			{
 
@@ -3595,9 +3604,9 @@ else
 m_Sequences.bSeqs2AssembDirty = true;	
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadSeedPEs: Completed parsing %d, accepted %d paired sequences, sequences min length: %d max length: %d mean length: %d",
-								NumPE1ParsedReads,NumPE1AcceptedReads,MinSeqLen,MaxSeqLen,(int)(TotSeqLen/((INT64)NumPE1AcceptedReads + NumPE2AcceptedReads)));
+								NumPE1ParsedReads,NumPE1AcceptedReads,MinSeqLen,MaxSeqLen, (NumPE1AcceptedReads + NumPE2AcceptedReads) == 0 ? 0 : (int)(TotSeqLen/((INT64)NumPE1AcceptedReads + NumPE2AcceptedReads)));
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadReads: A total of %d sequences were under length and %d contained indeterminate Ns",NumPE1Underlen + NumPE2Underlen,NumPE1ExcessNs+NumPE2ExcessNs);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadReads: A total of %d sequences were under length (%dbp) and %d contained indeterminate Ns",NumPE1Underlen + NumPE2Underlen, MinInputSeqLen,NumPE1ExcessNs+NumPE2ExcessNs);
 
 return((teBSFrsltCodes)(NumPE1AcceptedReads + NumPE2AcceptedReads));
 }

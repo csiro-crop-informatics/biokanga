@@ -41,6 +41,7 @@ ProcessScaffoldedContigs(int PMode,			// processing mode: 0 - output scaffold mu
 		bool bAffinity,						// thread to core affinity
 		int Subs100bp,						// allow this many induced substitutions per 100bp overlapping sequence fragments (defaults to 0, range 0..5)
 		int MaxEnd12Subs,					// allow at the initial 12bp (2 x hexamer primer artefacts) of the 5' or 3' of overlap to have this many base mismatches in addition to the overall allowed MaxSubs 
+		int MinPEReadlen,					// only accept PE read lengths of at least this many bp
 		int MinPEInsertSize,				// PE sequences are of this minimum insert size
 		int MaxPEInsertSize,				// PE sequences are of this maximum insert size
 		int MinScaffoldedSeqLen,			// reported scaffolded sequences are at least this length
@@ -75,7 +76,7 @@ bool bAffinity;				// thread to core affinity
 int PMode;					// processing mode
 int Subs100bp;				// allow this many induced substitutions per 100bp overlapping sequence fragments (defaults to 0, range 0..5)
 int End12Subs;				// allow at the initial 12bp (2 x hexamer primer artefacts) of the 5' or 3' of overlap to have this many base mismatches in addition to the overall allowed MaxSubs 
-
+int MinPEReadlen;			// only accept PE read lengths of at least this many bp
 int MinPEInsertSize;		// PE sequences are of this minimum insert size
 int MaxPEInsertSize;		// PE sequences are of this maximum insert size
 
@@ -103,6 +104,7 @@ struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - 
 
 struct arg_int *subs100bp = arg_int0("s","maxsubs100bp","<int>", "allow max induced substitutions per 100bp overlapping sequence fragments (defaults to 0, range 1..5)");
 struct arg_int *end12subs = arg_int0("E","maxendsubs","<int>",   "allow max induced substitutions in overlap 12bp ends (defaults to 0, range 0..6)");
+struct arg_int *minpereadlen = arg_int0("L", "minpereadlen", "<int>", "min length of any PE read (defaults to 90, range 30..5000)");
 
 struct arg_int *minpeinsertsize = arg_int0("p","minpeinsert","<int>","minimum PE insert size (default 110, range 100..50000)");
 struct arg_int *maxpeinsertsize = arg_int0("P","maxpeinsert","<int>","maximum PE insert size (default 1000, range minpeinsert..50000)");
@@ -126,7 +128,7 @@ struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-	                pmode,subs100bp,end12subs,minpeinsertsize,maxpeinsertsize,minscafflen,orientatepe,
+	                pmode,subs100bp,end12subs,minpereadlen,minpeinsertsize,maxpeinsertsize,minscafflen,orientatepe,
 					inpe1file,inpe2file,contigsfile,outfile,
 					summrslts,experimentname,experimentdescr,
 					threads,
@@ -292,6 +294,14 @@ if (!argerrors)
 		return(1);
 		}
 
+	MinPEReadlen = minpereadlen->count ? minpereadlen->ival[0] : cMinDfltSeqLenToAssemb;
+	if (MinPEReadlen < 30 || MinPEReadlen > 5000)
+	{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Minimum accpted PE read length '-L%d' must be in range 30..5000", MinPEReadlen);
+		return(1);
+	}
+
+
 	MinPEInsertSize = minpeinsertsize->count ? minpeinsertsize->ival[0] : 110;
 	if(MinPEInsertSize < 100 || MinPEInsertSize > 50000)
 		{
@@ -425,6 +435,8 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode is : '%s'",pszDescr);
 
+	gDiagnostics.DiagOutMsgOnly(eDLInfo, "Minimum PE read length: %d", MinPEReadlen);
+
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allow max induced substitutions per 100bp overlapping sequence fragments: %d",Subs100bp);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allow max induced substitutions end 12bp of overlaps: %d",End12Subs);
 
@@ -474,6 +486,7 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(PMode),"mode",&PMode);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(Subs100bp),"subskbp",&Subs100bp);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(End12Subs),"maxendsubs",&End12Subs);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTInt32, sizeof(MinPEReadlen), "minpereadlen", &MinPEReadlen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(MinPEInsertSize),"minpeinsert",&MinPEInsertSize);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(MaxPEInsertSize),"maxpeinsert",&MaxPEInsertSize);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(MinScaffoldedSeqLen),"minscafflen",&MinScaffoldedSeqLen);
@@ -501,7 +514,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcessScaffoldedContigs(PMode,NumThreads,bAffinity,Subs100bp,End12Subs,MinPEInsertSize,MaxPEInsertSize,MinScaffoldedSeqLen,OrientatePE,szPE1File,szPE2File,szContigsFile,szOutFile);
+	Rslt = ProcessScaffoldedContigs(PMode,NumThreads,bAffinity,Subs100bp,End12Subs, MinPEReadlen,MinPEInsertSize,MaxPEInsertSize,MinScaffoldedSeqLen,OrientatePE,szPE1File,szPE2File,szContigsFile,szOutFile);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -529,6 +542,7 @@ GenScaffoldedContigs(int PMode,				// processing mode: 0 - output scaffold multi
 		bool bAffinity,						// thread to core affinity
 		int Subs100bp,						// allow this many induced substitutions per 100bp overlapping sequence fragments (defaults to 1, range 0..5)
 		int MaxEnd12Subs,					// allow at the initial 12bp (2 x hexamer primer artefacts) of the 5' or 3' of overlap to have this many base mismatches in addition to the overall allowed MaxSubs 
+        int MinPEReadlen,					// only accept PE read lengths of at least this many bp
 		int MinPEInsertSize,				// PE sequences are of this minimum insert size
 		int MaxPEInsertSize,				// PE sequences are of this maximum insert size
 		int MinScaffoldedSeqLen,			// reported scaffolded sequences are at least this length
@@ -546,13 +560,9 @@ pScaffolder->Reset(false);
 pScaffolder->SetPMode(PMode);
 pScaffolder->SetNumThreads(NumThreads);
 pScaffolder->SetSfxSparsity(eSSparsity15);
-
-
-if((Rslt = pScaffolder->GenScaffoldedContigs(PMode,Subs100bp,MaxEnd12Subs,MinPEInsertSize,MaxPEInsertSize,MinScaffoldedSeqLen,OrientatePE,pszPE1File,pszPE2File,pszContigsFile,pszScaffoldedFile)) < eBSFSuccess)
-	return(Rslt);
-
+Rslt = pScaffolder->GenScaffoldedContigs(PMode,Subs100bp,MaxEnd12Subs, MinPEReadlen,MinPEInsertSize,MaxPEInsertSize,MinScaffoldedSeqLen,OrientatePE,pszPE1File,pszPE2File,pszContigsFile,pszScaffoldedFile);
 delete pScaffolder;
-return(0);
+return(Rslt < eBSFSuccess ? Rslt : 0);
 }
 
 // main processing thread startup - has increased stack size because of deep recursion when graph processing
@@ -564,7 +574,7 @@ void *ThreadedScaffolds(void * pThreadPars)
 {
 int Rslt = 0;
 tsScaffoldPars *pPars = (tsScaffoldPars *)pThreadPars; // makes it easier not having to deal with casts!
-Rslt = GenScaffoldedContigs(pPars->PMode,pPars->NumThreads,pPars->bAffinity,pPars->Subs100bp,pPars->MaxEnd12Subs,
+Rslt = GenScaffoldedContigs(pPars->PMode,pPars->NumThreads,pPars->bAffinity,pPars->Subs100bp,pPars->MaxEnd12Subs, pPars->MinPEReadlen,
 						pPars->MinPEInsertSize,pPars->MaxPEInsertSize,pPars->MinScaffoldedSeqLen,pPars->OrientatePE,
 						pPars->pszPE1File,pPars->pszPE2File,pPars->pszContigsFile,pPars->pszScaffoldedFile);
 pPars->Rslt = Rslt;
@@ -582,6 +592,7 @@ ProcessScaffoldedContigs(int PMode,				// processing mode: 0 - output scaffold m
 		bool bAffinity,						// thread to core affinity
 		int Subs100bp,						// allow this many induced substitutions per 100bp overlapping sequence fragments (defaults to 1, range 0..5)
 		int MaxEnd12Subs,					// allow at the initial 12bp (2 x hexamer primer artefacts) of the 5' or 3' of overlap to have this many base mismatches in addition to the overall allowed MaxSubs 
+        int MinPEReadlen,					// only accept PE read lengths of at least this many bp
 		int MinPEInsertSize,				// PE sequences are of this minimum insert size
 		int MaxPEInsertSize,				// PE sequences are of this maximum insert size
 		int MinScaffoldedSeqLen,			// reported scaffolded sequences are at least this length
@@ -597,7 +608,8 @@ ScaffoldPars.PMode = PMode;
 ScaffoldPars.NumThreads = NumThreads;					
 ScaffoldPars.bAffinity = bAffinity;						
 ScaffoldPars.Subs100bp = Subs100bp;						
-ScaffoldPars.MaxEnd12Subs = MaxEnd12Subs;				
+ScaffoldPars.MaxEnd12Subs = MaxEnd12Subs;	
+ScaffoldPars.MinPEReadlen = MinPEReadlen;
 ScaffoldPars.MinPEInsertSize = MinPEInsertSize;	
 ScaffoldPars.MaxPEInsertSize = MaxPEInsertSize;
 ScaffoldPars.MinScaffoldedSeqLen = MinScaffoldedSeqLen;	
@@ -764,6 +776,7 @@ CScaffolder::ScaffoldAssemble(bool bSenseStrandOnly,			// sequences from sense s
 		int OrientatePE,					// PE end orientations 0: sense/antisense, 1: sense/sense, 2: antisense/sense, 3: antisense/antisense 
 		int NumThreads,					// number of worker threads to use
 		bool bAffinity,					// thread to core affinity
+		int MinPEReadLen,				// PE reads must be at least this many bp long
 		char *pszPE1File,				// input PE1 sequences file
 		char *pszPE2File,				// input PE2 sequences file
 		char *pszSeedContigsFile)		// input SE contigs to be scaffolded file
@@ -860,7 +873,7 @@ if((Rslt = AllocBlockNsLoci(EstNumCtgs))!= eBSFSuccess)
 	return(Rslt);
 	}
 
-if((Rslt = LoadSeqsOnly(bSenseStrandOnly,bSingleEnded,OrientatePE,pszPE1File, pszPE2File, pszSeedContigsFile)) < eBSFSuccess)
+if((Rslt = LoadSeqsOnly(bSenseStrandOnly,bSingleEnded,OrientatePE, MinPEReadLen,pszPE1File, pszPE2File, pszSeedContigsFile)) < eBSFSuccess)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AssembReads: Unable to continue");
 	Reset(false);
@@ -874,6 +887,7 @@ teBSFrsltCodes
 CScaffolder::GenScaffoldedContigs(int PMode,	//  processing mode: 0 - output single multifasta with edge report
 					int Subs100bp,				// allow this many induced substitutions per 100bp overlapping sequence fragments (defaults to 0, range 0..5)
 					int MaxEnd12Subs,			// allow at the initial 12bp (2 x hexamer primer artefacts) of the 5' or 3' of overlap to have this many base mismatches in addition to the overall allowed MaxSubs 
+					int MinPEReadlen,			// only accept PE read lengths of at least this many bp
 					int MinPEInsertSize,		// PE sequences are of this minimum insert size
 					int MaxPEInsertSize,		// PE sequences are of this maximum insert size
 					int MinScaffoldedSeqLen,	// reported scaffolded sequences are at least this length
@@ -908,7 +922,7 @@ if(Subs100bp < 0 || Subs100bp > cMaxSubs100bp ||
 Subs1Kbp = Subs100bp * 10;
 
 	// load scaffolding PEs plus contigs to be scaffolded
-if((Rslt = ScaffoldAssemble(false,false,OrientatePE,m_NumThreads,m_bAffinity,pszPE1File,pszPE2File,pszContigsFile)) < eBSFSuccess)
+if((Rslt = ScaffoldAssemble(false,false,OrientatePE,m_NumThreads,m_bAffinity, MinPEReadlen,pszPE1File,pszPE2File,pszContigsFile)) < eBSFSuccess)
 	return((teBSFrsltCodes)Rslt);
 
 	// get min, mean, max lengths for PE1, PE2 and SEs and report on these

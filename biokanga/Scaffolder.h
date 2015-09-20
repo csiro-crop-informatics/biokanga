@@ -50,6 +50,7 @@ typedef struct TAG_sScaffoldPars {  // to hold thread parameters for thread doin
 	bool bAffinity;						// thread to core affinity
 	int Subs100bp;						// allow this many induced substitutions per 100bp overlapping sequence fragments (defaults to 1, range 0..5)
 	int MaxEnd12Subs;					// allow at the initial 12bp (2 x hexamer primer artefacts) of the 5' or 3' of overlap to have this many base mismatches in addition to the overall allowed MaxSubs 
+	int MinPEReadlen;					// only accept PE read lengths of at least this many bp
 	int MinPEInsertSize;				// PE sequences are of this minimum insert size
 	int MaxPEInsertSize;				// PE sequences are of this maximum insert size
 	int MinScaffoldedSeqLen;			// reported scaffolded sequences are at least this length
@@ -187,6 +188,7 @@ class CScaffolder : public CdeNovoAssemb
 						int OrientatePE,				// PE end orientations 0: sense/antisense, 1: sense/sense, 2: antisense/sense, 3: antisense/antisense 
 						int NumThreads,					// number of worker threads to use
 						bool bAffinity,					// thread to core affinity
+						int MinPEReadLen,				// PE reads must be at least this many bp long
 						char *pszPE1File,		// input high confidence seed PE1 sequences file
 						char *pszPE2File,		// input high confidence seed PE2 sequences file
 						char *pszSeedContigsFile); // input high confidence seed SE contigs file
@@ -268,6 +270,7 @@ public:
 			GenScaffoldedContigs(int PMode,				// processing mode, currently unused
 					int Subs100bp,						// allow this many induced substitutions per 100bp overlapping sequence fragments (defaults to 0, range 0..5)
 					int MaxEnd12Subs,					// allow at the initial 12bp (2 x hexamer primer artefacts) of the 5' or 3' of overlap to have this many base mismatches in addition to the overall allowed MaxSubs 
+				    int MinPEReadlen,					// only accept PE read lengths of at least this many bp
 					int MinPEInsertSize,				// PE sequences are of this minimum insert size
 					int MaxPEInsertSize,				// PE sequences are of this maximum insert size
 					int MinScaffoldedSeqLen,			// reported scaffolded sequences are at least this length

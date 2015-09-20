@@ -65,7 +65,8 @@ if(m_pAllocdThreadSeqs != NULL)
 teBSFrsltCodes
 CdeNovoAssemb::LoadSeqsOnly(bool bSenseStrandOnly,	// process sequences as strand specific
 					bool bSingleEnded,				// treat all sequences as being single ended even if loaded as paired ends
-					int OrientatePE,					// PE end orientations 0: sense/antisense, 1: sense/sense, 2: antisense/sense, 3: antisense/antisense 
+					int OrientatePE,				// PE end orientations 0: sense/antisense, 1: sense/sense, 2: antisense/sense, 3: antisense/antisense 
+					int MinPEReadLen,				// PE reads must be at least this many bp long
 					char *pszPE1File,				// input high confidence seed PE1 sequences file
 					char *pszPE2File,				// input high confidence seed PE2 sequences file
 					char *pszSeedContigsFile,		// input high confidence seed SE contigs file
@@ -88,8 +89,8 @@ if(pszInArtReducfile != NULL && pszInArtReducfile[0] != '\0')
 
 // next, if specified then load filtered PE1 and PE2 reads
 if(pszPE1File != NULL && pszPE1File[0] != '\0')
-	if((Rslt = LoadSeedPEs(pszPE1File,pszPE2File,OrientatePE))  < eBSFSuccess)
-		return((teBSFrsltCodes)Rslt);
+	if((Rslt = LoadSeedPEs(pszPE1File,pszPE2File,OrientatePE,0, MinPEReadLen))  < 1)
+		return(Rslt == 0 ? (teBSFrsltCodes)eBSFerrNoEntries : (teBSFrsltCodes)Rslt);
 
 // initialise header flags
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"AssembReads: Initialising sequence headers ...");
