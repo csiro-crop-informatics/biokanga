@@ -90,7 +90,7 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","mode","<int>",		    "merge processing : 0 - output overlaped reads only, 1 - output overlaped and orphan reads combined, 2 - output overlaped and orphan reads separately, 3 - Amplicon with 5'/3' well identifier barcodes (default is 0)");
+struct arg_int *pmode = arg_int0("m","mode","<int>",		    "merge processing : 0 - output overlaped reads only, 1 - output overlaped and orphan reads combined, 2 - output overlaped and orphan reads separately, 3 - Amplicon with 5'/3' well identifier barcodes, 4 - Amplicon with barcodes no overlap merge (default is 0)");
 struct arg_int *oformat = arg_int0("M","oformat","<int>",		"output format as : 0 - auto, 1 - fasta, 2 - fastq (default 0, uses input file format)");
 
 struct arg_int *minoverlap = arg_int0("l","minoverlap","<int>",	"paired end 3' reads must overlap onto 5' reads by at least this number of base (minimum 1, default 10)");
@@ -185,18 +185,26 @@ if (!argerrors)
 		exit(1);
 		}
 
-	MinOverlap = minoverlap->count ? minoverlap->ival[0] : cDfltRequiredOverlap;
-	if(MinOverlap < cMinOverlapLen || MinOverlap >= cMaxMinRequiredOverlap)
+	if(PMode <= ePMAmplicon)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum required paired end overlap '-S%d' specified outside of range %d..%d",MinOverlap,cMinOverlapLen,cMaxMinRequiredOverlap);
-		exit(1);
-		}
+		MinOverlap = minoverlap->count ? minoverlap->ival[0] : cDfltRequiredOverlap;
+		if(MinOverlap < cMinOverlapLen || MinOverlap >= cMaxMinRequiredOverlap)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum required paired end overlap '-S%d' specified outside of range %d..%d",MinOverlap,cMinOverlapLen,cMaxMinRequiredOverlap);
+			exit(1);
+			}
 
-	MaxSubPerc = naxsubperc->count ? naxsubperc->ival[0] : cDfltOverlapPercSubs;
-	if(MaxSubPerc < 0 || MaxSubPerc > cMaxOverlapPercSubs)
+		MaxSubPerc = naxsubperc->count ? naxsubperc->ival[0] : cDfltOverlapPercSubs;
+		if(MaxSubPerc < 0 || MaxSubPerc > cMaxOverlapPercSubs)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Maximum accepted overlap substitution percentage '-s%d' specified outside of range %d..%d",MaxSubPerc,0,cMaxOverlapPercSubs);
+			exit(1);
+			}
+		}
+	else
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Maximum accepted overlap substitution percentage '-s%d' specified outside of range %d..%d",MaxSubPerc,0,cMaxOverlapPercSubs);
-		exit(1);
+		MinOverlap = cDfltRequiredOverlap;
+		MaxSubPerc = cDfltOverlapPercSubs;
 		}
 
 	for(NumInPE5Files=Idx=0;NumInPE5Files < cMaxInFileSpecs && Idx < inpe5files->count; Idx++)
@@ -249,20 +257,25 @@ if (!argerrors)
 	const char *pszProcMode;
 	switch(PMode) {
 		case ePMdefault:
-			pszProcMode = "Overlaped read sequences file output";
+			pszProcMode = "Overlapped read sequences file output";
 			break;
 
 		case ePMcombined:
-			pszProcMode = "Overlaped and orphan read sequences combined file output";
+			pszProcMode = "Overlapped and orphan read sequences combined file output";
 			break;
 
 		case ePMseparate:
-			pszProcMode = "Overlaped and orphan read sequences separate output files";
+			pszProcMode = "Overlapped and orphan read sequences separate output files";
 			break;
 
 		case ePMAmplicon:
-			pszProcMode = "Amplicon with 5'/3' well identifier barcodes";
+			pszProcMode = "Amplicon with 5'/3' well identifier barcodes, overlaps merged into SE sequence";
 			break;
+
+		case ePMAmpliconNoMerge:
+			pszProcMode = "Amplicon with 5' and 3' barcodes to identify originating plate well, no overlap merging";
+			break;
+
 		}
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: '%s'",pszProcMode);
 
@@ -282,15 +295,41 @@ if (!argerrors)
 		}
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output format: '%s'",pszProcMode);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum overlap length: %d",MinOverlap);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum percentage of substitutions in overlap: %d%%",MaxSubPerc);
-	
+	if (PMode <= ePMAmplicon)
+		{
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum overlap length: %d",MinOverlap);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum percentage of substitutions in overlap: %d%%",MaxSubPerc);
+		}
 
 	for(Idx=0; Idx < NumInPE5Files; Idx++)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"input P1 5' reads files (%d): '%s'",Idx+1,pszInPE5Files[Idx]);
 	for(Idx=0; Idx < NumInPE3Files; Idx++)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"input P2 3' reads files (%d): '%s'",Idx+1,pszInPE3Files[Idx]);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"output assembled contigs file to create: '%s'", szOutCtgsFile);
+
+
+	switch (PMode)
+		{
+		case ePMdefault:
+			gDiagnostics.DiagOutMsgOnly(eDLInfo, "output merged sequences file: '%s'", szOutCtgsFile);
+			break;
+
+		case ePMcombined:
+			gDiagnostics.DiagOutMsgOnly(eDLInfo, "output merged sequences file: '%s'", szOutCtgsFile);
+			break;
+
+		case ePMseparate:
+			gDiagnostics.DiagOutMsgOnly(eDLInfo, "output sequences file prefix: '%s'", szOutCtgsFile);
+			break;
+
+		case ePMAmplicon:
+			gDiagnostics.DiagOutMsgOnly(eDLInfo, "output SE merged sequences file prefix: '%s'", szOutCtgsFile);
+			break;
+
+		case ePMAmpliconNoMerge:
+			gDiagnostics.DiagOutMsgOnly(eDLInfo, "output PE sequences file prefix: '%s'", szOutCtgsFile);
+			break;
+		}
+
 
 #ifdef _WIN32
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
@@ -333,6 +372,7 @@ if((pMergeReads = new CMergeReadPairs()) == NULL)
 	}
 
 Rslt = pMergeReads->MergeOverlaps(PMode,OFormat,MinOverlap,MaxSubPerc,NumInPE5Files,pszInPE5Files,NumInPE3Files,pszInPE3Files,pszMergeOutFile);
+delete pMergeReads;
 
 return(Rslt);
 }

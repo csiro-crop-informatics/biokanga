@@ -371,7 +371,7 @@ if (!argerrors)
 			}
 		}
 
-	NReduceThresSteps = reducethressteps->count ? pmode->ival[0] : 0;
+	NReduceThresSteps = reducethressteps->count ? reducethressteps->ival[0] : 0;
 	if((NReduceThresSteps != 0) && (NReduceThresSteps < 2 || NReduceThresSteps > 10))
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Threshold reduction steps '-r%d' must be in range 2..10",NReduceThresSteps);

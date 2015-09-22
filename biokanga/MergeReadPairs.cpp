@@ -64,16 +64,9 @@ static tsBarcode Barcodes[] = { // default hardcoded barcodes
 static int NumBarcodes = (sizeof(Barcodes)/sizeof(tsBarcode));  // number of barcodes for which row and column barcodes are declared
 static int NumPlatWells = 96;    // number of plate wells identified by barcodes (rows * columns)
 
-static int Pac5Hits = 0;
-static int Pac3Hits = 0;
-static int RevCplPac5Hits = 0;
-static int RevCplPac3Hits = 0;
-
-static int NumPacHitsChkd = 0;
-
-int							// returned well number or 0 if unable to identify well from the barcodes
-CMergeReadPairs::MapBarcodesToWell(int SeqLen,		// num bases in pSeq
-				etSeqBase *pSeq)	// map barcodes at 5' and 3' end of this sequence to the well
+int							// returned well number (1..96) or 0 if unable to identify well from the barcodes
+CMergeReadPairs::MapSEBarcodesToWell(int SeqLen,		// num bases in SE pSeq
+				etSeqBase *pSeq)	// map barcodes at 5' and 3' end of this SE sequence to the well
 {
 UINT32 Pack5;		// to hold the 5' extracted assumed barcode from pSeq
 UINT32 Pack3;		// to hold the 3' extracted assumed barcode from pSeq
@@ -112,19 +105,14 @@ for(Idx = 0; Idx < m_MaxBarcode3Len; Idx++, pBase++)
 pBarcode5 = NULL;
 pBarcode3 = NULL;
 pBarcode = m_pBarcodes;
-NumPacHitsChkd += 1;
 for(Idx = 0; Idx < m_NumBarcodes; Idx++,pBarcode++)
 	{
 	if(pBarcode->BarCode == Pack5 && !pBarcode->ColRow)	
-		{
 		pBarcode5 = pBarcode;
-		Pac5Hits+=1;
-		}
+
 	if(pBarcode->RevCplBarCode == Pack3 && pBarcode->ColRow)
-		{
 		pBarcode3 = pBarcode;
-		Pac3Hits+=1;
-		}
+
 	if(pBarcode5 != NULL && pBarcode3 != NULL)
 		return(pBarcode5->Psn + ((pBarcode3->Psn-1) * 12));
 	}
@@ -135,15 +123,11 @@ pBarcode = m_pBarcodes;
 for(Idx = 0; Idx < m_NumBarcodes; Idx++,pBarcode++)
 	{
 	if(pBarcode->BarCode == Pack5 && pBarcode->ColRow)
-		{
 		pBarcode5 = pBarcode;
-		RevCplPac5Hits+=1;
-		}
+
 	if(pBarcode->RevCplBarCode == Pack3 && !pBarcode->ColRow)
-		{
 		pBarcode3 = pBarcode;
-		RevCplPac3Hits +=1;
-		}
+
 	if(pBarcode5 != NULL && pBarcode3 != NULL)
 		return(pBarcode3->Psn + ((pBarcode5->Psn-1) * 12));
 	}
@@ -151,10 +135,85 @@ for(Idx = 0; Idx < m_NumBarcodes; Idx++,pBarcode++)
 return(0);
 }
 
-int				// return number of wells initialised
-CMergeReadPairs::InitDfltWells(void) // initialise with default well barcodes and well identifiers
+
+int							// returned well number (1..96) or 0 if unable to identify well from the barcodes
+CMergeReadPairs::MapPEBarcodesToWell(int SeqLen,		//minimum length of either p5Seq or P3Seq
+								   etSeqBase *pPE1Seq,// map barcodes at 5' of this sequence
+								   etSeqBase *pPE2Seq)// and barcodes at 5'of this sequence to the well
 {
-tsWellFileOut *pWell;
+	UINT32 Pack5;		// to hold the 5' extracted assumed barcode from pSeq
+	UINT32 Pack3;		// to hold the 3' extracted assumed barcode from pSeq
+	int Idx;
+	etSeqBase *pBase;
+	tsBarcode *pBarcode;
+	tsBarcode *pBarcode5;
+	tsBarcode *pBarcode3;
+
+	if (m_pBarcodes == NULL || (m_MaxBarcode5Len + m_MaxBarcode3Len) == 0 || SeqLen < m_MaxBarcode5Len || SeqLen < m_MaxBarcode3Len)
+		return(0);
+
+	Pack5 = 0;
+	Pack3 = 0;
+	// extract the PE1 5' barcode 
+	pBase = pPE1Seq;
+	for (Idx = 0; Idx < m_MaxBarcode5Len; Idx++, pBase++)
+		{
+		if (*pBase > eBaseT)			// only accepting cannonical bases
+			return(0);
+		Pack5 <<= 2;
+		Pack5 |= *pBase & 0x03;
+		}
+
+	// extract the PE2 5' barcode
+	pBase = pPE2Seq;
+	for (Idx = 0; Idx < m_MaxBarcode3Len; Idx++, pBase++)
+		{
+		if (*pBase > eBaseT)			// only accepting cannonical bases
+			return(0);
+		Pack3 <<= 2;
+		Pack3 |= *pBase & 0x03;
+		}
+
+	// try matching the barcodes
+	// firstly with amplicon 5' sense and amplicon 3' antisense; if no match then try 5' antisense and 3' sense
+pBarcode5 = NULL;
+pBarcode3 = NULL;
+pBarcode = m_pBarcodes;
+
+for (Idx = 0; Idx < m_NumBarcodes; Idx++, pBarcode++)
+	{
+	if (pBarcode->BarCode == Pack5 && !pBarcode->ColRow)
+		pBarcode5 = pBarcode;
+
+	if (pBarcode->BarCode == Pack3 && pBarcode->ColRow)
+		pBarcode3 = pBarcode;
+
+	if (pBarcode5 != NULL && pBarcode3 != NULL)
+		return(pBarcode5->Psn + ((pBarcode3->Psn - 1) * 12));
+	}
+
+pBarcode5 = NULL;
+pBarcode3 = NULL;
+pBarcode = m_pBarcodes;
+for (Idx = 0; Idx < m_NumBarcodes; Idx++, pBarcode++)
+	{
+	if (pBarcode->BarCode == Pack5 && pBarcode->ColRow)
+		pBarcode5 = pBarcode;
+
+	if (pBarcode->BarCode == Pack3 && !pBarcode->ColRow)
+		pBarcode3 = pBarcode;
+	
+	if (pBarcode5 != NULL && pBarcode3 != NULL)
+		return(pBarcode3->Psn + ((pBarcode5->Psn - 1) * 12));
+	}
+
+return(0);
+}
+
+int				// return number of wells initialised
+CMergeReadPairs::InitDfltWells(bool bNoMerge) // initialise with default well barcodes and well identifiers, if bNoMerge then do not merge PE reads and report PE1/PE2 instead of merged SE 
+{
+tsAmpliconWell *pWell;
 int WellIdx;
 m_MaxBarcode5Len = 6;		// maximun length of any 5' barcode - max 16
 m_MaxBarcode3Len = 6;		// maximun length of any 3' barcode - max 16
@@ -162,15 +221,24 @@ m_NumBarcodes = NumBarcodes;	// number of barcodes in m_pBarcodes[]
 m_pBarcodes = Barcodes;
 m_NumWells = 0;
 pWell = m_WellFiles;
+memset(pWell,0,sizeof(m_WellFiles));
 for(WellIdx = 0; WellIdx < NumPlatWells; WellIdx++,pWell++)
 	{
-	sprintf(pWell->szOutFile,"%s.Well%d.%s",m_szMergeOutFile,WellIdx+1,m_OFormat == eOFfasta ? "fasta" : "fastq");
-	pWell->hOutFile = -1;
-	if((pWell->pOutBuffer = new char [cAllocOutBuffLen]) == NULL)
+	if(bNoMerge)
+		{
+		sprintf(pWell->WellFile[1].szOutFile, "%s.Well%d.PE2.%s", m_szMergeOutFile, WellIdx + 1, m_OFormat == eOFfasta ? "fasta" : "fastq");
+		if ((pWell->WellFile[1].pOutBuffer = new char[cAllocOutBuffLen]) == NULL)
+			return(eBSFerrMem);
+		pWell->WellFile[1].AllocdOutBuff = cAllocOutBuffLen;
+		}
+
+	sprintf(pWell->WellFile[0].szOutFile,"%s.Well%d.%s.%s",m_szMergeOutFile,WellIdx+1, bNoMerge == true ? "PE1" : "SE",m_OFormat == eOFfasta ? "fasta" : "fastq");
+	pWell->WellFile[0].hOutFile = -1;
+	pWell->WellFile[1].hOutFile = -1;
+	if((pWell->WellFile[0].pOutBuffer = new char [cAllocOutBuffLen]) == NULL)
 		return(eBSFerrMem);
-	pWell->AllocdOutBuff = cAllocOutBuffLen;
-	pWell->CurBuffLen = 0;
-	pWell->NumASequences = 0;
+	pWell->WellFile[0].AllocdOutBuff = cAllocOutBuffLen;
+
 	pWell->WellID = WellIdx + 1;
 	m_NumWells += 1;
 	}
@@ -190,7 +258,10 @@ m_ProcPhase = ePPUninit;
 m_NumWells = 0;
 memset(m_WellFiles,0,sizeof(m_WellFiles));
 for(int WellIdx = 0; WellIdx < m_NumWells; WellIdx++)
-	m_WellFiles[WellIdx].hOutFile = -1;
+	{
+	m_WellFiles[WellIdx].WellFile[0].hOutFile = -1;
+	m_WellFiles[WellIdx].WellFile[1].hOutFile = -1;
+	}
 Reset(false);
 }
 
@@ -204,7 +275,10 @@ void
 CMergeReadPairs::Reset(bool bSync)
 {
 int WellIdx;
-tsWellFileOut *pWell;
+int WellFileIdx;
+tsAmpliconWellFile *pWellFile;
+
+tsAmpliconWell *pWell;
 if(m_ProcPhase != ePPUninit)
 	{
 	if(m_NumWells > 0)
@@ -212,24 +286,28 @@ if(m_ProcPhase != ePPUninit)
 		pWell = m_WellFiles;
 		for(WellIdx = 0; WellIdx < m_NumWells; WellIdx++,pWell++)
 			{
-			if(pWell->pOutBuffer != NULL)
+			pWellFile = &pWell->WellFile[0];
+			for(WellFileIdx = 0; WellFileIdx < 2; WellFileIdx += 1, pWellFile++)
 				{
-				if(bSync && pWell->CurBuffLen && pWell->hOutFile != -1)
-					CUtility::SafeWrite(pWell->hOutFile,pWell->pOutBuffer,pWell->CurBuffLen);
-				delete pWell->pOutBuffer;
-				pWell->pOutBuffer = NULL;
-				}
-			pWell->AllocdOutBuff = 0;
-			if(pWell->hOutFile != -1)
-				{
-				if(bSync)
+				if(pWellFile->pOutBuffer != NULL)
+					{
+					if(bSync && pWellFile->CurBuffLen && pWellFile->hOutFile != -1)
+						CUtility::SafeWrite(pWellFile->hOutFile, pWellFile->pOutBuffer, pWellFile->CurBuffLen);
+					delete pWellFile->pOutBuffer;
+					pWellFile->pOutBuffer = NULL;
+					}
+				pWellFile->AllocdOutBuff = 0;
+				if(pWellFile->hOutFile != -1)
+					{
+					if(bSync)
 #ifdef _WIN32
-				_commit(pWell->hOutFile);
+					_commit(pWellFile->hOutFile);
 #else
-				fsync(pWell->hOutFile);
+					fsync(pWellFile->hOutFile);
 #endif
-				close(pWell->hOutFile);
-				pWell->hOutFile = -1;
+					close(pWellFile->hOutFile);
+					pWellFile->hOutFile = -1;
+					}
 				}
 			}
 		}
@@ -301,8 +379,11 @@ if(m_ProcPhase != ePPUninit)
 memset(m_WellFiles,0,sizeof(m_WellFiles));
 pWell = m_WellFiles;
 for(WellIdx = 0; WellIdx < cMaxNumWells; WellIdx++,pWell++)
-	pWell->hOutFile = -1;
-
+	{
+	pWell->WellFile[0].hOutFile = -1;
+	pWell->WellFile[1].hOutFile = -1;
+	}
+m_bAmpliconNoMerge = false;
 m_hOutMerged = -1;			// file handle for output merged read microcontigs
 m_hOut5Unmerged = -1;		// file handle for output 5' unmerged reads
 m_hOut3Unmerged = -1;		// file handle for output 3' unmerged reads
@@ -338,7 +419,7 @@ int
 CMergeReadPairs::OpenFiles(void)
 {
 int WellIdx;
-tsWellFileOut *pWellFileOut;
+tsAmpliconWell *pWellFileOut;
 
 // check if files specified for open/create/append...
 if(m_ProcPhase != ePPRdyOpen)
@@ -349,7 +430,7 @@ if(m_ProcPhase != ePPRdyOpen)
 
 if(m_bAppendOut)
 	{
-	if(m_PMode != ePMAmplicon)
+	if(m_PMode < ePMAmplicon)
 		{
 #ifdef _WIN32
 		m_hOutMerged = open(m_szMergeOutFile,( _O_RDWR | _O_BINARY | _O_SEQUENTIAL | _O_CREAT),(_S_IREAD | _S_IWRITE));
@@ -371,18 +452,37 @@ if(m_bAppendOut)
 		for(WellIdx = 0; WellIdx < m_NumWells; WellIdx++,pWellFileOut++)
 			{
 #ifdef _WIN32
-			pWellFileOut->hOutFile = open(pWellFileOut->szOutFile,( _O_RDWR | _O_BINARY | _O_SEQUENTIAL | _O_CREAT),(_S_IREAD | _S_IWRITE));
+			pWellFileOut->WellFile[0].hOutFile = open(pWellFileOut->WellFile[0].szOutFile,( _O_RDWR | _O_BINARY | _O_SEQUENTIAL | _O_CREAT),(_S_IREAD | _S_IWRITE));
 #else
-			pWellFileOut->hOutFile = open(pWellFileOut->szOutFile,O_RDWR | O_CREAT,S_IREAD | S_IWRITE);
+				pWellFileOut->WellFile[0].hOutFile = open(pWellFileOut->WellFile[0].szOutFile,O_RDWR | O_CREAT,S_IREAD | S_IWRITE);
 #endif
-			if(pWellFileOut->hOutFile == -1)
+			if(pWellFileOut->WellFile[0].hOutFile == -1)
 				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output merged PE sequences file '%s'",pWellFileOut->szOutFile);
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output sequences file '%s'", pWellFileOut->WellFile[0].szOutFile);
 				Reset(false);
 				return(eBSFerrCreateFile);
 				}
 			// seek to end of file ready for appending
-			lseek(pWellFileOut->hOutFile,0,SEEK_END);
+			lseek(pWellFileOut->WellFile[0].hOutFile,0,SEEK_END);
+
+			if(m_bAmpliconNoMerge == true)
+				{
+#ifdef _WIN32
+				pWellFileOut->WellFile[1].hOutFile = open(pWellFileOut->WellFile[1].szOutFile, (_O_RDWR | _O_BINARY | _O_SEQUENTIAL | _O_CREAT), (_S_IREAD | _S_IWRITE));
+#else
+				pWellFileOut->WellFile[1].hOutFile = open(pWellFileOut->WellFile[1].szOutFile, O_RDWR | O_CREAT, S_IREAD | S_IWRITE);
+#endif
+				if (pWellFileOut->WellFile[1].hOutFile == -1)
+					{
+					gDiagnostics.DiagOut(eDLFatal, gszProcName, "Process: unable to create/truncate output sequences file '%s'", pWellFileOut->WellFile[1].szOutFile);
+					Reset(false);
+					return(eBSFerrCreateFile);
+					}
+				// seek to end of file ready for appending
+				lseek(pWellFileOut->WellFile[1].hOutFile, 0, SEEK_END);
+				}
+			else
+				pWellFileOut->WellFile[1].hOutFile = -1;
 			}
 		}
 
@@ -422,7 +522,7 @@ if(m_bAppendOut)
 	}
 else
 	{
-	if(m_PMode != ePMAmplicon)
+	if(m_PMode < ePMAmplicon)
 		{
 #ifdef _WIN32
 		m_hOutMerged = open(m_szMergeOutFile,O_CREATETRUNC );
@@ -449,24 +549,50 @@ else
 		for(WellIdx = 0; WellIdx < m_NumWells; WellIdx++,pWellFileOut++)
 			{
 #ifdef _WIN32
-			pWellFileOut->hOutFile = open(pWellFileOut->szOutFile,O_CREATETRUNC);
+			pWellFileOut->WellFile[0].hOutFile = open(pWellFileOut->WellFile[0].szOutFile,O_CREATETRUNC);
 #else
-			if((pWellFileOut->hOutFile = open(pWellFileOut->szOutFile,O_RDWR | O_CREAT,S_IREAD | S_IWRITE))!=-1)
-				if(ftruncate(pWellFileOut->hOutFile,0)!=0)
+			if((pWellFileOut->WellFile[0].hOutFile = open(pWellFileOut->WellFile[0].szOutFile,O_RDWR | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+				if(ftruncate(pWellFileOut->WellFile[0].hOutFile,0)!=0)
 					{
-					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s merged PE sequences - %s",m_szMergeOutFile,strerror(errno));
+					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s output sequences file - %s", pWellFileOut->WellFile[0].szOutFile,strerror(errno));
 					Reset(false);
 					return(eBSFerrCreateFile);
 					}
 #endif
-			if(pWellFileOut->hOutFile == -1)
+			if(pWellFileOut->WellFile[0].hOutFile == -1)
 				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output merged PE sequences file '%s'",pWellFileOut->szOutFile);
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output sequences file '%s'", pWellFileOut->WellFile[0].szOutFile);
 				Reset(false);
 				return(eBSFerrCreateFile);
 				}
 			// seek to end of file ready for appending
-			lseek(pWellFileOut->hOutFile,0,SEEK_END);
+			lseek(pWellFileOut->WellFile[0].hOutFile,0,SEEK_END);
+
+
+			if (m_bAmpliconNoMerge == true)
+				{
+#ifdef _WIN32
+				pWellFileOut->WellFile[1].hOutFile = open(pWellFileOut->WellFile[1].szOutFile, O_CREATETRUNC);
+#else
+				if ((pWellFileOut->WellFile[1].hOutFile = open(pWellFileOut->WellFile[1].szOutFile, O_RDWR | O_CREAT, S_IREAD | S_IWRITE)) != -1)
+					if (ftruncate(pWellFileOut->WellFile[1].hOutFile, 0) != 0)
+						{
+						gDiagnostics.DiagOut(eDLFatal, gszProcName, "Unable to truncate %s output sequences file - %s", pWellFileOut->WellFile[1].szOutFile, strerror(errno));
+						Reset(false);
+						return(eBSFerrCreateFile);
+						}
+#endif
+				if (pWellFileOut->WellFile[1].hOutFile == -1)
+					{
+					gDiagnostics.DiagOut(eDLFatal, gszProcName, "Process: unable to create/truncate output sequences file '%s'", pWellFileOut->WellFile[1].szOutFile);
+					Reset(false);
+					return(eBSFerrCreateFile);
+					}
+					// seek to end of file ready for appending
+				lseek(pWellFileOut->WellFile[1].hOutFile, 0, SEEK_END);
+				}
+			else
+				pWellFileOut->WellFile[1].hOutFile = -1;
 			}
 		}
 
@@ -546,6 +672,7 @@ if(MinOverlap < 1 ||					// must be at least a 1 base overlap required!
 	}
 Reset(false);	
 m_PMode = PMode;
+m_bAmpliconNoMerge = PMode == ePMAmpliconNoMerge ? true : false;
 
 m_OFormat = OFormat;
 
@@ -555,9 +682,9 @@ m_MaxOverlapPropSubs = MaxOverlapPropSubs;
 strncpy(m_szMergeOutFile,pszMergeOutFile,_MAX_PATH);
 m_szMergeOutFile[_MAX_PATH-1] = '\0';
 
-if(m_PMode == ePMAmplicon)
+if(m_PMode >= ePMAmplicon)
 	{
-	if((Rslt = InitDfltWells()) < eBSFSuccess)
+	if((Rslt = InitDfltWells(m_bAmpliconNoMerge)) < eBSFSuccess)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"MergeOverlaps: unable to initialise well barcode sequences");
 		return(eBSFerrParams);
@@ -640,7 +767,10 @@ for(Idx = 0; Idx < NumInPE5Files; Idx++)
 			}
 		}
 
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"MergeOverlaps: Processing '%s' for overlaps with '%s'",m_szIn5ReadsFile,m_szIn3ReadsFile);
+	if(PMode <= ePMAmplicon)
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"MergeOverlaps: Processing '%s' for overlaps with '%s'",m_szIn5ReadsFile,m_szIn3ReadsFile);
+	else
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "MergeOverlaps: Processing '%s' for barcodes with '%s'", m_szIn5ReadsFile, m_szIn3ReadsFile);
 
 	if((Rslt = ProcOverlapPairs(StartNum)) < eBSFSuccess)
 		{
@@ -650,7 +780,11 @@ for(Idx = 0; Idx < NumInPE5Files; Idx++)
 		return(Rslt);
 		}
 
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"MergeOverlaps: Completed processing '%s' for overlaps with '%s'",m_szIn5ReadsFile,m_szIn3ReadsFile);
+	if (PMode <= ePMAmplicon)
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "MergeOverlaps: Completed processing '%s' for overlaps with '%s'", m_szIn5ReadsFile, m_szIn3ReadsFile);
+	else
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "MergeOverlaps: Completed processing '%s' for barcodes with '%s'", m_szIn5ReadsFile, m_szIn3ReadsFile);
+
 
 	m_PE5Fasta.Close();
 	m_PE3Fasta.Close();
@@ -658,16 +792,13 @@ for(Idx = 0; Idx < NumInPE5Files; Idx++)
 	StartNum += Rslt;
 	}
 
-
-
-
 Reset(true);
 return((int)Rslt);
 }
 
 const int cMinReadSeqLen = 20;			// raw read sequences must be at least this length
 const int cMaxReadDesrLen = 200;		// allow for read descriptors of no longer than this length
-const int ccMaxFastQSeqLen = 2000;		// allow for amplicon PE sequences of this length
+const int ccMaxFastQSeqLen = 4000;		// allow for amplicon PE sequences of this length
 
 int													// returns number of sequences merged and written to output file
 CMergeReadPairs::ProcOverlapPairs(int StartNum)		// initial starting sequence identifier
@@ -687,6 +818,7 @@ UINT8 MSeq[(2*ccMaxFastQSeqLen)+1];
 UINT8 szMSeq[(2*ccMaxFastQSeqLen)+1];
 UINT8 szMQual[(2*ccMaxFastQSeqLen)+1];
 int PlateCell;
+
 UINT64 Spacer1 = 0;
 int PE5DescrLen;
 int PE3DescrLen;
@@ -711,13 +843,18 @@ etSeqBase Base3;
 int OL5Idx;
 int OL3Idx;
 int MaxOverlap;
+int OLStartsIdx;
 int ReqOverlap3;
 int MaxSubs;
 int CurSubs;
+int CurOvlpScore;
+int BestOvlpScore;
 int AllowedSubs;
 
 int NumOverlapping;
 int NumUnmapped;
+int NumPENoBarcode;
+int NumPEWithBarcode;
 int PE5SeqLen;
 int PE3SeqLen;
 int PE5QualLen;
@@ -773,6 +910,8 @@ NumOverlapping = 0;
 MinObsOverlap = -1;
 MaxObsOverlap = -1;
 NumUnmapped = 0;
+NumPENoBarcode = 0;
+NumPEWithBarcode = 0;
 time_t Started = time(0);
 while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxFastQSeqLen,true,false))) > eBSFSuccess)
 	{
@@ -782,7 +921,20 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 		unsigned long ElapsedSecs = (unsigned long) (Now - Started);
 		if(ElapsedSecs >= 60)
 			{
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed %d paired reads of which %d overlapped",NumPE5Reads,NumOverlapping);
+			switch(m_PMode) {
+				case ePMAmplicon:
+					gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d paired reads, %d overlapped, %d reported with associated barcodes", NumPE5Reads, NumOverlapping, NumOverlapping - NumUnmapped);
+					break;
+
+				case ePMAmpliconNoMerge:
+					gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d paired reads, %d reported with associated barcodes", NumPE5Reads, NumPEWithBarcode);
+					break;
+
+				default:
+					gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d paired reads of which %d overlapped", NumPE5Reads, NumOverlapping);
+					break;
+				}
+
 			Started = Now;
 
 			if(m_PMode == ePMseparate)
@@ -800,16 +952,21 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 				}
 
 
-			if(m_PMode == ePMAmplicon && m_NumWells)
+			if(m_PMode >= ePMAmplicon && m_NumWells)
 				{
-				tsWellFileOut *pWell;
+				tsAmpliconWell *pWell;
 				pWell = m_WellFiles;
 				for(WellIdx = 0; WellIdx < m_NumWells; WellIdx++,pWell++)
 					{
-					if(pWell->CurBuffLen > 0)
+					if(pWell->WellFile[0].CurBuffLen > 0)
 						{
-						CUtility::SafeWrite(pWell->hOutFile,pWell->pOutBuffer,(size_t)pWell->CurBuffLen);
-						pWell->CurBuffLen = 0;
+						CUtility::SafeWrite(pWell->WellFile[0].hOutFile, pWell->WellFile[0].pOutBuffer,(size_t)pWell->WellFile[0].CurBuffLen);
+						pWell->WellFile[0].CurBuffLen = 0;
+						}
+					if(pWell->WellFile[1].hOutFile != -1 && pWell->WellFile[1].CurBuffLen > 0)
+						{
+						CUtility::SafeWrite(pWell->WellFile[1].hOutFile, pWell->WellFile[1].pOutBuffer, (size_t)pWell->WellFile[1].CurBuffLen);
+						pWell->WellFile[1].CurBuffLen = 0;
 						}
 					}
 				}
@@ -887,19 +1044,76 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 			}
 		}
 
+	  int PEPlateCell;
+  	if(m_PMode >= ePMAmplicon && m_bAmpliconNoMerge)
+		{
+		if ((PEPlateCell = MapPEBarcodesToWell(min(PE5SeqLen,PE3SeqLen), PE5Seq, PE3Seq)) < 1)
+			NumPENoBarcode += 1;
+		else
+			{
+			tsAmpliconWell *pWell;
+			MergeIdx = PE5SeqLen - 6;		// trim barcode
+			CSeqTrans::MapSeq2UCAscii(&PE5Seq[6], MergeIdx, (char *)szMSeq);
+
+			if (!m_bIsFastq && m_OFormat != eOFfasta)
+				memset(PE5Qual, cPhredOrphanScore, PE5SeqLen);
+			PE5Qual[PE5SeqLen] = '\0';
+			szMSeq[MergeIdx] = '\0';
+			pWell = &m_WellFiles[PEPlateCell - 1];
+			if (m_OFormat == eOFfasta)
+				pWell->WellFile[0].CurBuffLen += sprintf((char *)&pWell->WellFile[0].pOutBuffer[pWell->WellFile[0].CurBuffLen], ">Seq%d PE1 %s\n%s\n", StartNum + NumPEWithBarcode, szPE5DescrBuff, (char *)szMSeq);
+			else
+				pWell->WellFile[0].CurBuffLen += sprintf((char *)&pWell->WellFile[0].pOutBuffer[pWell->WellFile[0].CurBuffLen], "@Seq%d PE1 %s\n%s\n+\n%s\n", StartNum + NumPEWithBarcode, szPE5DescrBuff, (char *)szMSeq, &PE5Qual[6]);
+				
+			if (pWell->WellFile[0].CurBuffLen > pWell->WellFile[0].AllocdOutBuff - (4 * ccMaxFastQSeqLen))
+				{
+				CUtility::SafeWrite(pWell->WellFile[0].hOutFile, pWell->WellFile[0].pOutBuffer, (size_t)pWell->WellFile[0].CurBuffLen);
+				pWell->WellFile[0].CurBuffLen = 0;
+				}
+
+			MergeIdx = PE3SeqLen - 6;		// trim 3' barcode
+			CSeqTrans::MapSeq2UCAscii(&PE3Seq[6], MergeIdx, (char *)szMSeq);
+
+			if (!m_bIsFastq && m_OFormat != eOFfasta)
+				memset(PE3Qual, cPhredOrphanScore, PE3SeqLen);
+			PE3Qual[PE3SeqLen] = '\0';
+			szMSeq[MergeIdx] = '\0';
+			if (m_OFormat == eOFfasta)
+				pWell->WellFile[1].CurBuffLen += sprintf((char *)&pWell->WellFile[1].pOutBuffer[pWell->WellFile[1].CurBuffLen], ">Seq%d PE2 %s\n%s\n", StartNum + NumPEWithBarcode, szPE3DescrBuff, (char *)szMSeq);
+			else
+				pWell->WellFile[1].CurBuffLen += sprintf((char *)&pWell->WellFile[1].pOutBuffer[pWell->WellFile[1].CurBuffLen], "@Seq%d PE2 %s\n%s\n+\n%s\n", StartNum + NumPEWithBarcode, szPE3DescrBuff, (char *)szMSeq, &PE3Qual[6]);
+
+			if (pWell->WellFile[1].CurBuffLen > pWell->WellFile[1].AllocdOutBuff - (4 * ccMaxFastQSeqLen))
+				{
+				CUtility::SafeWrite(pWell->WellFile[1].hOutFile, pWell->WellFile[1].pOutBuffer, (size_t)pWell->WellFile[1].CurBuffLen);
+				pWell->WellFile[1].CurBuffLen = 0;
+				}
+			NumPEWithBarcode += 1;
+			}
+
+		continue;
+		}
+
 	// PE3 needs to be revcpl'd
 	CSeqTrans::ReverseComplement(PE3SeqLen,PE3Seq);
 	if(m_bIsFastq)
 		CSeqTrans::ReverseSeq(PE3QualLen,PE3Qual);
 
-	// now try for maximal overlap of at least m_MinOverlap allowing (if user specified) for sequencer base call errors 
+	// now try for maximal overlap of at least m_MinOverlap allowing (if user specified) for sequencer base call errors
+	// matches scored += 1, and mismatches scored -= 2 
 	MaxSubs = m_MaxOverlapPropSubs; 
 	MaxOverlap = 0;
-	for(OL5Idx = 0; OL5Idx <= (PE5SeqLen - m_MinOverlap); OL5Idx++)
+	OLStartsIdx = 0;
+	BestOvlpScore = -1;
+	for(OL5Idx = m_PMode >= ePMAmplicon ? m_MaxBarcode5Len : 0; OL5Idx <= (PE5SeqLen - m_MinOverlap); OL5Idx++)
 		{
+		if(m_PMode >= ePMAmplicon && ((PE3SeqLen - m_MaxBarcode3Len) < (PE5SeqLen - OL5Idx)))
+			continue;
+
 		pSeq5 = &PE5Seq[OL5Idx];
 		pSeq3 = PE3Seq;
 		CurSubs = 0;
+		CurOvlpScore = 0;
 		ReqOverlap3 = min(PE5SeqLen - OL5Idx,PE3SeqLen);
 		if(MaxSubs != 0)
 			{
@@ -927,19 +1141,29 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 			Base3 = *pSeq3 & 0x07;
 			if(Base5 > eBaseT || Base3 > eBaseT || Base5 != Base3)
 				{
+				CurOvlpScore -= 2;
 				CurSubs += 1;
 				if(CurSubs > AllowedSubs)
 					break;
 				}
+			else
+				CurOvlpScore += 1;
 			}
 
 		if(OL3Idx == ReqOverlap3 && CurSubs <= MaxSubs)
 			{
-			if(CurSubs == 0 || CurSubs < MaxSubs)
-				MaxOverlap = OL3Idx;
-			MaxSubs = CurSubs;
-			if(MaxSubs == 0)
-				break;
+			if(CurOvlpScore > BestOvlpScore)
+				{
+				BestOvlpScore = CurOvlpScore;
+				if(CurSubs == 0 || CurSubs < MaxSubs)
+					{
+					MaxOverlap = OL3Idx;
+					OLStartsIdx = OL5Idx;
+					}
+				MaxSubs = CurSubs;
+				if(MaxSubs == 0)
+					break;
+				}
 			}
 		}
 
@@ -1038,7 +1262,7 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 		pSeq5 = PE5Seq;
 		pMSeqQual = szMQual;
 		pSeq5Qual = PE5Qual;
-		for(MergeIdx = 0; MergeIdx < OL5Idx; MergeIdx++,pSeq5++,pMSeq++,pMSeqQual++,pSeq5Qual++)
+		for(MergeIdx = 0; MergeIdx < OLStartsIdx; MergeIdx++,pSeq5++,pMSeq++,pMSeqQual++,pSeq5Qual++)
 			{
 			*pMSeq = *pSeq5;
 			if(m_OFormat == eOFfastq)
@@ -1055,7 +1279,7 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 
 		if(MergeIdx < PE5SeqLen)
 			{
-			for(; MergeIdx < min(PE5SeqLen,PE3SeqLen+OL5Idx); MergeIdx++,pSeq5++,pMSeq++,pSeq3++,pMSeqQual++,pSeq5Qual++,pSeq3Qual++)
+			for(; MergeIdx < min(PE5SeqLen,PE3SeqLen + OLStartsIdx); MergeIdx++,pSeq5++,pMSeq++,pSeq3++,pMSeqQual++,pSeq5Qual++,pSeq3Qual++)
 				{
 				if(*pSeq5 == *pSeq3)
 					{
@@ -1137,12 +1361,11 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 
 		if(m_PMode == ePMAmplicon)
 			{
-			if((PlateCell = MapBarcodesToWell(MergeIdx,MSeq)) < 1)
+			if((PlateCell = MapSEBarcodesToWell(MergeIdx,MSeq)) < 1)
 				{
 				NumUnmapped += 1;
 				continue;
 				}
-
 			}
 
 		CSeqTrans::MapSeq2UCAscii(MSeq,MergeIdx,(char *)szMSeq);
@@ -1150,19 +1373,22 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 
 		if(m_PMode == ePMAmplicon)
 			{
-			tsWellFileOut *pWell;
+			tsAmpliconWell *pWell;
+			MergeIdx -= 6;				// trim 3' barcode
+			szMQual[MergeIdx] = '\0';
+			szMSeq[MergeIdx] = '\0';	
 			pWell = &m_WellFiles[PlateCell-1];
 			if(m_OFormat == eOFfasta)
-				pWell->CurBuffLen += sprintf((char *)&pWell->pOutBuffer[pWell->CurBuffLen],">MSeq%d %s\n%s\n",StartNum+NumOverlapping,szPE5DescrBuff,(char *)szMSeq);
+				pWell->WellFile[0].CurBuffLen += sprintf((char *)&pWell->WellFile[0].pOutBuffer[pWell->WellFile[0].CurBuffLen],">MSeq%d %s\n%s\n",StartNum+NumOverlapping,szPE5DescrBuff,(char *)&szMSeq[6]);
 			else
 				{
 				szMQual[MergeIdx] = '\0';
-				pWell->CurBuffLen += sprintf((char *)&pWell->pOutBuffer[pWell->CurBuffLen],"@MSeq%d %s\n%s\n+\n%s\n",StartNum+NumOverlapping,szPE5DescrBuff,(char *)szMSeq,szMQual);
+				pWell->WellFile[0].CurBuffLen += sprintf((char *)&pWell->WellFile[0].pOutBuffer[pWell->WellFile[0].CurBuffLen],"@MSeq%d %s\n%s\n+\n%s\n",StartNum+NumOverlapping,szPE5DescrBuff,(char *)&szMSeq[6],&szMQual[6]);
 				}
-			if(pWell->CurBuffLen > pWell->AllocdOutBuff - (4 * ccMaxFastQSeqLen))
+			if(pWell->WellFile[0].CurBuffLen > pWell->WellFile[0].AllocdOutBuff - (4 * ccMaxFastQSeqLen))
 				{
-				CUtility::SafeWrite(pWell->hOutFile,pWell->pOutBuffer,(size_t)pWell->CurBuffLen);
-				pWell->CurBuffLen = 0;
+				CUtility::SafeWrite(pWell->WellFile[0].hOutFile, pWell->WellFile[0].pOutBuffer,(size_t)pWell->WellFile[0].CurBuffLen);
+				pWell->WellFile[0].CurBuffLen = 0;
 				}
 			}
 		else
@@ -1185,14 +1411,20 @@ while((Rslt = (teBSFrsltCodes)(PE5SeqLen = m_PE5Fasta.ReadSequence(PE5Seq,ccMaxF
 
 if(m_PMode == ePMAmplicon && m_NumWells)
 	{
-	tsWellFileOut *pWell;
+	tsAmpliconWell *pWell;
 	pWell = m_WellFiles;
 	for(WellIdx = 0; WellIdx < m_NumWells; WellIdx++,pWell++)
 		{
-		if(pWell->CurBuffLen > 0)
+		if(pWell->WellFile[0].CurBuffLen > 0)
 			{
-			CUtility::SafeWrite(pWell->hOutFile,pWell->pOutBuffer,(size_t)pWell->CurBuffLen);
-			pWell->CurBuffLen = 0;
+			CUtility::SafeWrite(pWell->WellFile[0].hOutFile, pWell->WellFile[0].pOutBuffer,(size_t)pWell->WellFile[0].CurBuffLen);
+			pWell->WellFile[0].CurBuffLen = 0;
+			}
+
+		if (pWell->WellFile[1].hOutFile != -1 && pWell->WellFile[1].CurBuffLen > 0)
+			{
+			CUtility::SafeWrite(pWell->WellFile[1].hOutFile, pWell->WellFile[1].pOutBuffer, (size_t)pWell->WellFile[1].CurBuffLen);
+			pWell->WellFile[1].CurBuffLen = 0;
 			}
 		}
 	}
@@ -1215,10 +1447,21 @@ if(m_CurUnmergedP2Seqs > 0)
 	m_CurUnmergedP2Seqs = 0;
 	}
 
-if(m_PMode == ePMAmplicon)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed %d paired reads, %d overlapped, %d reported with associated barcodes",NumPE5Reads,NumOverlapping,NumOverlapping - NumUnmapped);
-else
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed %d paired reads of which %d overlapped",NumPE5Reads,NumOverlapping);
+switch (m_PMode)
+	{
+	case ePMAmplicon:
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d paired reads, %d overlapped, %d reported with associated barcodes", NumPE5Reads, NumOverlapping, NumOverlapping - NumUnmapped);
+		break;
+
+	case ePMAmpliconNoMerge:
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d paired reads, %d reported with associated barcodes", NumPE5Reads, NumPEWithBarcode);
+		return(NumPEWithBarcode);
+
+	default:
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d paired reads of which %d overlapped", NumPE5Reads, NumOverlapping);
+		break;
+	}
+
 if(NumOverlapping)
 	{
 	for(Idx = MinObsOverlap; Idx <= MaxObsOverlap; Idx++)

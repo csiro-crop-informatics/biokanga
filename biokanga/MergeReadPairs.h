@@ -12,7 +12,8 @@ typedef enum TAG_ePMode {
 	ePMdefault = 0,				// Standard processing
 	ePMcombined,				// combine overlaps and orphan reads into same file
 	ePMseparate,				// overlaps and orphans into separate files
-	ePMAmplicon,				// ampicon processing with 5' and 3' barcodes to identify originating plate well
+	ePMAmplicon,				// ampicon processing with 5' and 3' barcodes to identify originating plate well, overlap merging
+	ePMAmpliconNoMerge,				// ampicon processing with 5' and 3' barcodes to identify originating plate well, no overlap merging
 	ePMplaceholder				// used to set the enumeration range
 	} etPMode;
 
@@ -50,15 +51,20 @@ typedef struct TAG_sBarcode {
 	UINT32 RevCplBarCode;  // revcpl packed barcode bases	
 	} tsBarcode;
 
-typedef struct TAG_sWellFileOut {
-	int WellID;					// identifies well 1..96
-	int NumASequences;			// number of sequences attributed to this well
+typedef struct TAG_sAmpliconWellFile
+	{
 	char szOutFile[_MAX_PATH];	// writing to this file
 	int hOutFile;			    // file handle for opened szOutFile
 	int CurBuffLen;				// currently pOutBuffer holds this many chars ready to be written to file
 	int AllocdOutBuff;			// pOutBuffer can hold at most this many chars
 	char *pOutBuffer;			// allocated to buffer output
-} tsWellFileOut;
+	} tsAmpliconWellFile;
+
+typedef struct TAG_sAmpliconWell {
+	int WellID;					// identifies well 1..96
+	int NumASequences;			// number of sequences attributed to this well
+	tsAmpliconWellFile WellFile[2]; // if SE then output to 1 file, if PE then each end written to separate files
+} tsAmpliconWell;
 
 #pragma pack()
 
@@ -66,6 +72,7 @@ class CMergeReadPairs
 {
 	etProcPhase m_ProcPhase;	// current processing phase
 	etPMode m_PMode;			// processing mode 
+	bool m_bAmpliconNoMerge;	// true if amplicon overlaps not to be merged and output as SE (will be output as PE end reads)
 	etOFormat m_OFormat;		// output file format
 	bool m_bIsFastq;			// if basespace then input reads are fastq
 	bool m_bAppendOut;			// if true then append if output files exist, otherwise trunctate existing output files 
@@ -100,11 +107,16 @@ class CMergeReadPairs
 	int m_NumBarcodes;			// number of barcodes in m_pBarcodes[]
 	tsBarcode *m_pBarcodes;		// well barcoding
 	int m_NumWells;				// processing is for this number of wells
-	tsWellFileOut m_WellFiles[cMaxNumWells];    // to hold merged well sequence file output buffers and respective file handles
+	tsAmpliconWell m_WellFiles[cMaxNumWells];    // to hold merged well sequence file output buffers and respective file handles
 
-	int							// returned well number or 0 if unable to identify well from the barcodes
-		MapBarcodesToWell(int SeqLen,		// num bases in pSeq
-				etSeqBase *pSeq);	// map barcodes at 5' and 3' end of this sequence to the well
+	int							// returned well number (1..96) or 0 if unable to identify well from the barcodes
+		MapSEBarcodesToWell(int SeqLen,		// num bases in SE pSeq
+				etSeqBase *pSeq);	// map barcodes at 5' and 3' end of this SE sequence to the well
+
+	int							// returned well number (1..96) or 0 if unable to identify well from the barcodes
+		MapPEBarcodesToWell(int SeqLen,		//minimum lenght of either p5Seq or P3Seq
+											 etSeqBase *pPE1Seq,// map barcodes at 5' of this sequence
+											 etSeqBase *pPE2Seq); // and barcodes at 5'of this sequence to the well
 
 public:
 	CMergeReadPairs(void);
@@ -112,7 +124,7 @@ public:
 	void Reset(bool bSync = true);   // if bDync true then opened output files will be sync'd (commited) to disk before closing
 
 	int				// return number of wells initialised
-		InitDfltWells(void); // initialise with default well barcodes and well identifiers
+		InitDfltWells(bool bNoMerge = false); // initialise with default well barcodes and well identifiers, if bNoMerge then do not merge PE reads and report PE1/PE2 instead of merged SE 
 
 	int									// returns number of sequences merged and written to output files
 			MergeOverlaps(etPMode PMode,		// processing mode 
