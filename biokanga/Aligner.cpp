@@ -216,7 +216,7 @@ m_bReportChimerics = MinChimericLen >= 0 ? false : true;
 m_microInDelLen = microInDelLen;
 m_SpliceJunctLen = SpliceJunctLen;
 m_MinSNPreads = MinSNPreads;
-m_SNPNonRefPcnt = SNPNonRefPcnt;
+m_SNPNonRefPcnt = SNPNonRefPcnt/100.0;
 
 m_QValue = QValue;
 m_Marker5Len = MarkerLen/2;
