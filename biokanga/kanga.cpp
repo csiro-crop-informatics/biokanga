@@ -51,7 +51,7 @@ Process(etPMode PMode,					// processing mode
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
 		double QValue,					// QValue controlling FDR (Benjamini–Hochberg) SNP prediction
-		int SNPNonRefPcnt,				// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25) 
+		double SNPNonRefPcnt,			// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25.0) 
 		int MarkerLen,					// marker sequences of this length
 		double MarkerPolyThres,			// maximum allowed marker sequence base polymorphism independent of centroid SNP (default 0.333, range 0.0 to 0.5)
 		int PCRartefactWinLen,			// if >= 0 then window size to use when attempting to reduce the number of  PCR differential amplification artefacts (reads stacking to same loci)
@@ -141,7 +141,7 @@ int microInDelLen;			// microInDel length maximum
 int SpliceJunctLen;			// maximum splice junction length when aligning RNAseq reads
 int MinSNPreads;			// must be at least this number of reads covering any loci before processing for SNPs at this loci
 double QValue;			    // used in Benjamini–Hochberg for SNP prediction
-int SNPNonRefPcnt;			// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25)
+double SNPNonRefPcnt;		// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25.0) 
 
 bool bLocateBestMatches;			// instead of unique matches then return multiple best matches
 
@@ -261,7 +261,7 @@ struct arg_lit *bestmatches = arg_lit0("N","bestmatches",	    "accept best '-R<N
 
 struct arg_int *mlmode = arg_int0("r","mlmode","<int>",			"processing mode for reads mapped to multiple loci: 0 slough, 1 stats only, 2 rand, 3 cluster with uniques only, 4 cluster with uniques + other multi, 5 report all match loci up to '-R<limit>' (default is 0)");
 struct arg_int *minsnpreads = arg_int0("p","snpreadsmin","<int>","minimum read coverage at loci before processing for SNP determination (default is 0 or no SNP processing)");
-struct arg_int *snpnonrefpcnt = arg_int0("1","snpnonrefpcnt","<int>", "Min percentage non-ref bases at putative SNP loci (defaults to 25, range 1 to 35)");
+struct arg_dbl *snpnonrefpcnt = arg_dbl0("1","snpnonrefpcnt","<dbl>", "Min percentage non-ref bases at putative SNP loci (defaults to 25.0, range 0.1 to 35.0)");
 struct arg_lit  *pecircularised    = arg_lit0("2","pecircularised",  "experimental - set true if processing for PE circularised fragments spanning");
 
 struct arg_lit  *peinsertlendist    = arg_lit0("3","petranslendist",  "experimental - include PE length distributions for each transcript in output stats file");
@@ -826,17 +826,17 @@ if (!argerrors)
 			if(QValue == 0.0 && MinSNPreads != 0)
 				QValue = cDfltQValueSNP;
 
-		SNPNonRefPcnt = snpnonrefpcnt->count ? snpnonrefpcnt->ival[0] : 25;
-		if(SNPNonRefPcnt < 1 || SNPNonRefPcnt > 35)
+		SNPNonRefPcnt = snpnonrefpcnt->count ? snpnonrefpcnt->dval[0] : 25.0;
+		if(SNPNonRefPcnt < 0.1 || SNPNonRefPcnt > 35.0)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SNP minimum non-ref '-1%d' for controlling SNP FDR must be in range 1 to 35\n",SNPNonRefPcnt);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SNP minimum non-ref '-1%f' for controlling SNP FDR must be in range 0.1 to 35.0\n",SNPNonRefPcnt);
 			exit(1);
 			}
 		}
 	else
 		{
 		QValue = 0.0;
-		SNPNonRefPcnt = 0;
+		SNPNonRefPcnt = 0.0;
 		}
 
 	if(MinSNPreads > 0 && (FMode > eFMsam || bBisulfite == true))
@@ -1230,7 +1230,7 @@ if (!argerrors)
 		{
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum read coverage at loci before processing for SNP: %d",MinSNPreads);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"QValue controlling FDR (Benjamini-Hochberg) SNP prediction : %0.5f",QValue);
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Min percentage non-ref bases at putative SNP loci : %d",SNPNonRefPcnt);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Min percentage non-ref bases at putative SNP loci : %1.3f",SNPNonRefPcnt);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"SNP predictions written to file : '%s'",szSNPFile);
 		if(szSNPCentroidFile[0] != '\0')
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"SNP prediction centroid distributions written to file : '%s'",szSNPCentroidFile);
@@ -1404,7 +1404,7 @@ Process(etPMode PMode,					// processing mode
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
 		double QValue,					// QValue controlling FDR (Benjamini–Hochberg) SNP prediction
-		int SNPNonRefPcnt,				// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25) 
+		double SNPNonRefPcnt,			// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25.0) 
 		int MarkerLen,					// marker sequences of this length
 		double MarkerPolyThres,			// maximum allowed marker sequence base polymorphism independent of centroid SNP (default 0.333, range 0.0 to 0.5)
 		int PCRartefactWinLen,			// if >= 0 then window size to use when attempting to reduce the number of  PCR differential amplification artefacts (reads stacking to same loci)

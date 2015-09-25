@@ -86,7 +86,7 @@ CAligner::Align(etPMode PMode,			// processing mode
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
 		double QValue,					// QValue controlling FDR (Benjamini–Hochberg) SNP prediction
-		int SNPNonRefPcnt,				// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25) 
+		double SNPNonRefPcnt,			// only process for SNP if more/equal than this percentage number of reads are non-ref at putative SNP loci (defaults to 25.0) 
 		int MarkerLen,					// marker sequences of this length
 		double MarkerPolyThres,			// maximum allowed marker sequence base polymorphism independent of centroid SNP (default 0.333, range 0.0 to 0.5)
 		int PCRartefactWinLen,			// if >= 0 then window size to use when attempting to reduce the number of  PCR differential amplification artefacts (reads stacking to same loci)
@@ -216,7 +216,7 @@ m_bReportChimerics = MinChimericLen >= 0 ? false : true;
 m_microInDelLen = microInDelLen;
 m_SpliceJunctLen = SpliceJunctLen;
 m_MinSNPreads = MinSNPreads;
-m_SNPNonRefPcnt = (double)SNPNonRefPcnt/100.0;
+m_SNPNonRefPcnt = SNPNonRefPcnt;
 
 m_QValue = QValue;
 m_Marker5Len = MarkerLen/2;
