@@ -14,8 +14,12 @@
 
 #pragma once
 
-const UINT32 cMaxEdges = 250;						// any vertex can have at most this many inbound or outbound edges
-const UINT32 cDfltMinAcceptScoreThres = 980;         // default is to only accept edges for processing which have scores per 1Kbp overlap of at least this threshold
+const UINT32 cMaxEdges = 250;						// limit any vertex to have at most this many inbound or outbound edges
+
+													// Note: normalised overlap edge scores are independently calculated using 1 match, -1 mismatch, -3 gap open and -1 gap extension
+const int cMinMin1kScore = 900;						 // when processing the multialignment overlaps for graph edges then only accept edge if normalised overlap score at least this per 1Kbp of overlap
+const int cDfltMin1kScore = 980;					 // when processing the multialignment overlaps for graph edges then only accept edge if normalised overlap score at least this per 1Kbp of overlap
+const int cMaxMin1kScore = 1000;					 // when processing the multialignment overlaps for graph edges then perfect match required
 
 const UINT32 cInitialAllocVertices =500000;		// initially allocate for this many vertices, will be realloc'd if required
 const double cReallocVertices   =   0.3;	    // then, as may be required, realloc in increments of this proportion of existing vertices
@@ -198,6 +202,8 @@ class CAssembGraph
 	UINT32 m_NumReducts;			// number of graph node reductions
 	bool m_bReduceEdges;			// if true then attempt to reduce extraneous graph edges when current graph is full and more node memory needs to be allocated  
 
+	bool m_bAcceptOrphanSeqs;		// if true then report also report sequences which have no overlap with any other sequence
+
 	int m_NumThreads;				// use at most this number threads for graph processing
 	bool m_bMutexesCreated;			// set true if mutexes and rwlocks created/initialised
 
@@ -272,8 +278,9 @@ public:
 	~CAssembGraph(void);
 
 	void Reset(void);								// reset and free any allocated resources
-	teBSFrsltCodes		// initialise with ScaffScoreThres an  maxThreads
-		Init(int ScaffScoreThres = cDfltMinAcceptScoreThres,		// accepted edges must be of at least this overlap score
+	teBSFrsltCodes		// initialise with ScaffScoreThres and  maxThreads
+		Init(int ScaffScoreThres = cDfltMin1kScore,		// accepted edges must be of at least this overlap score
+			 bool bAcceptOrphanSeqs = false,		// also report sequences which are not overlapped or overlapping any other sequence
 						int MaxThreads = 8);						// set number of threads
 
 	UINT32								// returned vertex identifier

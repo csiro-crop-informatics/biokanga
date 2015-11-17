@@ -79,8 +79,8 @@ m_bMutexesCreated = false;
 void
 CAssembGraph::AcquireCASSerialise(void)
 {
-int SpinCnt = 5000;
-int BackoffMS = 5;
+int SpinCnt = 10;
+int BackoffMS = 1;
 
 #ifdef _WIN32
 while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
@@ -88,9 +88,11 @@ while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #else
 while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
@@ -98,9 +100,11 @@ while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #endif
 }
@@ -119,8 +123,8 @@ __sync_val_compare_and_swap(&m_CASSerialise,1,0);
 void
 CAssembGraph::AcquireCASLock(void)
 {
-int SpinCnt = 5000;
-int BackoffMS = 5;
+int SpinCnt = 10;
+int BackoffMS = 1;
 
 #ifdef _WIN32
 while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
@@ -128,9 +132,11 @@ while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #else
 while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
@@ -138,9 +144,11 @@ while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #endif
 }
@@ -255,11 +263,11 @@ m_bInEdgeSorted = false;
 
 m_bReduceEdges = true;
 m_NumReducts = 0;
-
 m_NumComponents = 0;	
 m_AllocComponents= 0;
 
-m_MinScaffScoreThres = cDfltMinAcceptScoreThres;
+m_MinScaffScoreThres = cDfltMin1kScore;
+m_bAcceptOrphanSeqs = false;
 
 m_NumDiscRemaps = 0;
 m_bTerminate = false;
@@ -268,13 +276,15 @@ DeleteMutexes();
 
 teBSFrsltCodes 
 CAssembGraph::Init(int ScaffScoreThres,		// accepted edges must be of at least this overlap score
+				   bool bAcceptOrphanSeqs,		// also report sequences which are not overlapped or overlapping any other sequence
 					int MaxThreads)		// initialise with maxThreads threads, if maxThreads == 0 then number of threads not set	
 {
 if(MaxThreads < 0 || MaxThreads > cMaxWorkerThreads ||
 		ScaffScoreThres < 0)
 		return(eBSFerrParams);
-m_MinScaffScoreThres = ScaffScoreThres;
 Reset();
+m_MinScaffScoreThres = ScaffScoreThres;
+m_bAcceptOrphanSeqs = bAcceptOrphanSeqs;
 if(MaxThreads > 0)
 	{
 	m_NumThreads = MaxThreads;
@@ -511,7 +521,7 @@ tsGraphVertex *pToVertex;
 tVertID OverlappingVertexID;
 tVertID OverlappedVertexID;
 
-if(Score < m_MinScaffScoreThres || OverlapClass != eOLCOverlapping)			// only accepting edges which have been classified by caller as overlapping and score at least the minimum threshold
+if(Score < m_MinScaffScoreThres || OverlapClass >= eOLCartefact)			// only accepting edges which have not been classified by caller as artefact and that score at least the minimum threshold
 	return(m_UsedGraphOutEdges);			
 
 if(FromSeqID < 1 || ToSeqID < 1 || FromSeqID > cMaxValidID || ToSeqID > cMaxValidID)
@@ -2394,6 +2404,9 @@ UINT32 AllocPathLength;
 pCurComponent = m_pComponents;
 for(AllocPathLength = ComponentIdx = 0; ComponentIdx < m_NumComponents; ComponentIdx+=1,pCurComponent+=1)
 	{
+	if(pCurComponent->NumVertices == 1 && !m_bAcceptOrphanSeqs)
+		continue;
+
 	if(pCurComponent->PathLength > AllocPathLength)
 		AllocPathLength = pCurComponent->PathLength;
 	}
@@ -2434,6 +2447,8 @@ pCurComponent = m_pComponents;
 
 for(ComponentIdx = 0; ComponentIdx < m_NumComponents; ComponentIdx+=1,pCurComponent+=1)
 	{
+	if(pCurComponent->NumVertices == 1 && !m_bAcceptOrphanSeqs)   // default is not to report orphaned sequences which are unsupported by overlaps with any other sequences
+		continue;
 	ContigLen = 0;
 	pPathTraceback = &m_pPathTraceBacks[pCurComponent->StartTraceBackID-1];
 	for(TraceBackIdx = 1; TraceBackIdx <= pCurComponent->NumTraceBacks; TraceBackIdx++,pPathTraceback++)
@@ -2460,7 +2475,7 @@ for(ComponentIdx = 0; ComponentIdx < m_NumComponents; ComponentIdx+=1,pCurCompon
 		ContigLen += SubSeqLen;
 		}
 		
-	ChrIdx = sprintf(pszFastaBuff,">Contig%d %d\n",pCurComponent->ComponentID,ContigLen);
+	ChrIdx = sprintf(pszFastaBuff,">Contig%d %d|%d|%d\n",pCurComponent->ComponentID,ContigLen, pCurComponent->NumTraceBacks,pCurComponent->NumVertices);
 	pBase = pContigSeq;
 	int BaseIdx;
 

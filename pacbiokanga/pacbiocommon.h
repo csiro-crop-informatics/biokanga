@@ -40,7 +40,9 @@ const int cDfltMinPBSeqLen = 10000;					 // default is to allow for PacBio seque
 const int cDfltMaxPBSeqLen = 35000;					 // default is to allow for PacBio sequences up to to this maximum length
 const int cDfltMinErrCorrectLen = 5000;              // default is for this minimum length error corrected PacBio sequences
 const int cMaxMinPBSeqLen = 100000;					 // allowing for minimum PacBio sequences to be specified up to this length 
-const int cMaxMaxPBSeqLen = 100000;					 // allowing for maximum PacBio sequences to be specified up to this length 
+const int cMaxMaxPBSeqLen = 500000;					 // allowing for maximum PacBio sequences to be specified up to this length 
+
+
 
 const int cDfltSWMatchScore = 3;						// default SW match score for pacbio alignments
 const int cDfltSWMismatchPenalty = -7;					// default SW mismatch penalty for pacbio alignments

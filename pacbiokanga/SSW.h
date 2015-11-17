@@ -42,7 +42,7 @@ const int cMaxConfWindSize = 200;		// allowing confidence window length to be at
 const UINT32 cMaxMAFBlockErrCorLen = cSSWMaxProbeOrTargLen/50;	// allowing for error corrected read sequences of up to this length
 const UINT32 cMaxMAFBlockLen = (cMaxMAFBlockErrCorLen * 100);	// allowing for multialignment format block buffering of up to this length
 
-const int cMaxProbeSWs = 30;							// explore with SW at most this many probe alignments against target sequences
+const int cMaxProbeSWs = 200;							// explore with SW at most this many probe alignments against target sequences
 
 #pragma pack(1)
 // each cell in stripe or column

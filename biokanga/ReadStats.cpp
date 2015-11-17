@@ -2476,8 +2476,8 @@ if (!m_bPEProc)								// if SE then process each input reads file separately
 		else
 			{
 			gDiagnostics.DiagOut(eDLInfo, gszProcName, "(Instance %d) Thread %d: Processed %u sequences from single ended reads file '%s'", pThread->ProcessingID, pThread->ThreadIdx, NumReads, pszInFile);
-			gDiagnostics.DiagOut(eDLInfo, gszProcName, "(Instance %d) Thread %d: Unable to accept - %d were underlength, %d contained 'N's, %d below minimum Phred - reads from input reads file", pThread->ProcessingID,
-				pInPE1File->SeqCharacteristics.NotProcUL,pInPE1File->SeqCharacteristics.NotProcNs,pInPE1File->SeqCharacteristics.NotProcQS);
+			gDiagnostics.DiagOut(eDLInfo, gszProcName, "(Instance %d) Thread %d: Unable to accept - %d were underlength, %d contained 'N's, %lld below minimum Phred - reads from input reads file", pThread->ProcessingID,
+								 pThread->ThreadIdx, pInPE1File->SeqCharacteristics.NotProcUL,pInPE1File->SeqCharacteristics.NotProcNs,pInPE1File->SeqCharacteristics.NotProcQS);
 
 			pThread->SeqCharacteristics.NotProcUL += pInPE1File->SeqCharacteristics.NotProcUL;
 			pThread->SeqCharacteristics.NotProcNs += pInPE1File->SeqCharacteristics.NotProcNs;

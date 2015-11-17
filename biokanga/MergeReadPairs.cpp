@@ -62,7 +62,367 @@ static tsBarcode Barcodes[] = { // default hardcoded barcodes
 		{1,8,6,PACKEDBARCODE(eBaseT,eBaseT,eBaseT,eBaseA,eBaseT,eBaseT),REVCPLPACKEDBARCODE(eBaseT,eBaseT,eBaseT,eBaseA,eBaseT,eBaseT)}
 	};
 static int NumBarcodes = (sizeof(Barcodes)/sizeof(tsBarcode));  // number of barcodes for which row and column barcodes are declared
-static int NumPlatWells = 96;    // number of plate wells identified by barcodes (rows * columns)
+static int NumPlateWells = 96;    // number of plate wells identified by barcodes (rows * columns)
+
+
+
+char *
+CMergeReadPairs::RemoveQuotes(char *pszRawText)
+{
+	char *pSrcChr;
+	char *pDstChr;
+	bool bInSpace;
+	char Chr;
+	CUtility::TrimQuotedWhitespcExtd(pszRawText);
+	pSrcChr = pszRawText;
+	pDstChr = pSrcChr;
+	bInSpace = false;
+	while ((Chr = *pSrcChr++) != '\0')
+	{
+		if (Chr == '\'' || Chr == '"')
+			continue;
+		if (Chr == ' ' || Chr == '\t')
+		{
+			if (bInSpace)
+				continue;
+			bInSpace = true;
+		}
+		else
+			bInSpace = false;
+		*pDstChr++ = Chr;
+	}
+	*pDstChr = '\0';
+	return(pszRawText);
+}
+
+int										// returns number of MIDs initialised or eBSFErrxxxx
+CMergeReadPairs::InitMIDs(bool bPE,		// true if processing for PE MIDs else if false then processing SE MIDs
+				 char *pszMIDsBarcodeFile) // initialise with SE MIDs barcodes and associated name identifiers from a MIDs CSV file 
+{
+int Rslt;
+int Idx;
+
+int NumFields;
+int NumElsParsed;
+int m_NumMIDs;
+int MIDsNameLen;
+int PE1BarcodeLen;
+etSeqBase PE1Barcode[cMaxBarCodeLen + 1];
+int PE2BarcodeLen;
+etSeqBase PE2Barcode[cMaxBarCodeLen + 1];
+char *pszMIDsName;
+char *pszMIDsBarcode;
+char *pBase;
+tsMIDsBarcode *pMIDsBarcode;
+
+
+CCSVFile *pCSV = new CCSVFile;
+if (pCSV == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Unable to instantiate CCSVfile");
+	return(eBSFerrObj);
+	}
+
+if ((Rslt = pCSV->Open(pszMIDsBarcodeFile)) != eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Unable to open MIDs barcode file: %s", pszMIDsBarcodeFile);
+	delete pCSV;
+	return(Rslt);
+}
+
+NumElsParsed = 0;
+NumFields = 0;
+m_NumMIDs = 0;
+
+// expected MIDs format is CSV with:
+// Col1: 'Name',
+// Col2: "PE1 Barcode" SE or 5'PE1 if PE processing
+// Col3: "PE2 Barcode" PE2 if PE processing
+while((Rslt = pCSV->NextLine()) > 0)
+	{
+	NumFields = pCSV->GetCurFields();
+	if (!NumElsParsed && (((!bPE && NumFields >= 2) || (bPE && NumFields >= 3)) && pCSV->IsLikelyHeaderLine())) // check for header line
+		continue;
+	if(!bPE && NumFields < 2)
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "SE processing, expected MIDs name and SE 5' barcode at line %d in file '%s'", pCSV->GetLineNumber(), pszMIDsBarcodeFile);
+		delete pCSV;
+		return(eBSFerrParse);
+		}
+	if(bPE && NumFields < 3)
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "PE processing, expected MIDs name, PE1 barcode and PE2 barcode at line %d in file '%s'", pCSV->GetLineNumber(), pszMIDsBarcodeFile);
+		delete pCSV;
+		return(eBSFerrParse);
+		}
+	
+	NumElsParsed += 1;
+	pCSV->GetText(1, &pszMIDsName);
+	pCSV->GetText(2, &pszMIDsBarcode);
+	RemoveQuotes(pszMIDsName);
+	RemoveQuotes(pszMIDsBarcode);
+
+	if(((MIDsNameLen = (int)strlen(pszMIDsName)) > cMaxLenMIDsName) || MIDsNameLen < 2)
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Expected MIDs name '%s' at line %d in file '%s' to be in length range 3..%d", pszMIDsName, pCSV->GetLineNumber(), pszMIDsBarcodeFile, cMaxLenMIDsName);
+		delete pCSV;
+		return(eBSFerrParse);
+		}
+	if (((PE1BarcodeLen = (int)strlen(pszMIDsBarcode)) > cMaxBarCodeLen) || PE1BarcodeLen < 4)
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Expected MIDs barcode '%s' at line %d in file '%s' to be in length range 4..%d", pszMIDsBarcode, pCSV->GetLineNumber(), pszMIDsBarcodeFile, cMaxBarCodeLen);
+		delete pCSV;
+		return(eBSFerrParse);
+		}
+
+	pBase = pszMIDsBarcode;
+	for(Idx = 0; Idx < PE1BarcodeLen; pBase++)
+		{
+		switch(*pBase) {
+			case 'a': case 'A': case 'c': case 'C': case 'g': case 'G': case 't': case 'T':
+				continue;
+			default:
+				gDiagnostics.DiagOut(eDLFatal, gszProcName, "Expected MIDs barcode '%s' at line %d in file '%s' to only contain canonical bases ACGT", pszMIDsBarcode, pCSV->GetLineNumber(), pszMIDsBarcodeFile);
+				delete pCSV;
+				return(eBSFerrParse);
+			}
+		}
+
+	CSeqTrans::MapAscii2Sense(pszMIDsBarcode, PE1BarcodeLen, PE1Barcode);
+	PE1Barcode[PE1BarcodeLen] = eBaseEOS;
+
+	PE2Barcode[0] = eBaseEOS;
+	PE2BarcodeLen = 0;
+ 
+	if(bPE)
+		{
+		pCSV->GetText(3, &pszMIDsBarcode);
+		RemoveQuotes(pszMIDsBarcode);
+		if (((PE2BarcodeLen = (int)strlen(pszMIDsBarcode)) > cMaxBarCodeLen) || PE2BarcodeLen < 4)
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Expected MIDs PE2 barcode '%s' at line %d in file '%s' to be in length range 4..%d", pszMIDsBarcode, pCSV->GetLineNumber(), pszMIDsBarcodeFile, cMaxBarCodeLen);
+			delete pCSV;
+			return(eBSFerrParse);
+			}
+		pBase = pszMIDsBarcode;
+		for (Idx = 0; Idx < PE2BarcodeLen; pBase++)
+			{
+			switch (*pBase)
+				{
+				case 'a': case 'A': case 'c': case 'C': case 'g': case 'G': case 't': case 'T':
+					continue;
+				default:
+					gDiagnostics.DiagOut(eDLFatal, gszProcName, "Expected MIDs PE2 barcode '%s' at line %d in file '%s' to only contain canonical bases ACGT", pszMIDsBarcode, pCSV->GetLineNumber(), pszMIDsBarcodeFile);
+					delete pCSV;
+					return(eBSFerrParse);
+				}
+			}
+
+		CSeqTrans::MapAscii2Sense(pszMIDsBarcode, PE2BarcodeLen, PE2Barcode);
+		PE2Barcode[PE2BarcodeLen] = eBaseEOS;
+		if (!memcmp(PE1Barcode, PE2Barcode, min(PE1BarcodeLen, PE2BarcodeLen)))
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Duplicate MIDs PE1 and PE2 barcodes at line %d in file '%s'", pCSV->GetLineNumber(), pszMIDsBarcodeFile);
+			delete pCSV;
+			return(eBSFerrParse);
+			}
+		}
+
+
+	// check that this is the only instance of either name or barcodes - these must be globally unique
+	if(m_NumMIDs > 0)
+		{
+		pMIDsBarcode = m_MIDsBarcodes;
+		for(Idx = 0; Idx < m_NumMIDs; Idx+=1, pMIDsBarcode += 1)
+			{
+			if(!memcmp(pMIDsBarcode->PE1Barcode,PE1Barcode,min(pMIDsBarcode->PE1BarcodeLen,PE1BarcodeLen)) || 
+			   !memcmp(pMIDsBarcode->PE2Barcode, PE2Barcode, min(pMIDsBarcode->PE2BarcodeLen, PE2BarcodeLen)) ||
+			   !memcmp(pMIDsBarcode->PE1Barcode, PE2Barcode, min(pMIDsBarcode->PE1BarcodeLen, PE2BarcodeLen)) ||
+			   !memcmp(pMIDsBarcode->PE2Barcode, PE1Barcode, min(pMIDsBarcode->PE2BarcodeLen, PE1BarcodeLen)) ||
+				!stricmp(pMIDsBarcode->szMIDsName, pszMIDsName))
+				{
+				gDiagnostics.DiagOut(eDLFatal, gszProcName, "Duplicate name or MIDs barcode at line %d in file '%s'", pCSV->GetLineNumber(), pszMIDsBarcodeFile);
+				delete pCSV;
+				return(eBSFerrParse);
+				}
+			}
+		}
+
+	pMIDsBarcode = &m_MIDsBarcodes[m_NumMIDs++];
+	pMIDsBarcode->MIDsID = m_NumMIDs;
+	pMIDsBarcode->PE1BarcodeLen = PE1BarcodeLen;
+	memcpy(pMIDsBarcode->PE1Barcode, PE1Barcode, PE1BarcodeLen + 1);
+	strcpy(pMIDsBarcode->szMIDsName, pszMIDsName);
+
+	if(bPE)
+		{
+		pMIDsBarcode->PE2BarcodeLen = PE2BarcodeLen;
+		memcpy(pMIDsBarcode->PE2Barcode, PE2Barcode, PE2BarcodeLen + 1);
+		}
+	else
+		{
+		pMIDsBarcode->PE2BarcodeLen = 0;
+		pMIDsBarcode->PE2Barcode[0] = eBaseEOS;
+		}
+	}
+
+delete pCSV;
+
+return(m_NumMIDs);
+}
+
+
+
+int				// returned best uniquely matching MIDsID or 0 if unable to match any MIDs barcode allowing at most m_MaxMIPsBarcodeSubs substitutions
+CMergeReadPairs::MapSEMIDsBarcode(int SeqLen,			// number of bases in sequence putatively containing MIDs barcode 
+				 int Ofs,				// look for matching MIDs barcode starting at this pSeq 5' offset
+				 int MaxAllowSubs,		// max allowed substitutions
+				 int *pReqSubs,			// returned best match required this number of substitutions
+				 etSeqBase *pSeq)		// sequence
+{
+int CurMIDsID;
+int BestMIDsID;
+int CurBarcodeLen;
+int CurNumSubs;
+int LowestNumSubs;
+bool bUniqueLowestSubs;
+tsMIDsBarcode *pMIDs;
+etSeqBase *pBase1;
+etSeqBase *pBase;
+etSeqBase *pBarcodeBase;
+
+if(pReqSubs != NULL)
+	*pReqSubs = 0;
+if(pSeq == NULL || SeqLen < (Ofs + cMinBCReadSeqLen) || MaxAllowSubs < 0 || MaxAllowSubs > 5 || m_NumMIDsBarcodes < 1)
+	return(0);
+	
+BestMIDsID = 0;
+LowestNumSubs = 0;
+bUniqueLowestSubs = true;
+pMIDs = m_MIDsBarcodes;
+pBase1 = &pSeq[Ofs];
+for(CurMIDsID = 1; CurMIDsID <= m_NumMIDsBarcodes; CurMIDsID +=1, pMIDs += 1)
+	{
+	pBase = pBase1;
+	pBarcodeBase = pMIDs->PE1Barcode;
+	CurNumSubs = 0;
+	for(CurBarcodeLen = 0; CurBarcodeLen < pMIDs->PE1BarcodeLen; CurBarcodeLen+=1, pBase+=1, pBarcodeBase+=1)
+		{
+		if((*pBase & 0x07) != (*pBarcodeBase & 0x07))
+			{
+			if(++CurNumSubs > MaxAllowSubs)
+				break;
+			}
+		}
+	if (CurNumSubs == 0)  // can't do any better than an exact match with no subs required
+		return(CurMIDsID);
+	if(CurNumSubs > MaxAllowSubs)	// too many subs required?
+		continue;
+
+	if(BestMIDsID == 0 || CurNumSubs <= LowestNumSubs) // will be selecting match with lowest number of subs to be returned
+		{
+		bUniqueLowestSubs = CurNumSubs < LowestNumSubs ? true : false; // ensure that only unique matches are returned
+		LowestNumSubs = CurNumSubs;
+		BestMIDsID = CurMIDsID;
+		}	
+	}
+
+if(bUniqueLowestSubs)
+	{
+	if(pReqSubs != NULL)
+		*pReqSubs = LowestNumSubs;
+	return(BestMIDsID);
+	}
+return(0);
+}
+
+int											// returned best uniquely matching MIDsID or 0 if unable to match any MIDs barcode allowing at most MaxAllowSubs substitutions
+CMergeReadPairs::MapPEMIDsBarcode(int SeqLen,			// minimum length of either pPE1Seq or pPE2Seq  
+				 int Ofs,				// look for matching MIDs barcode starting at this pPE1Seq or pPE2Seq 5' offset
+				 int MaxAllowSubs,		// max allowed substitutions for either PE1 or PE2 (not total over both PE1 and PE2)
+				 int *pReqSubs,			// best match required this total number of substitutions over both PE1 and PE2 barcodes
+				 etSeqBase *pPE1Seq,	// map barcodes at 5' of this sequence
+				 etSeqBase *pPE2Seq)	// and barcodes at 5'of this sequence to the MIDs
+{
+	int CurMIDsID;
+	int BestMIDsID;
+	int CurBarcodeLen;
+	int CurNumSubs;
+	int CurTotNumSubs;
+	int LowestNumSubs;
+	bool bUniqueLowestSubs;
+	tsMIDsBarcode *pMIDs;
+	etSeqBase *pBase1;
+	etSeqBase *pBase2;
+	etSeqBase *pBase;
+	etSeqBase *pBarcodeBase;
+
+	if (pReqSubs != NULL)
+		*pReqSubs = 0;
+	if (pPE1Seq == NULL || pPE2Seq == NULL || SeqLen < (Ofs + cMinBCReadSeqLen) || MaxAllowSubs < 0 || MaxAllowSubs > 5 || m_NumMIDsBarcodes < 1)
+		return(0);
+
+	BestMIDsID = 0;
+	LowestNumSubs = 0;
+	CurTotNumSubs = 0;
+	bUniqueLowestSubs = true;
+	pMIDs = m_MIDsBarcodes;
+	pBase1 = &pPE1Seq[Ofs];
+	pBase2 = &pPE2Seq[Ofs];
+	for (CurMIDsID = 1; CurMIDsID <= m_NumMIDsBarcodes; CurMIDsID += 1, pMIDs += 1)
+		{
+		CurTotNumSubs = 0;
+		CurNumSubs = 0;
+		pBase = pBase1;
+		pBarcodeBase = pMIDs->PE1Barcode;
+		for (CurBarcodeLen = 0; CurBarcodeLen < pMIDs->PE1BarcodeLen; CurBarcodeLen += 1, pBase += 1, pBarcodeBase += 1)
+			{
+			if ((*pBase & 0x07) != (*pBarcodeBase & 0x07))
+				{
+				if (++CurNumSubs > MaxAllowSubs)
+					break;
+				}
+			}
+
+		if (CurNumSubs > MaxAllowSubs)
+			continue;
+		CurTotNumSubs = CurNumSubs;
+		CurNumSubs = 0;
+		pBase = pBase2;
+		pBarcodeBase = pMIDs->PE2Barcode;
+		for (CurBarcodeLen = 0; CurBarcodeLen < pMIDs->PE2BarcodeLen; CurBarcodeLen += 1, pBase += 1, pBarcodeBase += 1)
+			{
+			if ((*pBase & 0x07) != (*pBarcodeBase & 0x07))
+				{
+				if (++CurNumSubs > MaxAllowSubs)
+					break;
+				}
+			}
+		if (CurNumSubs > MaxAllowSubs)
+			continue;
+		CurTotNumSubs += CurNumSubs;
+
+		if (CurTotNumSubs == 0)  // can't do any better than an exact match with no subs required
+			return(CurMIDsID);
+
+		if (BestMIDsID == 0 || CurTotNumSubs <= LowestNumSubs) // will be selecting match with lowest number of subs to be returned
+			{
+			bUniqueLowestSubs = CurTotNumSubs < LowestNumSubs ? true : false; // ensure that only unique matches are returned
+			LowestNumSubs = CurTotNumSubs;
+			BestMIDsID = CurMIDsID;
+			}
+	}
+
+	if (bUniqueLowestSubs)
+	{
+		if (pReqSubs != NULL)
+			*pReqSubs = LowestNumSubs;
+		return(BestMIDsID);
+	}
+	return(0);
+}
+
+
 
 int							// returned well number (1..96) or 0 if unable to identify well from the barcodes
 CMergeReadPairs::MapSEBarcodesToWell(int SeqLen,		// num bases in SE pSeq
@@ -85,7 +445,7 @@ Pack3 = 0;
 pBase= pSeq;
 for(Idx = 0; Idx < m_MaxBarcode5Len; Idx++, pBase++)
 	{
-	if(*pBase > eBaseT)			// only accepting cannonical bases
+	if(*pBase > eBaseT)			// only accepting canonical bases
 		return(0);
 	Pack5 <<= 2;
 	Pack5 |= *pBase & 0x03;
@@ -95,7 +455,7 @@ for(Idx = 0; Idx < m_MaxBarcode5Len; Idx++, pBase++)
 pBase= &pSeq[SeqLen-m_MaxBarcode3Len];
 for(Idx = 0; Idx < m_MaxBarcode3Len; Idx++, pBase++)
 	{
-	if(*pBase > eBaseT)			// only accepting cannonical bases
+	if(*pBase > eBaseT)			// only accepting canonical bases
 		return(0);
 	Pack3 <<= 2;
 	Pack3 |= *pBase & 0x03;
@@ -222,7 +582,7 @@ m_pBarcodes = Barcodes;
 m_NumWells = 0;
 pWell = m_WellFiles;
 memset(pWell,0,sizeof(m_WellFiles));
-for(WellIdx = 0; WellIdx < NumPlatWells; WellIdx++,pWell++)
+for(WellIdx = 0; WellIdx < NumPlateWells; WellIdx++,pWell++)
 	{
 	if(bNoMerge)
 		{
@@ -378,7 +738,7 @@ if(m_ProcPhase != ePPUninit)
 
 memset(m_WellFiles,0,sizeof(m_WellFiles));
 pWell = m_WellFiles;
-for(WellIdx = 0; WellIdx < cMaxNumWells; WellIdx++,pWell++)
+for(WellIdx = 0; WellIdx < cMaxNumBarcodes; WellIdx++,pWell++)
 	{
 	pWell->WellFile[0].hOutFile = -1;
 	pWell->WellFile[1].hOutFile = -1;

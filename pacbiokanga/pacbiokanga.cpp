@@ -37,7 +37,7 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "1.0.0";		// increment with each release
+const char *cpszProgVer = "1.1.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 
@@ -182,6 +182,7 @@ if(Idx != argc) // if located the subprocess specifier then remove from paramete
 	argc -= 1;
 	}
 gpszSubProcess = &SubProcesses[SubProcID-1];
+srand((unsigned int)time(NULL));
 return((*SubProcesses[SubProcID-1].SubFunct)(argc,argv));
 }
 

@@ -82,6 +82,7 @@ class CPBAssemb
 	UINT32 m_NumRejectArtefact;				// this number of overlaps rejected because the overlap was classified as being an artefact
 	UINT32 m_NumAcceptedOverlaps;			// this number of overlaps accepted for scaffolding
 
+	bool m_bAcceptOrphanSeqs;				// if true then report also report sequences which have no overlap with any other sequence
 
 	int m_NumErrCorrectedFiles;					// number of input error corrected file specs
 	char m_szErrCorrectedFiles[cMaxInFileSpecs][_MAX_PATH];		// input error corrected files
@@ -137,6 +138,8 @@ public:
 	Process(etPBPMode PMode,		// processing mode
 		int MinScaffSeqLen,			// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
+		int Min1kScore,             // minimum normalised 1Kbp overlap score
+		bool bAcceptOrphanSeqs,		// also accepting sequences which are not overlapped or overlapping any other sequence
 		char *pszMAFFile,			// pregenerated multialignment sequence overlap loci details
 		int NumErrCorrectedFiles,	// number of error corrected sequence specs
 		char *pszErrCorrectedFiles[],		// input error corrected sequence files

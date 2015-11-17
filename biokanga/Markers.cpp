@@ -1006,7 +1006,7 @@ return(TotOverlapping);
 int
 CMarkers::IdentSpeciesSpec(int AltMaxCnt,	// max count allowed for base being processed in any other species, 0 if no limit
 						int MinCnt,		// min count required for base being processed in species
-						double Thres,	// to be processed a base must be at least this proportion of total
+						double SNPMmajorPC,		// to be processed major putative SNP base must be at least this proportion of total
 						int MinSpeciesWithCnts,			// must be at least this number of species with base counts more than MinSpeciesTotCntThres - 0 if no limit 
 						int MinSpeciesTotCntThres)		// individual species must have at least this number of total bases at SNP loci - 0 if no threshold
 
@@ -1045,13 +1045,13 @@ for(AlignIdx = 0; AlignIdx < m_UsedAlignLoci; AlignIdx += NumSpecies, pAlign += 
 		pAlignSpecies->FiltLowTotBases = 0;
 		NumSpeciesWithCnts += 1;
 
-		// if proportion of bases above a threshold then check if any of the other species have any bases
+		// if proportion of major SNP base above a threshold then check if any of the other species have any bases
 		BestAcceptBase = eBaseN;
 		BestAcceptConf = 0.0;
 		for(BaseIdx = 0; BaseIdx < 4; BaseIdx++)
 			{
 			CurConf = (pAlignSpecies->ProbeBaseCnts[BaseIdx] / (double)pAlignSpecies->TotBases);
-			if(pAlignSpecies->ProbeBaseCnts[BaseIdx] >= (UINT32)MinCnt && (CurConf >= Thres))
+			if(pAlignSpecies->ProbeBaseCnts[BaseIdx] >= (UINT32)MinCnt && (CurConf >= SNPMmajorPC))
 				{
 				bAcceptSpec = true;
 				pAlignSpeciesA = pAlign;
@@ -1162,7 +1162,7 @@ for(Idx = 0; Idx < m_UsedAlignLoci; Idx++, pAlign++)
 	if(MinSpeciesWithCnts > pAlign->NumSpeciesWithCnts)
 		continue;
 
-	// user may have requesed that only varants between the cultivars are of interest; if all cultivars have same variant, even if different to reference, then slough
+	// user may have requesed that only variants between the cultivars are of interest; if all cultivars have same variant, even if different to reference, then slough
 	if(bSloughRefOnly && (bFirstReport || pAlign->TargLoci != CurTargLoci || pAlign->TargSeqID != CurTargSeqID))	// starting new row
 		{
 		tsAlignLoci *pTmpAlign = pAlign;

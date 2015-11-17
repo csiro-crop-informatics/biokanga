@@ -702,8 +702,8 @@ m_bMutexesCreated = false;
 void
 CPBECContigs::AcquireCASSerialise(void)
 {
-int SpinCnt = 5000;
-int BackoffMS = 5;
+int SpinCnt = 10;
+int BackoffMS = 1;
 
 #ifdef _WIN32
 while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
@@ -711,9 +711,11 @@ while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #else
 while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
@@ -721,9 +723,11 @@ while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #endif
 }
@@ -742,8 +746,8 @@ __sync_val_compare_and_swap(&m_CASSerialise,1,0);
 void
 CPBECContigs::AcquireCASLock(void)
 {
-int SpinCnt = 5000;
-int BackoffMS = 5;
+int SpinCnt = 10;
+int BackoffMS = 1;
 
 #ifdef _WIN32
 while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
@@ -751,9 +755,11 @@ while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #else
 while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
@@ -761,9 +767,11 @@ while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #endif
 }

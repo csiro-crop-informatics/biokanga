@@ -44,6 +44,7 @@ typedef enum TAG_eRPMode {
 int GSMProcess(etRPMode PMode,				// report processing mode
 			int MinCovBases,				// accept SNPs with at least this number covering bases
 			double MaxPValue,				// accept SNPs with at most this P-value
+		    double SNPMmajorPC,				// only accept for processing if more/equal than this percentage number of reads are major SNP at putative SNP loci (defaults to 50.0) 
 			int MinSpeciesTotCntThres,		// individual species must have at least this number of total bases at SNP loci to count as SNP - 0 if no threshold
 			int MinSpeciesWithCnts,			// only report markers where at least this number of species has SNP at the SNP loci
 			int AltSpeciesMaxCnt,			// only report markers if no other species has more than this number of counts at the putative SNP loci, 0 if no limit
@@ -79,6 +80,7 @@ int PMode;				// processing mode
 
 int MinCovBases;				// accept SNPs with at least this number covering bases
 double MaxPValue;				// accept SNPs with at most this P-value
+double SNPMmajorPC;				// only accept for processing if more/equal than this percentage number of reads are major SNP at putative SNP loci (defaults to 50.0) 
 int MinSpeciesTotCntThres;		// individual species must have at least this number of total bases at SNP loci to count as SNP - 0 if no threshold
 int AltSpeciesMaxCnt;			// only report markers if no other species has more than this number of counts at the putative SNP loci - 0 if no limit
 int MinSpeciesWithCnts;			// only report markers where at least this number of species has SNP at the SNP loci
@@ -114,6 +116,7 @@ struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file"
 struct arg_int *pmode = arg_int0("m","mode","<int>",		    "Marker reporting mode: 0 - SNP markers if either inter-species/cultivar or relative to reference, 1 - report SNP markers only if inter-species/cultivar differences (default 0)");
 struct arg_int *mincovbases=arg_int0("b", "mincovbases","<int>","Filter out SNPs with less than this number of covering bases (default 5)");
 struct arg_dbl *maxpvalue=arg_dbl0("p", "maxpvalue","<dbl>",	"Filter out SNPs with P-Value higher (default 0.05)");
+struct arg_dbl *snpmajorpc = arg_dbl0("P", "snpmajorpc", "<dbl>", "Min percentage Major SNP at putative loci (defaults to 50.0, range 15.0 to 90.0)");
 
 struct arg_int *mintotcntthres = arg_int0("z","mintotcntthres","<int>",	"Species must have at least this number of total bases covering marker loci (defaults to 0 for no limit)");
 struct arg_int *mincovspecies=arg_int0("Z", "mincovspecies","<int>","Do not report marker SNPs unless this minimum number of species have SNP at same loci");
@@ -133,7 +136,7 @@ struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 	summrslts,experimentname,experimentdescr,
-	pmode,mincovbases,maxpvalue,mintotcntthres,altspeciesmaxcnt,mincovspecies,refgenome,relgenomes,snpfiles,alignfiles,markerfile,threads,
+	pmode,mincovbases,maxpvalue,snpmajorpc,mintotcntthres,altspeciesmaxcnt,mincovspecies,refgenome,relgenomes,snpfiles,alignfiles,markerfile,threads,
 	end};
 char **pAllArgs;
 int argerrors;
@@ -302,6 +305,14 @@ if (!argerrors)
 		exit(1);
 		}
 
+	SNPMmajorPC = snpmajorpc->count ? snpmajorpc->dval[0] : 50.0;
+	if (SNPMmajorPC < 15.0 || SNPMmajorPC > 90.0)
+	{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Major SNP minimum non-ref '-P%f' for controlling SNP FDR must be in range 15.0 to 90.0\n", SNPMmajorPC);
+		exit(1);
+	}
+
+
 	if(refgenome->count)
 		{
 		strncpy(szRefGenome,refgenome->sval[0],cMaxLenName);
@@ -416,6 +427,9 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum coverage : %d",MinCovBases);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum P-Value : %1.4f'",MaxPValue);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo, "Minimum Major SNP percentage : %1.4f'", SNPMmajorPC);
+
+
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Reference genome assembly name : '%s'",szRefGenome);
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum total bases for species at SNP call loci : %d",MinSpeciesTotCntThres);
@@ -447,6 +461,8 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(PMode),"mode",&PMode);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(MinCovBases),"mincovbases",&MinCovBases);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTDouble,sizeof(MaxPValue),"maxpvalue",&MaxPValue);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTDouble, sizeof(SNPMmajorPC), "snpmajorpc", &SNPMmajorPC);
+
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(AltSpeciesMaxCnt),"altspeciesmaxcnt",&AltSpeciesMaxCnt);
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(MinSpeciesWithCnts),"mincovspecies",&MinSpeciesWithCnts);
@@ -480,7 +496,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = GSMProcess((etRPMode)PMode,MinCovBases,MaxPValue,MinSpeciesTotCntThres,MinSpeciesWithCnts,AltSpeciesMaxCnt,szRefGenome,NumRelGenomes,pszRelGenomes,NumSNPFiles,pszSNPFiles,NumAlignFiles,pszAlignFiles,szMarkerFile);
+	Rslt = GSMProcess((etRPMode)PMode,MinCovBases,MaxPValue, SNPMmajorPC,MinSpeciesTotCntThres,MinSpeciesWithCnts,AltSpeciesMaxCnt,szRefGenome,NumRelGenomes,pszRelGenomes,NumSNPFiles,pszSNPFiles,NumAlignFiles,pszAlignFiles,szMarkerFile);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -506,6 +522,7 @@ return 0;
 int GSMProcess(etRPMode PMode,				// processing mode
 			int MinCovBases,				// accept SNPs with at least this number covering bases
 			double MaxPValue,				// accept SNPs with at most this P-value
+		    double SNPMmajorPC,				// only accept for processing if more/equal than this percentage number of reads are major SNP at putative SNP loci (defaults to 50.0) 
 			int MinSpeciesTotCntThres,		// individual species must have at least this number of total bases at SNP loci to count as SNP - 0 if no threshold
 			int MinSpeciesWithCnts,			// only report markers where at least this number of species has SNP at the SNP loci
 			int AltSpeciesMaxCnt,			// only report markers if no other species has more than this number of counts at the putative SNP loci, 0 if no limit
@@ -584,7 +601,7 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Discovered %d imputations",Rslt);
 Rslt = pMarkers->SortTargSeqLociSpecies();
 pMarkers->IdentSpeciesSpec(AltSpeciesMaxCnt,	// max count allowed for base being processed in any other species, 0 if no limit
 						MinCovBases,			// min count required for base being processed in species
-						cMinBaseThres);			// to be processed a base must be at least this proportion of total
+						   SNPMmajorPC);		// to be processed major putative SNP base must be at least this proportion of total
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting markers to '%s'...",pszMarkerFile);
 Rslt = pMarkers->Report(pszRefGenome,NumRelGenomes,pszRelGenomes,pszMarkerFile,MinSpeciesWithCnts,MinSpeciesTotCntThres,PMode == eRPMInterCultOnly ? true : false);

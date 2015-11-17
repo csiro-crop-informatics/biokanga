@@ -21,7 +21,7 @@ const int cMaxSeqID = 100000000;		// allow at most 10^8 different target species
 const int cDfltThreads = 1;				// by default use 1 threads when sorting
 const int cMaxWorkerThreads = 8;		// allow up to this many worker threads
 
-// following two constants are used when determing species specific SNPs
+// following two constants are used when determining species specific SNPs
 const int cAltMaxBases = 1;			// must be no more than this number of bases in alternative species
 const double cMinBaseThres = 0.50;  // and species base must be at least this proportion of total bases
 
@@ -166,7 +166,7 @@ public:
 
 	int IdentSpeciesSpec(int AltMaxCnt,	// max count allowed for base being processed in any other species, 0 if no limit
 						int MinCnt,		// min count required for base being processed in species
-						double Thres,	// to be processed a base must be at least this proportion of total
+						double SNPMmajorPC,		// to be processed major putative SNP base must be at least this proportion of total
 						int MinSpeciesWithCnts = 0,			// must be at least this number of species with base counts more than MinSpeciesTotCntThres - 0 if no limit 
 						int MinSpeciesTotCntThres = 0);		// individual species must have at least this number of total bases at SNP loci - 0 if no threshold
 

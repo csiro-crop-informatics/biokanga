@@ -629,6 +629,13 @@ if (!argerrors)
 			return(1);
 			}
 
+		MaxPBSeqLen = maxpbseqlen->count ? maxpbseqlen->ival[0] : cDfltMaxPBSeqLen;
+		if (MaxPBSeqLen < MinPBSeqLen || MaxPBSeqLen > cMaxMaxPBSeqLen)
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Maximum accepted PacBio length '-L%d' must be in range %d..%dbp", MaxPBSeqLen, MinPBSeqLen, cMaxMaxPBSeqLen);
+			return(1);
+			}
+
 		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : min(cDfltMinErrCorrectLen,MinPBSeqLen);
 		if(MinPBSeqOverlap < cMinPBSeqLen || MinPBSeqOverlap > cMaxMinPBSeqLen)
 			{
@@ -1107,8 +1114,8 @@ m_bMutexesCreated = false;
 void
 CPBErrCorrect::AcquireCASSerialise(void)
 {
-int SpinCnt = 5000;
-int BackoffMS = 5;
+int SpinCnt = 10;
+int BackoffMS = 1;
 
 #ifdef _WIN32
 while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
@@ -1116,9 +1123,11 @@ while(InterlockedCompareExchange(&m_CASSerialise,1,0)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #else
 while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
@@ -1126,9 +1135,11 @@ while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #endif
 }
@@ -1147,8 +1158,8 @@ __sync_val_compare_and_swap(&m_CASSerialise,1,0);
 void
 CPBErrCorrect::AcquireCASLock(void)
 {
-int SpinCnt = 5000;
-int BackoffMS = 5;
+int SpinCnt = 10;
+int BackoffMS = 1;
 
 #ifdef _WIN32
 while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
@@ -1156,9 +1167,11 @@ while(InterlockedCompareExchange(&m_CASLock,1,0)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #else
 while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
@@ -1166,9 +1179,11 @@ while(__sync_val_compare_and_swap(&m_CASLock,0,1)!=0)
 	if(SpinCnt -= 1)
 		continue;
 	CUtility::SleepMillisecs(BackoffMS);
-	SpinCnt = 1000;
-	if(BackoffMS < 500)
-		BackoffMS += 2;
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
 	}
 #endif
 }
@@ -2556,7 +2571,7 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
 			pThreadPar->pSW->SetCPScores(m_SWMatchScore, m_SWMismatchPenalty, m_SWGapOpenPenalty, m_SWGapExtnPenalty);
 			pThreadPar->pSW->SetMaxInitiatePathOfs(cDfltMaxOverlapFloat);
-			pThreadPar->pSW->PreAllocMaxTargLen(100000,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+			pThreadPar->pSW->PreAllocMaxTargLen(m_MaxPBSeqLen, m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 			ReleaseCASSerialise();
 			}
 

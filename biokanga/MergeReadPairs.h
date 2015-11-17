@@ -2,8 +2,9 @@
 #pragma once
 
 const int cMaxBarCodeLen = 30;	// if barcode processing then barcodes can be at most this length
-const int cMaxLenWellID = 16;   // well identifiers can be at most this length
-const int cMaxNumWells = 96;	// able to process barcodes identifying at most 96 well plates
+const int cMaxLenMIDsName = 40;  // individual well identifiers or MIDs names can be at most this length
+const int cMaxNumBarcodes = 1000;	// able to process at most this many different barcodes
+const int cMinBCReadSeqLen = 50;   // only read sequences of at least this length will be processed for barcodes
 
 // Merge read pairs where there is an expected 3' read overlap onto the 5' read
 
@@ -12,8 +13,8 @@ typedef enum TAG_ePMode {
 	ePMdefault = 0,				// Standard processing
 	ePMcombined,				// combine overlaps and orphan reads into same file
 	ePMseparate,				// overlaps and orphans into separate files
-	ePMAmplicon,				// ampicon processing with 5' and 3' barcodes to identify originating plate well, overlap merging
-	ePMAmpliconNoMerge,				// ampicon processing with 5' and 3' barcodes to identify originating plate well, no overlap merging
+	ePMAmplicon,				// amplicon processing with 5' and 3' barcodes to identify originating plate well, overlap merging
+	ePMAmpliconNoMerge,			// amplicon processing with 5' and 3' barcodes to identify originating plate well, no overlap merging
 	ePMplaceholder				// used to set the enumeration range
 	} etPMode;
 
@@ -26,8 +27,8 @@ typedef enum TAG_eOFormat {
 	} etOFormat;
 
 
-const int cMinOverlapLen = 1;		// minimium allowed used specified number of overlap bases
-const int cMaxOverlapPercSubs = 10;	// maximum allowed substitutions as a percentage of the overlap
+const int cMinOverlapLen = 1;		// minimium allowed used specified number of overlap bases when merging PE sequences
+const int cMaxOverlapPercSubs = 10;	// maximum allowed substitutions as a percentage of the overlap between merged PE sequences
 
 const int cAllocOutBuffLen = 0x0fffff; // 1M output buffering when writing to file
 
@@ -43,6 +44,17 @@ typedef enum TAG_eProcPhase {
 } etProcPhase;
 
 #pragma pack(1)
+
+typedef struct TAG_sMIDsBarcode  // MIDs (Multiplex Identifiers) barcode
+	{
+	int MIDsID;				// monotonically increasing MIDs identifier
+	char szMIDsName[cMaxLenMIDsName + 1];	// MIDs name
+	int PE1BarcodeLen;				// SE or PE1 MIDs barcode sequence length
+	etSeqBase PE1Barcode[cMaxBarCodeLen];	// SE or PE1 MIDs barcode sequence
+	int PE2BarcodeLen;				// if PE MIDs then PE2 MIDs barcode sequence length
+	etSeqBase PE2Barcode[cMaxBarCodeLen];	// if PE MIDs then PE2 MIDs barcode sequence
+	} tsMIDsBarcode;
+
 typedef struct TAG_sBarcode {
 	UINT8 ColRow;		// 0 if barcode at 5' end (column) and 1 if 3' end (row) of amplicon
 	UINT8 Psn;		    // row or column position 1..N
@@ -61,7 +73,7 @@ typedef struct TAG_sAmpliconWellFile
 	} tsAmpliconWellFile;
 
 typedef struct TAG_sAmpliconWell {
-	int WellID;					// identifies well 1..96
+	int WellID;					// identifies well 1..96, or if 454 reads then the mapped to BarcodeID
 	int NumASequences;			// number of sequences attributed to this well
 	tsAmpliconWellFile WellFile[2]; // if SE then output to 1 file, if PE then each end written to separate files
 } tsAmpliconWell;
@@ -107,21 +119,47 @@ class CMergeReadPairs
 	int m_NumBarcodes;			// number of barcodes in m_pBarcodes[]
 	tsBarcode *m_pBarcodes;		// well barcoding
 	int m_NumWells;				// processing is for this number of wells
-	tsAmpliconWell m_WellFiles[cMaxNumWells];    // to hold merged well sequence file output buffers and respective file handles
+	tsAmpliconWell m_WellFiles[cMaxNumBarcodes];    // to hold merged well sequence file output buffers and respective file handles
+
+	int m_454Leadin;				// start checking for barcode after this many leadin bases (default 4)
+	int m_Max454BarcodeSubs;		// allowing at most this many subs (default 1) when matching MIDs barcodes
+	int m_NumMIDsBarcodes;			// number of MIDs barcodes actually loaded
+	tsMIDsBarcode m_MIDsBarcodes[cMaxNumBarcodes];   // holds MIDs names and associated barcodes
+
+	int											// returned best uniquely matching MIDsID or 0 if unable to match any MIDs barcode allowing at most MaxAllowSubs substitutions
+		MapSEMIDsBarcode(int SeqLen,			// number of bases in sequence putatively containing MIPs barcode 
+						 int Ofs,				// look for matching MIDs barcode starting at this pSeq 5' offset
+						 int MaxAllowSubs,		// max allowed substitutions
+						 int *pReqSubs,			// best match required this number of substitutions
+						 etSeqBase *pSeq);		// sequence
+
+	int											// returned best uniquely matching MIDsID or 0 if unable to match any MIDs barcode allowing at most MaxAllowSubs substitutions
+		MapPEMIDsBarcode(int SeqLen,			// minimum length of either pPE1Seq or pPE2Seq  
+						 int Ofs,				// look for matching MIDs barcode starting at this pPE1Seq or pPE2Seq 5' offset
+						 int MaxAllowSubs,		// max allowed substitutions for either PE1 or PE2 (not total over both PE1 and PE2)
+						 int *pReqSubs,			// best match required this total number of substitutions over both PE1 and PE2 barcodes
+						 etSeqBase *pPE1Seq,	// map barcodes at 5' of this sequence
+						 etSeqBase *pPE2Seq);	// and barcodes at 5'of this sequence to the MIDs
 
 	int							// returned well number (1..96) or 0 if unable to identify well from the barcodes
 		MapSEBarcodesToWell(int SeqLen,		// num bases in SE pSeq
-				etSeqBase *pSeq);	// map barcodes at 5' and 3' end of this SE sequence to the well
+				etSeqBase *pSeq);			// map barcodes at 5' and 3' end of this SE sequence to the well
 
 	int							// returned well number (1..96) or 0 if unable to identify well from the barcodes
-		MapPEBarcodesToWell(int SeqLen,		//minimum lenght of either p5Seq or P3Seq
+		MapPEBarcodesToWell(int SeqLen,		//minimum length of either pPE1Seq or pPE2Seq
 											 etSeqBase *pPE1Seq,// map barcodes at 5' of this sequence
 											 etSeqBase *pPE2Seq); // and barcodes at 5'of this sequence to the well
+
+	char *RemoveQuotes(char *pszRawText);
 
 public:
 	CMergeReadPairs(void);
 	~CMergeReadPairs(void);
 	void Reset(bool bSync = true);   // if bDync true then opened output files will be sync'd (commited) to disk before closing
+
+	int				// return number of MIDs initialised
+		InitMIDs(bool bPE,		// true if processing for PE MIDs else if false then processing SE MIDs
+				 char *pszMIDsBarcodeFile); // initialise with SE MIDs barcodes and associated name identifiers from a MIDs CSV file  
 
 	int				// return number of wells initialised
 		InitDfltWells(bool bNoMerge = false); // initialise with default well barcodes and well identifiers, if bNoMerge then do not merge PE reads and report PE1/PE2 instead of merged SE 

@@ -415,7 +415,9 @@ bool
 CSSW::PreAllocMaxTargLen( UINT32 MaxTargLen,			// preallocate to process targets of this maximal length
 						  UINT32 MaxOverlapLen)			// allocating tracebacks for this maximal expected overlap, 0 if no tracebacks required			
 {
-if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 1000)))
+UINT64 MaxAllocdTracebacks;
+
+if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 5)))  // allowing a few additional cells to reduce potential for reallocations required
 	{
 	if(m_pAllocdCells != NULL)
 		{
@@ -426,10 +428,12 @@ if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 1000)))
 			munmap(m_pAllocdCells,m_AllocdCellSize);
 #endif
 		m_pAllocdCells = NULL;
+		m_AllocdCells = 0;
+		m_AllocdCellSize = 0;
 		}
-	m_AllocdCells = (UINT32)( ((UINT64)MaxTargLen * 120) / 100);		// a little extra safety margin and saves on reallocations
+	m_AllocdCells = (UINT32)( ((UINT64)MaxTargLen * 105) / 100);		// a little extra safety margin and saves on potential for reallocations required
 	m_AllocdCellSize = sizeof(tsSSWCell) * m_AllocdCells;
-	#ifdef _WIN32
+#ifdef _WIN32
 	m_pAllocdCells = (tsSSWCell *) malloc(m_AllocdCellSize);
 	if(m_pAllocdCells == NULL)
 		{
@@ -452,48 +456,56 @@ if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 1000)))
 #endif
 	}
 
-	// now prealloc for the tracebacks
-if(MaxOverlapLen && (m_pAllocdTracebacks == NULL || ((UINT64)MaxOverlapLen * 3000) > m_AllocdTracebacks))
+// now, if required, prealloc for the tracebacks
+// tracebacks are clamped to require at most just under 2GB memory
+// each traceback element (tsSSWTraceback) requires 8bytes thus up to 250M tracebacks are supported
+
+if(MaxOverlapLen > 0)
 	{
-	if(m_pAllocdTracebacks != NULL)
+    MaxAllocdTracebacks = min(MaxOverlapLen * (UINT64)4000, (UINT64)(0x7fff0000 / 8));
+
+	if(m_pAllocdTracebacks != NULL && (MaxAllocdTracebacks + 5) >  m_AllocdTracebacks)
 		{
 #ifdef _WIN32
 		free(m_pAllocdTracebacks);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
 #else
-		if(m_pAllocdTracebacks != MAP_FAILED)
-			munmap(m_pAllocdTracebacks,m_AllocdTracebacksSize);
+		if (m_pAllocdTracebacks != MAP_FAILED)
+			munmap(m_pAllocdTracebacks, m_AllocdTracebacksSize);
 #endif
 		m_pAllocdTracebacks = NULL;
+		m_AllocdTracebacks = 0;
+		m_AllocdTracebacksSize = 0;
 		}
-	m_AllocdTracebacks = 0;
-	m_AllocdTracebacksSize = 0;
 
-	m_AllocdTracebacks = (UINT64)MaxOverlapLen * 3500;		
-	m_AllocdTracebacksSize = sizeof(tsSSWTraceback) * m_AllocdTracebacks;
-#ifdef _WIN32
-	m_pAllocdTracebacks = (tsSSWTraceback *) malloc(m_AllocdTracebacksSize);
 	if(m_pAllocdTracebacks == NULL)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for traceback cells",(INT64)m_AllocdTracebacksSize);
-		m_AllocdTracebacksSize = 0;
-		m_AllocdTracebacks = 0;
-		return(false);
-		}
+		m_AllocdTracebacks = MaxAllocdTracebacks + 0x0ff;
+		m_AllocdTracebacksSize = sizeof(tsSSWTraceback) * m_AllocdTracebacks;
+#ifdef _WIN32
+		m_pAllocdTracebacks = (tsSSWTraceback *)malloc(m_AllocdTracebacksSize);
+		if (m_pAllocdTracebacks == NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fatal: unable to allocate %lld bytes contiguous memory for traceback cells", (INT64)m_AllocdTracebacksSize);
+			m_AllocdTracebacksSize = 0;
+			m_AllocdTracebacks = 0;
+			return(false);
+			}
 #else
-	// gnu malloc is still in the 32bit world and seems to have issues if more than 2GB allocation
-	m_pAllocdTracebacks = (tsSSWTraceback *)mmap(NULL,m_AllocdTracebacksSize, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
-	if(m_pAllocdTracebacks == MAP_FAILED)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for traceback cells",(INT64)m_AllocdTracebacksSize);
-		m_pAllocdTracebacks = NULL;
-		m_AllocdTracebacksSize = 0;
-		m_AllocdTracebacks = 0;
-		return(false);
-		}
+		// gnu malloc is still in the 32bit world and seems to have issues if more than 2GB allocation
+		m_pAllocdTracebacks = (tsSSWTraceback *)mmap(NULL, m_AllocdTracebacksSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if (m_pAllocdTracebacks == MAP_FAILED)
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fatal: unable to allocate %lld bytes contiguous memory for traceback cells", (INT64)m_AllocdTracebacksSize);
+			m_pAllocdTracebacks = NULL;
+			m_AllocdTracebacksSize = 0;
+			m_AllocdTracebacks = 0;
+			return(false);
+			}
 #endif
+		}
 
 	// and lastly prealloc for the multialignment operators
-	if(m_pMAAlignOps != NULL)
+	if(m_pMAAlignOps != NULL && m_AllocdMAAlignOpsSize < ((MaxOverlapLen * 2) + 10))
 		{
 #ifdef _WIN32
 		free(m_pMAAlignOps);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
@@ -502,28 +514,31 @@ if(MaxOverlapLen && (m_pAllocdTracebacks == NULL || ((UINT64)MaxOverlapLen * 300
 			munmap(m_pMAAlignOps,m_AllocdMAAlignOpsSize);
 #endif
 		m_pMAAlignOps = NULL;
+		m_AllocdMAAlignOpsSize = 0;
 		}
-	m_pMAAlignOps = NULL;
-	m_AllocdMAAlignOpsSize = 0;
 
-	m_AllocdMAAlignOpsSize = MaxOverlapLen * 2;
-#ifdef _WIN32
-	m_pMAAlignOps = (UINT8 *) malloc(m_AllocdMAAlignOpsSize);
 	if(m_pMAAlignOps == NULL)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for multialignment operators",(INT64)m_AllocdMAAlignOpsSize);
-		m_AllocdMAAlignOpsSize = 0;
-		return(false);
+		m_AllocdMAAlignOpsSize = (MaxOverlapLen * 2) + 100;
+#ifdef _WIN32
+		m_pMAAlignOps = (UINT8 *) malloc(m_AllocdMAAlignOpsSize);
+		if(m_pMAAlignOps == NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for multialignment operators",(INT64)m_AllocdMAAlignOpsSize);
+			m_AllocdMAAlignOpsSize = 0;
+			return(false);
+			}
 		}
 #else
-	// gnu malloc is still in the 32bit world and seems to have issues if more than 2GB allocation
-	m_pMAAlignOps = (UINT8 *)mmap(NULL,m_AllocdMAAlignOpsSize, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
-	if(m_pMAAlignOps == MAP_FAILED)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for multialignment operators",(INT64)m_AllocdMAAlignOpsSize);
-		m_pMAAlignOps = NULL;
-		m_AllocdMAAlignOpsSize = 0;
-		return(false);
+		// gnu malloc is still in the 32bit world and seems to have issues if more than 2GB allocation
+		m_pMAAlignOps = (UINT8 *)mmap(NULL,m_AllocdMAAlignOpsSize, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
+		if(m_pMAAlignOps == MAP_FAILED)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for multialignment operators",(INT64)m_AllocdMAAlignOpsSize);
+			m_pMAAlignOps = NULL;
+			m_AllocdMAAlignOpsSize = 0;
+			return(false);
+			}
 		}
 #endif
 	}
@@ -825,8 +840,8 @@ memset(&m_PeakMatchesCell,0,sizeof(m_PeakMatchesCell));
 memset(&m_PeakScoreCell,0,sizeof(m_PeakScoreCell));
 
 // allocating to hold full length even if relative length a lot shorter to reduce number of reallocations which may be subsequently required
-if(((m_AllocdCells + 100 < m_TargLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  
-	!PreAllocMaxTargLen(m_TargLen + 100,MaxOverlapLen))
+if(((m_AllocdCells + 5 < m_TargLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  
+	!PreAllocMaxTargLen(m_TargLen,MaxOverlapLen))
 	return(NULL);
 
 if(!bNoTracebacks && m_pAllocdTracebacks != NULL)
@@ -857,7 +872,7 @@ pTraceback = m_pAllocdTracebacks;						// NOTE: NULL if tracebacks not required
 pProbe = &m_pProbe[m_ProbeStartRelOfs];
 for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 	{
-	if(m_pAllocdTracebacks != NULL && (m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen)) // ensure that sufficent memory has been allocated to hold any tracebacks in next sweep over the target
+	if(m_pAllocdTracebacks != NULL && (m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen)) // ensure that sufficient memory has been allocated to hold any tracebacks in next sweep over the target
 		{
 		// try to reduce the number of tracebacks
 		ResetTracebackFlags();
