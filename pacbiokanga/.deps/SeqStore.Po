@@ -1,12 +1,23 @@
-Utility.o: Utility.cpp /usr/include/stdc-predef.h stdafx.h commhdrs.h \
- /usr/include/x86_64-linux-gnu/sys/time.h /usr/include/features.h \
+SeqStore.o: SeqStore.cpp /usr/include/stdc-predef.h stdafx.h ../config.h \
+ /usr/include/x86_64-linux-gnu/sys/mman.h /usr/include/features.h \
  /usr/include/x86_64-linux-gnu/sys/cdefs.h \
  /usr/include/x86_64-linux-gnu/bits/wordsize.h \
  /usr/include/x86_64-linux-gnu/gnu/stubs.h \
  /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
  /usr/include/x86_64-linux-gnu/bits/types.h \
- /usr/include/x86_64-linux-gnu/bits/typesizes.h /usr/include/time.h \
+ /usr/include/x86_64-linux-gnu/bits/typesizes.h \
+ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
+ /usr/include/x86_64-linux-gnu/bits/mman.h \
+ /usr/include/x86_64-linux-gnu/bits/mman-linux.h /usr/include/pthread.h \
+ /usr/include/endian.h /usr/include/x86_64-linux-gnu/bits/endian.h \
+ /usr/include/x86_64-linux-gnu/bits/byteswap.h \
+ /usr/include/x86_64-linux-gnu/bits/byteswap-16.h /usr/include/sched.h \
+ /usr/include/time.h /usr/include/x86_64-linux-gnu/bits/sched.h \
  /usr/include/x86_64-linux-gnu/bits/time.h \
+ /usr/include/x86_64-linux-gnu/bits/timex.h /usr/include/xlocale.h \
+ /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
+ /usr/include/x86_64-linux-gnu/bits/setjmp.h ../libbiokanga/commhdrs.h \
+ ../libbiokanga/stdafx.h /usr/include/x86_64-linux-gnu/sys/time.h \
  /usr/include/x86_64-linux-gnu/sys/select.h \
  /usr/include/x86_64-linux-gnu/bits/select.h \
  /usr/include/x86_64-linux-gnu/bits/sigset.h \
@@ -14,18 +25,13 @@ Utility.o: Utility.cpp /usr/include/stdc-predef.h stdafx.h commhdrs.h \
  /usr/include/x86_64-linux-gnu/sys/times.h /usr/include/unistd.h \
  /usr/include/x86_64-linux-gnu/bits/posix_opt.h \
  /usr/include/x86_64-linux-gnu/bits/environments.h \
- /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
  /usr/include/x86_64-linux-gnu/bits/confname.h /usr/include/getopt.h \
  /usr/include/x86_64-linux-gnu/bits/unistd.h /usr/include/errno.h \
  /usr/include/x86_64-linux-gnu/bits/errno.h /usr/include/linux/errno.h \
  /usr/include/x86_64-linux-gnu/asm/errno.h \
  /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
  /usr/include/regex.h /usr/include/x86_64-linux-gnu/sys/types.h \
- /usr/include/endian.h /usr/include/x86_64-linux-gnu/bits/endian.h \
- /usr/include/x86_64-linux-gnu/bits/byteswap.h \
- /usr/include/x86_64-linux-gnu/bits/byteswap-16.h \
  /usr/include/x86_64-linux-gnu/sys/sysmacros.h \
- /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
  /usr/include/x86_64-linux-gnu/gnu/option-groups.h \
  /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdarg.h /usr/include/ftw.h \
  /usr/include/x86_64-linux-gnu/sys/stat.h \
@@ -42,10 +48,9 @@ Utility.o: Utility.cpp /usr/include/stdc-predef.h stdafx.h commhdrs.h \
  /usr/include/x86_64-linux-gnu/bits/fcntl.h \
  /usr/include/x86_64-linux-gnu/bits/fcntl-linux.h \
  /usr/include/x86_64-linux-gnu/bits/uio.h \
- /usr/include/x86_64-linux-gnu/bits/fcntl2.h \
- /usr/include/x86_64-linux-gnu/bits/timex.h /usr/include/xlocale.h \
- /usr/include/stdio.h /usr/include/libio.h /usr/include/_G_config.h \
- /usr/include/wchar.h /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
+ /usr/include/x86_64-linux-gnu/bits/fcntl2.h /usr/include/stdio.h \
+ /usr/include/libio.h /usr/include/_G_config.h /usr/include/wchar.h \
+ /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
  /usr/include/x86_64-linux-gnu/bits/sys_errlist.h \
  /usr/include/x86_64-linux-gnu/bits/stdio.h \
  /usr/include/x86_64-linux-gnu/bits/stdio2.h /usr/include/string.h \
@@ -63,32 +68,42 @@ Utility.o: Utility.cpp /usr/include/stdc-predef.h stdafx.h commhdrs.h \
  /usr/include/x86_64-linux-gnu/bits/posix2_lim.h \
  /usr/include/x86_64-linux-gnu/bits/xopen_lim.h \
  /usr/lib/gcc/x86_64-linux-gnu/4.8/include/float.h /usr/include/assert.h \
- conservlib.h commdefs.h argtable2.h StopWatch.h ErrorCodes.h Endian.h \
- Conformation.h SeqTrans.h Diagnostics.h MTqsort.h Fasta.h zlib/zlib.h \
- zlib/zconf.h BEDfile.h BioSeqFile.h HashFile.h RsltsFile.h DataPoints.h \
- MAlignFile.h Twister.h SfxArray.h SfxArrayV2.h SmithWaterman.h \
- NeedlemanWunsch.h CVS2BED.h AlignValidate.h Random.h Utility.h Stats.h \
- Shuffle.h GOAssocs.h GOTerms.h SimpleRNG.h zlib/zlib.h SAMfile.h bgzf.h \
- ../config.h /usr/include/x86_64-linux-gnu/sys/mman.h \
- /usr/include/x86_64-linux-gnu/bits/mman.h \
- /usr/include/x86_64-linux-gnu/bits/mman-linux.h /usr/include/pthread.h \
- /usr/include/sched.h /usr/include/x86_64-linux-gnu/bits/sched.h \
- /usr/include/x86_64-linux-gnu/bits/setjmp.h zlib/zlib.h ConfSW.h \
- Centroid.h CSVFile.h sais.h HyperEls.h FilterRefIDs.h FilterLoci.h \
- FeatLoci.h SimpleGlob.h /usr/include/glob.h \
- /usr/include/x86_64-linux-gnu/bits/wchar.h \
- /usr/include/x86_64-linux-gnu/bits/wchar2.h Contaminants.h \
- ProcRawReads.h GTFFile.h GFFFile.h sqlite3.h \
- /usr/include/x86_64-linux-gnu/sys/resource.h \
- /usr/include/x86_64-linux-gnu/bits/resource.h
+ ../libbiokanga/./conservlib.h ../libbiokanga/././commdefs.h \
+ ../libbiokanga/././argtable2.h ../libbiokanga/././StopWatch.h \
+ ../libbiokanga/././ErrorCodes.h ../libbiokanga/././Endian.h \
+ ../libbiokanga/././Conformation.h ../libbiokanga/././SeqTrans.h \
+ ../libbiokanga/././Diagnostics.h ../libbiokanga/././MTqsort.h \
+ ../libbiokanga/././Fasta.h ../libbiokanga/./././zlib/zlib.h \
+ ../libbiokanga/./././zlib/zconf.h ../libbiokanga/././BEDfile.h \
+ ../libbiokanga/././BioSeqFile.h ../libbiokanga/././HashFile.h \
+ ../libbiokanga/././RsltsFile.h ../libbiokanga/././DataPoints.h \
+ ../libbiokanga/././MAlignFile.h ../libbiokanga/././Twister.h \
+ ../libbiokanga/././SfxArray.h ../libbiokanga/././SfxArrayV2.h \
+ ../libbiokanga/././SmithWaterman.h ../libbiokanga/././NeedlemanWunsch.h \
+ ../libbiokanga/././CVS2BED.h ../libbiokanga/././AlignValidate.h \
+ ../libbiokanga/././Random.h ../libbiokanga/././Utility.h \
+ ../libbiokanga/././Stats.h ../libbiokanga/././Shuffle.h \
+ ../libbiokanga/././GOAssocs.h ../libbiokanga/././GOTerms.h \
+ ../libbiokanga/././SimpleRNG.h ../libbiokanga/././zlib/zlib.h \
+ ../libbiokanga/././SAMfile.h ../libbiokanga/./././bgzf.h \
+ ../libbiokanga/././././zlib/zlib.h ../libbiokanga/././ConfSW.h \
+ ../libbiokanga/././Centroid.h ../libbiokanga/././CSVFile.h \
+ ../libbiokanga/././sais.h ../libbiokanga/././HyperEls.h \
+ ../libbiokanga/././FilterRefIDs.h ../libbiokanga/././FilterLoci.h \
+ ../libbiokanga/././FeatLoci.h ../libbiokanga/././SimpleGlob.h \
+ /usr/include/glob.h /usr/include/x86_64-linux-gnu/bits/wchar.h \
+ /usr/include/x86_64-linux-gnu/bits/wchar2.h \
+ ../libbiokanga/././Contaminants.h ../libbiokanga/././ProcRawReads.h \
+ ../libbiokanga/././GTFFile.h ../libbiokanga/././GFFFile.h \
+ ../libbiokanga/././sqlite3.h pacbiokanga.h SQLiteSummaries.h SeqStore.h
 
 /usr/include/stdc-predef.h:
 
 stdafx.h:
 
-commhdrs.h:
+../config.h:
 
-/usr/include/x86_64-linux-gnu/sys/time.h:
+/usr/include/x86_64-linux-gnu/sys/mman.h:
 
 /usr/include/features.h:
 
@@ -104,9 +119,43 @@ commhdrs.h:
 
 /usr/include/x86_64-linux-gnu/bits/typesizes.h:
 
+/usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h:
+
+/usr/include/x86_64-linux-gnu/bits/mman.h:
+
+/usr/include/x86_64-linux-gnu/bits/mman-linux.h:
+
+/usr/include/pthread.h:
+
+/usr/include/endian.h:
+
+/usr/include/x86_64-linux-gnu/bits/endian.h:
+
+/usr/include/x86_64-linux-gnu/bits/byteswap.h:
+
+/usr/include/x86_64-linux-gnu/bits/byteswap-16.h:
+
+/usr/include/sched.h:
+
 /usr/include/time.h:
 
+/usr/include/x86_64-linux-gnu/bits/sched.h:
+
 /usr/include/x86_64-linux-gnu/bits/time.h:
+
+/usr/include/x86_64-linux-gnu/bits/timex.h:
+
+/usr/include/xlocale.h:
+
+/usr/include/x86_64-linux-gnu/bits/pthreadtypes.h:
+
+/usr/include/x86_64-linux-gnu/bits/setjmp.h:
+
+../libbiokanga/commhdrs.h:
+
+../libbiokanga/stdafx.h:
+
+/usr/include/x86_64-linux-gnu/sys/time.h:
 
 /usr/include/x86_64-linux-gnu/sys/select.h:
 
@@ -123,8 +172,6 @@ commhdrs.h:
 /usr/include/x86_64-linux-gnu/bits/posix_opt.h:
 
 /usr/include/x86_64-linux-gnu/bits/environments.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h:
 
 /usr/include/x86_64-linux-gnu/bits/confname.h:
 
@@ -148,17 +195,7 @@ commhdrs.h:
 
 /usr/include/x86_64-linux-gnu/sys/types.h:
 
-/usr/include/endian.h:
-
-/usr/include/x86_64-linux-gnu/bits/endian.h:
-
-/usr/include/x86_64-linux-gnu/bits/byteswap.h:
-
-/usr/include/x86_64-linux-gnu/bits/byteswap-16.h:
-
 /usr/include/x86_64-linux-gnu/sys/sysmacros.h:
-
-/usr/include/x86_64-linux-gnu/bits/pthreadtypes.h:
 
 /usr/include/x86_64-linux-gnu/gnu/option-groups.h:
 
@@ -201,10 +238,6 @@ commhdrs.h:
 /usr/include/x86_64-linux-gnu/bits/uio.h:
 
 /usr/include/x86_64-linux-gnu/bits/fcntl2.h:
-
-/usr/include/x86_64-linux-gnu/bits/timex.h:
-
-/usr/include/xlocale.h:
 
 /usr/include/stdio.h:
 
@@ -264,113 +297,97 @@ commhdrs.h:
 
 /usr/include/assert.h:
 
-conservlib.h:
+../libbiokanga/./conservlib.h:
 
-commdefs.h:
+../libbiokanga/././commdefs.h:
 
-argtable2.h:
+../libbiokanga/././argtable2.h:
 
-StopWatch.h:
+../libbiokanga/././StopWatch.h:
 
-ErrorCodes.h:
+../libbiokanga/././ErrorCodes.h:
 
-Endian.h:
+../libbiokanga/././Endian.h:
 
-Conformation.h:
+../libbiokanga/././Conformation.h:
 
-SeqTrans.h:
+../libbiokanga/././SeqTrans.h:
 
-Diagnostics.h:
+../libbiokanga/././Diagnostics.h:
 
-MTqsort.h:
+../libbiokanga/././MTqsort.h:
 
-Fasta.h:
+../libbiokanga/././Fasta.h:
 
-zlib/zlib.h:
+../libbiokanga/./././zlib/zlib.h:
 
-zlib/zconf.h:
+../libbiokanga/./././zlib/zconf.h:
 
-BEDfile.h:
+../libbiokanga/././BEDfile.h:
 
-BioSeqFile.h:
+../libbiokanga/././BioSeqFile.h:
 
-HashFile.h:
+../libbiokanga/././HashFile.h:
 
-RsltsFile.h:
+../libbiokanga/././RsltsFile.h:
 
-DataPoints.h:
+../libbiokanga/././DataPoints.h:
 
-MAlignFile.h:
+../libbiokanga/././MAlignFile.h:
 
-Twister.h:
+../libbiokanga/././Twister.h:
 
-SfxArray.h:
+../libbiokanga/././SfxArray.h:
 
-SfxArrayV2.h:
+../libbiokanga/././SfxArrayV2.h:
 
-SmithWaterman.h:
+../libbiokanga/././SmithWaterman.h:
 
-NeedlemanWunsch.h:
+../libbiokanga/././NeedlemanWunsch.h:
 
-CVS2BED.h:
+../libbiokanga/././CVS2BED.h:
 
-AlignValidate.h:
+../libbiokanga/././AlignValidate.h:
 
-Random.h:
+../libbiokanga/././Random.h:
 
-Utility.h:
+../libbiokanga/././Utility.h:
 
-Stats.h:
+../libbiokanga/././Stats.h:
 
-Shuffle.h:
+../libbiokanga/././Shuffle.h:
 
-GOAssocs.h:
+../libbiokanga/././GOAssocs.h:
 
-GOTerms.h:
+../libbiokanga/././GOTerms.h:
 
-SimpleRNG.h:
+../libbiokanga/././SimpleRNG.h:
 
-zlib/zlib.h:
+../libbiokanga/././zlib/zlib.h:
 
-SAMfile.h:
+../libbiokanga/././SAMfile.h:
 
-bgzf.h:
+../libbiokanga/./././bgzf.h:
 
-../config.h:
+../libbiokanga/././././zlib/zlib.h:
 
-/usr/include/x86_64-linux-gnu/sys/mman.h:
+../libbiokanga/././ConfSW.h:
 
-/usr/include/x86_64-linux-gnu/bits/mman.h:
+../libbiokanga/././Centroid.h:
 
-/usr/include/x86_64-linux-gnu/bits/mman-linux.h:
+../libbiokanga/././CSVFile.h:
 
-/usr/include/pthread.h:
+../libbiokanga/././sais.h:
 
-/usr/include/sched.h:
+../libbiokanga/././HyperEls.h:
 
-/usr/include/x86_64-linux-gnu/bits/sched.h:
+../libbiokanga/././FilterRefIDs.h:
 
-/usr/include/x86_64-linux-gnu/bits/setjmp.h:
+../libbiokanga/././FilterLoci.h:
 
-zlib/zlib.h:
+../libbiokanga/././FeatLoci.h:
 
-ConfSW.h:
-
-Centroid.h:
-
-CSVFile.h:
-
-sais.h:
-
-HyperEls.h:
-
-FilterRefIDs.h:
-
-FilterLoci.h:
-
-FeatLoci.h:
-
-SimpleGlob.h:
+../libbiokanga/././SimpleGlob.h:
 
 /usr/include/glob.h:
 
@@ -378,16 +395,18 @@ SimpleGlob.h:
 
 /usr/include/x86_64-linux-gnu/bits/wchar2.h:
 
-Contaminants.h:
+../libbiokanga/././Contaminants.h:
 
-ProcRawReads.h:
+../libbiokanga/././ProcRawReads.h:
 
-GTFFile.h:
+../libbiokanga/././GTFFile.h:
 
-GFFFile.h:
+../libbiokanga/././GFFFile.h:
 
-sqlite3.h:
+../libbiokanga/././sqlite3.h:
 
-/usr/include/x86_64-linux-gnu/sys/resource.h:
+pacbiokanga.h:
 
-/usr/include/x86_64-linux-gnu/bits/resource.h:
+SQLiteSummaries.h:
+
+SeqStore.h:

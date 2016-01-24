@@ -12,7 +12,7 @@ const UINT32 cMaxKMerSeqHashArrayEntries = (cKMerSeqHashMask + 1);  // alloc has
 
 const size_t cWorkThreadStackSize = (1024*1024*2);					// working threads (can be multiple) stack size
 
-const int cMinAceptSeqLen = 70;			// user can specify that reads must be of at least this min length after any end trimming to be further processed
+const int cMinAceptSeqLen = 50;			// user can specify that reads must be of at least this min length after any end trimming to be further processed
 const int cDfltAceptSeqLen = 80;		// default is that reads must be of at least this min length after any end trimming
 const int cMaxAceptSeqLen = 500;		// user can specify that reads must be of at least this min length after any end trimming
 
@@ -174,7 +174,7 @@ public:
 			int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
 			int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
 			int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
-			int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..10000)
+			int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 			int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
 			int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 			int MinFlankLen,				// non-overlapping flank must be at least this length (defults to 15%% of mean read length if 0, else range 1bp to 25bp, only applies if overlap processing)

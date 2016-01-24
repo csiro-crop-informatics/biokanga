@@ -104,7 +104,7 @@ struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - 
 
 struct arg_int *subs100bp = arg_int0("s","maxsubs100bp","<int>", "allow max induced substitutions per 100bp overlapping sequence fragments (defaults to 0, range 1..5)");
 struct arg_int *end12subs = arg_int0("E","maxendsubs","<int>",   "allow max induced substitutions in overlap 12bp ends (defaults to 0, range 0..6)");
-struct arg_int *minpereadlen = arg_int0("L", "minpereadlen", "<int>", "min length of any PE read (defaults to 90, range 30..5000)");
+struct arg_int *minpereadlen = arg_int0("L", "minpereadlen", "<int>", "min length of any PE read (defaults to 80, range 30..5000)");
 
 struct arg_int *minpeinsertsize = arg_int0("p","minpeinsert","<int>","minimum PE insert size (default 110, range 100..50000)");
 struct arg_int *maxpeinsertsize = arg_int0("P","maxpeinsert","<int>","maximum PE insert size (default 1000, range minpeinsert..50000)");

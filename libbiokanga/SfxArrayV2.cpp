@@ -6498,13 +6498,6 @@ if(CurStrand == '-')									// restore probe sequence if had started processing
 			CSeqTrans::ReverseComplement(ProbeLen,pProbeSeq);
 
 
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
-
-
 if(BestScoreInstances == 0)
 	return(eHRnone);			// return no matches
 
@@ -6533,12 +6526,6 @@ for(Idx = 0; Idx < min(MaxHits,BestScoreInstances); Idx++,pCurHit++)
 *pLowHitInstances = BestScoreInstances;
 *pLowMMCnt = pHits->Seg[0].Mismatches + pHits->Seg[1].Mismatches;
 *pNxtLowMMCnt = *pLowMMCnt+2;
-
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 
 return(BestScoreInstances <= MaxHits ? eHRhits : eHRnone);
 }
@@ -6854,13 +6841,6 @@ for(Idx = 0; Idx < min(MaxHits,BestScoreInstances); Idx++,pCurHit++)
 *pLowHitInstances = min(MaxHits,BestScoreInstances);
 *pLowMMCnt = pHits->Seg[0].Mismatches + pHits->Seg[1].Mismatches;
 *pNxtLowMMCnt = *pLowMMCnt+2;
-
-
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 
 return(BestScoreInstances <= MaxHits ? eHRhits : eHRnone);
 }

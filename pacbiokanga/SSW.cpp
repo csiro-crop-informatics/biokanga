@@ -416,7 +416,6 @@ CSSW::PreAllocMaxTargLen( UINT32 MaxTargLen,			// preallocate to process targets
 						  UINT32 MaxOverlapLen)			// allocating tracebacks for this maximal expected overlap, 0 if no tracebacks required			
 {
 UINT64 MaxAllocdTracebacks;
-
 if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 5)))  // allowing a few additional cells to reduce potential for reallocations required
 	{
 	if(m_pAllocdCells != NULL)
@@ -431,7 +430,7 @@ if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 5)))  // allowing a 
 		m_AllocdCells = 0;
 		m_AllocdCellSize = 0;
 		}
-	m_AllocdCells = (UINT32)( ((UINT64)MaxTargLen * 105) / 100);		// a little extra safety margin and saves on potential for reallocations required
+	m_AllocdCells = (UINT32)( ((UINT64)MaxTargLen * 11) / 10);		// a little extra safety margin and saves on potential for reallocations required
 	m_AllocdCellSize = sizeof(tsSSWCell) * m_AllocdCells;
 #ifdef _WIN32
 	m_pAllocdCells = (tsSSWCell *) malloc(m_AllocdCellSize);
@@ -462,7 +461,7 @@ if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 5)))  // allowing a 
 
 if(MaxOverlapLen > 0)
 	{
-    MaxAllocdTracebacks = min(MaxOverlapLen * (UINT64)4000, (UINT64)(0x7fff0000 / 8));
+    MaxAllocdTracebacks = min(MaxOverlapLen * (UINT64)7000, (UINT64)(0x7fff0000 / 8));
 
 	if(m_pAllocdTracebacks != NULL && (MaxAllocdTracebacks + 5) >  m_AllocdTracebacks)
 		{
@@ -613,6 +612,7 @@ CSSW::InitiateTraceback(UINT32 IdxP, UINT32 IdxT)
 {
 UINT64 UsedTracebacks;
 tsSSWTraceback *pCur;
+
 if(IdxP == 0 || IdxT == 0 || (UsedTracebacks = m_UsedTracebacks) == 0 || m_AllocdTracebacks == 0 || m_pAllocdTracebacks == NULL)
 	return(NULL);
 pCur = &m_pAllocdTracebacks[UsedTracebacks-1];
@@ -832,9 +832,16 @@ if(m_ProbeRelLen == 0)
 else
 	ProbeRelLen = m_ProbeRelLen;
 if(m_TargRelLen == 0)
-	TargRelLen = m_TargLen - m_ProbeStartRelOfs;
+	TargRelLen = m_TargLen - m_TargStartRelOfs;
 else
 	TargRelLen = m_TargRelLen;
+
+if(m_TargRelLen > m_TargLen || m_ProbeRelLen > m_ProbeLen)
+	{
+	gDiagnostics.DiagOut(eDLWarn, gszProcName, "Align: m_TargRelLen: %u m_TargLen: %u m_ProbeRelLen: %u m_ProbeLen: %u",
+				m_TargRelLen,m_TargLen,m_ProbeRelLen,m_ProbeLen);
+	return(NULL);
+	}
 
 memset(&m_PeakMatchesCell,0,sizeof(m_PeakMatchesCell));
 memset(&m_PeakScoreCell,0,sizeof(m_PeakScoreCell));
@@ -842,7 +849,10 @@ memset(&m_PeakScoreCell,0,sizeof(m_PeakScoreCell));
 // allocating to hold full length even if relative length a lot shorter to reduce number of reallocations which may be subsequently required
 if(((m_AllocdCells + 5 < m_TargLen) || (!bNoTracebacks && m_pAllocdTracebacks == NULL)) &&  
 	!PreAllocMaxTargLen(m_TargLen,MaxOverlapLen))
+	{
+	gDiagnostics.DiagOut(eDLWarn, gszProcName, "Align: unable to PreAllocMaxTargLen(%u,%u)", m_TargLen,MaxOverlapLen);
 	return(NULL);
+	}
 
 if(!bNoTracebacks && m_pAllocdTracebacks != NULL)
 	memset(m_pAllocdTracebacks,0,sizeof(tsSSWTraceback));
@@ -887,7 +897,13 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 		ReduceTracebacks(cTrBkFlgRetain,cTrBkFlgRetain);
 		if((m_UsedTracebacks + 10) > (m_AllocdTracebacks - TargRelLen))
 			{
-			trbsreq = (m_AllocdTracebacks + (TargRelLen * 4000));
+			trbsreq = min((m_AllocdTracebacks + (TargRelLen * 6000)), (UINT64)(0x7fff0000 / 8));
+			if(trbsreq <= m_AllocdTracebacks)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Align: too many traceback cells required");
+				return(NULL);
+				}
+
 			memreq = (size_t)trbsreq * sizeof(tsSSWTraceback);
 
 #ifdef _WIN32
@@ -917,11 +933,17 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 	NxtMinIdxT = 0;
 	memset(&LeftCell, 0, sizeof(tsSSWCell));
 	memset(&DiagCell, 0, sizeof(tsSSWCell));
+	if(CurMinIdxT >= m_AllocdCells || CurMaxIdxT >= m_AllocdCells)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Align: Allocated for %u Cells but CurMinIdxT is %u and CurMaxIdxT is %u",m_AllocdCells,CurMinIdxT,CurMaxIdxT);
+		return(NULL);
+		}
+
 	pCell = &m_pAllocdCells[CurMinIdxT];
 	pTarg = &m_pTarg[m_TargStartRelOfs + CurMinIdxT];
 	for(IdxT = CurMinIdxT; IdxT < CurMaxIdxT; IdxT++,pCell++)
 		{
-		if (pCell->StartPOfs != 0 && IdxP >(UINT32)m_MaxInitiatePathOfs && NxtMinIdxT == 0)	
+		if (pCell->StartPOfs != 0 && IdxP >(UINT32)m_MaxInitiatePathOfs && NxtMinIdxT == 0 && IdxT > 0)	
 			NxtMinIdxT = IdxT - 1;
 
 		// if m_MaxOverlapStartOfs > 0 then only starting new paths if within that max offset
@@ -2195,7 +2217,7 @@ for(DepthIdx = 0; DepthIdx < m_MACoverage; DepthIdx++)
 return(BuffOfs);
 }
 
-int
+int     // eBSFSuccess if no errors otherwise either eBSFerrParams or eBSFerrMem
 CSSW::StartMultiAlignments(int SeqLen,		// probe sequence is this length
 					etSeqBase *pProbeSeq,	// probe sequence 
 					int Alignments)			// number of pairwise alignments to allocate for
@@ -2209,12 +2231,12 @@ m_MADepth = 0;
 m_MACoverage = 0;
 
 if(Alignments < 2 || Alignments > 200 || SeqLen < 50 || pProbeSeq == NULL)
-	return(0);
+	return(eBSFerrParams);
 
 m_MAProbeSeqLen = SeqLen;
-m_MAColSize = (sizeof(tsMAlignCol) + Alignments);
-memreq = (size_t)m_MAColSize * SeqLen * 2; // allocate to hold at least SeqLen columns with Depth bases and a 2x overallocation to reduce chances of a reallocation later on as sequence insertions are discovered
-if(m_pMACols == NULL || memreq > m_AllocMAColsSize)
+m_MAColSize = (sizeof(tsMAlignCol) + Alignments + 1);
+memreq = (size_t)m_MAColSize * SeqLen * 3; // allocate to hold at least SeqLen columns with Depth bases and a 3x overallocation to reduce chances of a reallocation later on as sequence insertions are discovered
+if(m_pMACols == NULL || (memreq + 10000) > m_AllocMAColsSize)
 	{
 	if(m_pMACols != NULL)
 		{
@@ -2464,8 +2486,11 @@ for(WinScoreIdx = 1; WinScoreIdx < m_NumWinScores; WinScoreIdx+=1,pWinScore+=1 )
 		MinWinScore = CurWinScore;
 	}
 MeanWinScore = (int)(SumWinScores / m_NumWinScores);
+
 if(MaxWinScore > (MeanWinScore * (MaxArtefactDev + 100))/100 || (MinWinScore * (MaxArtefactDev + 100))/100 < MeanWinScore)	
 	return(1);			// classify as being artefact
+
+
 return(0);
 }
 
@@ -2557,6 +2582,7 @@ CSSW::AddMultiAlignment(UINT32 ProbeStartOfs,		// alignment starts at this probe
 					  UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset inclusive
 					  UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
 					  UINT32 TargEndOfs,			// alignment ends at this target sequence offset inclusive
+						UINT32 TargSeqLen,			// target sequence length
 					  etSeqBase *pTargSeq)			// alignment target sequence
 {
 tMAOp Op;
@@ -2688,7 +2714,8 @@ do
 			NumIndelCols = 1 + pInDelEndCol->Extn -pInDelStartCol->Extn; 
 			if(NumIndelCols >= 2)			// obtain parsimonious alignments only if InDel is at least 2bp long
 				{
-				ParsimoniousMultialign(pInDelEndCol->Depth,	NumIndelCols, pInDelStartCol);
+				if(ParsimoniousMultialign(pInDelEndCol->Depth,	NumIndelCols, pInDelStartCol) < 0.0)
+					return(0);
 				}
 			pInDelStartCol = NULL;
 			pInDelEndCol = NULL;
@@ -3091,7 +3118,12 @@ if(SeqLen >= 6)
 			}
 		}
 	if(NxtLongestSeqLen == 0 || NxtLongestSeqLen >= cMaxParsimoniousAlignLen)
-		return(-1.0);
+		{
+		if(NumSeqs >= 3 && LongestSeqLen > 0 && NxtLongestSeqLen == 0) // could be that only one of the sequences had an insert relative to the other sequences
+			return(min(1.0,(NumSeqs-1) * 0.3));		// so can have confidence if there were >= 2 other sequences
+
+		return(LongestSeqLen > 0 ? 0.0 : -1.0);
+		}
 
 	TrimSeqLen = min(cMaxParsimoniousAlignLen,LongestSeqLen);
 	if(NxtLongestSeqLen < TrimSeqLen / 2)
@@ -3326,7 +3358,7 @@ for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 return(PeakParsimonyFactor);
 }
 
-double												// parsimony of multiple alignment, 0 (min) to 1.0 (max) 
+double												// parsimony of multiple alignment, 0 (min) to 1.0 (max), -1.0 if errors
 CSSW::ParsimoniousMultialign(int Depth,				// parsimony for this number of bases in each column
 							int NumCols,			// alignment parsimony over this many columns
 							tsMAlignCol *pInDelStartCol) // starting at this column
@@ -3340,12 +3372,18 @@ int ConcatSeqLen;
 etSeqBase *pParsimoniousBase;
 
 ConcatSeqLen = NumCols * Depth;
-if(m_pParsimoniousBuff == NULL || (ConcatSeqLen + 10) > m_AllocParsimoniousSize)
+if(m_pParsimoniousBuff == NULL || (ConcatSeqLen + 500) > m_AllocParsimoniousSize)
 	{
 	if(m_pParsimoniousBuff != NULL)
 		delete m_pParsimoniousBuff;
 	m_AllocParsimoniousSize = ConcatSeqLen + 1000;
 	m_pParsimoniousBuff = new etSeqBase [m_AllocParsimoniousSize];
+	if(m_pParsimoniousBuff == NULL)
+		{
+		m_AllocParsimoniousSize = 0;
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %d bytes memory for m_pParsimoniousBuff",m_AllocParsimoniousSize);
+		return(-1.0);
+		}
 	}
 
 ColIdx = 0;
@@ -3358,7 +3396,9 @@ do {
 	if(ColIdx == NumCols || pCol->NxtColIdx == 0)
 		pCol = NULL;
 	else
+		{
 		pCol = (tsMAlignCol *)&m_pMACols[(pCol->NxtColIdx - 1) * (size_t)m_MAColSize];
+		}
 	}
 while(pCol != NULL);
 

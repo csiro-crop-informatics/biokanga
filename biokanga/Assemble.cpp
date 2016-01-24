@@ -83,6 +83,9 @@ int NumThreads;				// number of threads (0 defaults to number of CPUs)
 bool bAffinity;				// thread to core affinity
 
 int PMode;					// processing mode, currently either eAMEAssemble (default), eAMESAssemble (stringent) or eAMQAssemble (quick)
+
+bool bNoAutoOvlp;           // if false then using overlap threshold defaults derived from estimated sequence lengths; true to use hard coded defaults
+
 int TrimEnds;				// trim input sequences, both 5' and 3' ends by this many bases
 int MinSeqLen;				// only accept input sequences which are of at least this length after any trimming
 int TrimPE2SE;				// trim PEs both 5' and 3' ends by this many bases before treating as SE
@@ -127,8 +130,10 @@ struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file"
 
 struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - standard, 1 - higher stringency, 2 - quick de Novo assembly");
 
+struct arg_lit  *noautoovlp = arg_lit0("l", "noautoovlp",		"if not specified then using overlap threshold defaults derived from estimated sequence lengths; otherwise use hard coded defaults");
+
 struct arg_int *trimends = arg_int0("t","trimends","<int>",     "when loading reads or high confidence seed contigs then trim 5' and 3' ends by this many bases (default 0, range 1..50)");
-struct arg_int *minseqlen = arg_int0("X","minseqlen","<int>",   "only accept reads or high confidence seed contigs, after any trimming, of at least this length (default 70, range 60..500)");
+struct arg_int *minseqlen = arg_int0("X","minseqlen","<int>",   "only accept reads or high confidence seed contigs, after any trimming, of at least this length (default 70, range 50..500)");
 
 struct arg_int *trimpe2se = arg_int0("x","trimpe2se","<int>",	"trim PEs both 5' and 3' ends by this many bases when treating as SE (default 10, range 0..50)");
 
@@ -142,9 +147,9 @@ struct arg_int *initseovlp = arg_int0("j","initseovlp","<int>",   "initial minim
 struct arg_int *finseovlp = arg_int0("J","finseovlp","<int>",     "final minimal SE overlap required to merge SEs (defaults to 25, range 20..initseovlp)");
 struct arg_int *initpeovlp = arg_int0("k","initpeovlp","<int>",  "initial minimal PE total sum of end overlaps required to merge PEs (defaults to 150, range 35..200)");
 struct arg_int *finpeovlp = arg_int0("K","finpeovlp","<int>",    "final minimal PE total sum of end overlaps required to merge PEs (defaults to 35, range 35..initpeovlp)");
-struct arg_int *minpe2seovlp = arg_int0("g","minpe2seovlp","<int>", "minimal overlap of PE1 onto PE2 required to merge as SE (defaults to 20, range 15..100)");
+struct arg_int *minpe2seovlp = arg_int0("g","minpe2seovlp","<int>", "minimal overlap of PE1 onto PE2 required to merge as SE (defaults to 20, range 16..100)");
 struct arg_int *reducethressteps = arg_int0("r","reducethressteps","<int>", "reduce overlap thresholds over this many steps (defaults: 3 quick, 5 standard, 8 stringent assemble, range 2..10)");
-struct arg_int  *pe2sesteps = arg_int0("R","pe2sesteps","<int>",   "when less or equal to this threshold steps then treat PE1 and PE2 as individual SE sequences if excessive lengths (defaults to 2, set 0 to disable)");
+struct arg_int  *pe2sesteps = arg_int0("R","pe2sesteps","<int>",   "when less or equal to this remaining threshold steps then treat PE1 and PE2 as individual SE sequences if excessive lengths (defaults to 2, set 0 to disable)");
 
 struct arg_int *passthres = arg_int0("P","passthres","<int>",   "de Novo assembly process pass threshold at which to start writing intermediate checkpoint assemblies (defaults to 0, only write completed assemblies)");
 struct arg_int *maxpasses = arg_int0("p","maxpasses","<int>",   "limit number of de Novo assembly processing passes to this maximum (defaults: standard 50, stringent 75, quick 30) range 20..10000");
@@ -171,7 +176,7 @@ struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-	                pmode,trimends,minseqlen,trimpe2se,allowse2pe,sensestrandonly,singleended,maxpasses,reducethressteps,passthres,subs100bp,end12subs,
+	                pmode,noautoovlp,trimends,minseqlen,trimpe2se,allowse2pe,sensestrandonly,singleended,maxpasses,reducethressteps,passthres,subs100bp,end12subs,
 					initseovlp,finseovlp,initpeovlp,finpeovlp,minpe2seovlp,pe2sesteps,
 					orientatepe,inpe1file,inpe2file,seedcontigsfile,inartreducfile,outfile,
 					summrslts,experimentname,experimentdescr,
@@ -317,21 +322,191 @@ if (!argerrors)
 		return(1);
 		}
 
+	bNoAutoOvlp = noautoovlp->count ? true : false;
+
+	// can have various combinations of input files
+	// if pe inputs then both 5' and 3' files must be specified
+	// se file is optional
+	// packed reads file is optional
+	// BUT at least one of PE or SE or Packed must be specified
+	if (inartreducfile->count)
+		{
+		strcpy(szInArtReducfile, inartreducfile->filename[0]);
+		CUtility::TrimQuotedWhitespcExtd(szInArtReducfile);
+		}
+	else
+		szInArtReducfile[0] = '\0';
+
+	if (inpe1file->count)
+		{
+		strcpy(szPE1File, inpe1file->filename[0]);
+		CUtility::TrimQuotedWhitespcExtd(szPE1File);
+		}
+	else
+		szPE1File[0] = '\0';
+
+	if (inpe2file->count)
+		{
+		strcpy(szPE2File, inpe2file->filename[0]);
+		CUtility::TrimQuotedWhitespcExtd(szPE2File);
+		}
+	else
+		szPE2File[0] = '\0';
+	if ((szPE1File[0] == '\0' && szPE2File[0] != '\0') ||
+		(szPE1File[0] != '\0' && szPE2File[0] == '\0'))
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: If either PE previously assembled fragments file specified then both PE files must be specified");
+		return(1);
+		}
+
+	if (seedcontigsfile->count)
+		{
+		strcpy(szSeedContigsFile, seedcontigsfile->filename[0]);
+		CUtility::TrimQuotedWhitespcExtd(szSeedContigsFile);
+		}
+	else
+		szSeedContigsFile[0] = '\0';
+
+	// check that if artifact reduced is specified then the PE files are not allowed to also be specified
+	if (szInArtReducfile[0] != '\0')
+		{
+		if (szPE1File[0] != '\0')
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: If artefact reduced file '-i%s' specified then PE1/PE2 can't also be specified", szInArtReducfile);
+			return(1);
+			}
+		}
+
+	// check that PE and/or SE and/or Packed have been specified
+	if (szPE1File[0] == '\0' && szInArtReducfile[0] == '\0' && szSeedContigsFile[0] == '\0')
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: At least one of PE '-a and -A' or SE '-c' or artefact reduced packed '-i' files must be specified");
+		return(1);
+		}
+
+	if (!outfile->count)
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Expected output file '-o<outfile>' to be specified");
+		return(1);
+		}
+	strncpy(szOutFile, outfile->filename[0], _MAX_PATH);
+	szOutFile[_MAX_PATH - 1] = '\0';
+
+
+
+	TrimEnds = 0;
+	MinSeqLen = 70;
+	TrimPE2SE = 10;
+	InitPEOvlp = cDfltInitPEOvlp;
+	FinPEOvlp = cDfltFinPEOvlp;
+	MinPE2SEOvlp = cDfltMinPE1PE2ToSEOvlp;
+	InitSEOvlp = cDfltInitSEOvlp;
+	FinSEOvlp = cDfltFinSEOvlp;
+
+	if(!bNoAutoOvlp)
+		{
+		CFasta Fasta;
+		UINT32 PE1EstNumSeqs;
+		INT32 PE1EstMaxSeqLen;
+		INT32 PE1EstMeanSeqLen;
+		UINT32 PE2EstNumSeqs;
+		INT32 PE2EstMaxSeqLen;
+		INT32 PE2EstMeanSeqLen;
+		UINT32 SEEstNumSeqs;
+		INT32 SEEstMaxSeqLen;
+		INT32 SEEstMeanSeqLen;
+
+		PE1EstNumSeqs = 0;
+		PE1EstMaxSeqLen = 0;
+		PE1EstMeanSeqLen = 0;
+		PE2EstNumSeqs = 0;
+		PE2EstMaxSeqLen = 0;
+		PE2EstMeanSeqLen = 0;
+		SEEstNumSeqs = 0;
+		SEEstMaxSeqLen = 0;
+		SEEstMeanSeqLen = 0;
+		if(szPE1File[0] != '\0')
+			{
+			if((PE1EstNumSeqs = Fasta.FastaEstSizes(szPE1File,NULL,NULL,NULL,&PE1EstMaxSeqLen,&PE1EstMeanSeqLen)) == 0)
+				{
+				gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Unable to estimate sequence sizes for PE1 file: '%s'", szPE1File);
+				return(1);
+                }
+
+			if((PE2EstNumSeqs = Fasta.FastaEstSizes(szPE1File, NULL, NULL, NULL, &PE2EstMaxSeqLen, &PE2EstMeanSeqLen)) == 0)
+				{
+				gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Unable to estimate sequence sizes for PE2 file: '%s'", szPE2File);
+				return(1);
+				}
+
+			MinSeqLen = (80 * (PE1EstMeanSeqLen + PE2EstMeanSeqLen)) / 200;  // use 80% of mean sequence lengths as the default minimum
+			if(MinSeqLen < 50)
+				MinSeqLen = 50;
+			else
+				if(MinSeqLen > 500)
+					MinSeqLen = 500;
+
+			TrimPE2SE = min(MinSeqLen / 20, 50);							// trimming by 5% of sequence length9
+
+			InitPEOvlp = max(cMinPEOvlp,(80 * (PE1EstMeanSeqLen + PE2EstMeanSeqLen)) / 100);       // requiring initially 80% overlap summed over both ends
+			if(InitPEOvlp > cMaxPEOvlp)
+				InitPEOvlp = cMaxPEOvlp;
+
+
+			FinPEOvlp = max(cMinPEOvlp, (30 * (PE1EstMeanSeqLen + PE2EstMeanSeqLen)) / 100);		// requiring finally 30% overlap summed over both ends
+			if (FinPEOvlp > InitPEOvlp)
+				FinPEOvlp = InitPEOvlp;
+		
+			MinPE2SEOvlp = max(16,MinSeqLen / 4);
+			if(MinPE2SEOvlp > 100)
+				MinPE2SEOvlp = 100;
+		
+			InitSEOvlp = (1 + PE1EstMeanSeqLen + PE2EstMeanSeqLen) / 2;
+
+			}
+		else
+			{
+			if (szSeedContigsFile[0] != '\0')
+				{
+				if((SEEstNumSeqs = Fasta.FastaEstSizes(szSeedContigsFile, NULL, NULL, NULL, &SEEstMaxSeqLen, &SEEstMeanSeqLen)) == 0)
+					{
+					gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Unable to estimate sequence sizes for seed contigs file: '%s'", szSeedContigsFile);
+					return(1);
+					}
+				}
+			InitSEOvlp = (SEEstMeanSeqLen + 2) / 3;
+			}
+
+ 
+		if(InitSEOvlp > cMaxSEOvlp)
+			InitSEOvlp = cMaxSEOvlp;
+		else
+			if (InitSEOvlp < cMinSEOvlp)
+				InitSEOvlp = cMinSEOvlp;
+
+		FinSEOvlp = (InitSEOvlp + 3) / 4;        
+		if (FinSEOvlp > InitSEOvlp)
+			FinSEOvlp = InitSEOvlp;
+		else
+			if (FinSEOvlp < cMinSEOvlp)
+				FinSEOvlp = cMinSEOvlp;
+		}
+
 	AllowSE2PE = allowse2pe->count ? 1 : 0; 
-	TrimEnds = trimends->count ? trimends->ival[0] : 0;
+	TrimEnds = trimends->count ? trimends->ival[0] : TrimEnds;
 	if(TrimEnds < 0 || TrimEnds > 50)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected end trimming '-t%d' to be in range 0..50",TrimEnds);
 		return(1);
 		} 
-	MinSeqLen = minseqlen->count ? minseqlen->ival[0] : 70;
-	if(MinSeqLen < 60 || MinSeqLen > 500)
+	MinSeqLen = minseqlen->count ? minseqlen->ival[0] : MinSeqLen;
+	if(MinSeqLen < 50 || MinSeqLen > 500)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected minimum sequence length '-X%d' to be in range 60..500",MinSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected minimum sequence length '-X%d' to be in range 50..500",MinSeqLen);
 		return(1);
 		} 
 
-	TrimPE2SE = trimpe2se->count ? trimpe2se->ival[0] : 10;
+	TrimPE2SE = trimpe2se->count ? trimpe2se->ival[0] : TrimPE2SE;
 	if(TrimPE2SE < 0 || TrimPE2SE > 50)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected PE to SE end trimming '-x%d' to be in range 0..50",TrimPE2SE);
@@ -416,92 +591,24 @@ if (!argerrors)
 		return(1);
 		}
 
-	// can have various combinations of input files
-	// if pe inputs then both 5' and 3' files must be specified
-	// se file is optional
-	// packed reads file is optional
-	// BUT at least one of PE or SE or Packed must be specifed
-	if(inartreducfile->count)
-		{
-		strcpy(szInArtReducfile,inartreducfile->filename[0]);
-		CUtility::TrimQuotedWhitespcExtd(szInArtReducfile);
-		}
-	else
-		szInArtReducfile[0] = '\0';
-
-	if(inpe1file->count)
-		{
-		strcpy(szPE1File,inpe1file->filename[0]);
-		CUtility::TrimQuotedWhitespcExtd(szPE1File);
-		}
-	else
-		szPE1File[0] = '\0';
-
-	if(inpe2file->count)
-		{
-		strcpy(szPE2File,inpe2file->filename[0]);
-		CUtility::TrimQuotedWhitespcExtd(szPE2File);
-		}
-	else
-		szPE2File[0] = '\0';
-	if((szPE1File[0] == '\0' && szPE2File[0] != '\0') ||
-		(szPE1File[0] != '\0' && szPE2File[0] == '\0'))
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: If either PE previously assembled fragments file specified then both PE files must be specified");
-		return(1);
-		}
-
-	if(seedcontigsfile->count)
-		{
-		strcpy(szSeedContigsFile,seedcontigsfile->filename[0]);
-		CUtility::TrimQuotedWhitespcExtd(szSeedContigsFile);
-		}
-	else
-		szSeedContigsFile[0] = '\0';
-
-	// check that if artefact reduced is specified then the PE files are not allowed to also be specified
-	if(szInArtReducfile[0] != '\0')
-		{
-		if(szPE1File[0] != '\0')
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: If artefact reduced file '-i%s' specified then PE1/PE2 can't also be specified",szInArtReducfile);
-			return(1);
-			}
-		}
-
-	// check that PE and/or SE and/or Packed have been specified
-	if(szPE1File[0] == '\0' && szInArtReducfile[0] == '\0' && szSeedContigsFile[0] == '\0')
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: At least one of PE '-a and -A' or SE '-c' or artefact reduced packed '-i' files must be specified");
-		return(1);
-		}
-
-	if(!outfile->count)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Expected output file '-o<outfile>' to be specified");
-		return(1);
-		}
-	strncpy(szOutFile,outfile->filename[0],_MAX_PATH);
-	szOutFile[_MAX_PATH-1] = '\0';
-
 
 	if(szPE1File[0] != '\0' && szPE2File[0] != '\0') // if processing PEs then PE parameterisation needs to be parsed
 		{
-		InitPEOvlp = initpeovlp->count ? initpeovlp->ival[0] : cDfltInitPEOvlp;
+		InitPEOvlp = initpeovlp->count ? initpeovlp->ival[0] : InitPEOvlp;
 		if(InitPEOvlp < cMinPEOvlp || InitPEOvlp > cMaxPEOvlp)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Initial min required PE merge overlap '-k%d' must be in range %d..%d",InitPEOvlp,cMinPEOvlp,cMaxPEOvlp);
 			return(1);
 			}
 
-		FinPEOvlp = finpeovlp->count ? finpeovlp->ival[0] : cDfltFinPEOvlp;
+		FinPEOvlp = finpeovlp->count ? finpeovlp->ival[0] : FinPEOvlp;
 		if(FinPEOvlp < cMinPEOvlp || FinPEOvlp > InitPEOvlp)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Final min required PE merge overlap '-K%d' must be in range %d..%d",FinPEOvlp,cMinPEOvlp,InitPEOvlp);
 			return(1);
 			}
 
-		MinPE2SEOvlp = minpe2seovlp->count ? minpe2seovlp->ival[0] : cDfltMinPE1PE2ToSEOvlp;
+		MinPE2SEOvlp = minpe2seovlp->count ? minpe2seovlp->ival[0] : MinPE2SEOvlp;
 		if(MinPE2SEOvlp < cMinPE1PE2ToSEOvlp || MinPE2SEOvlp > cMaxPE1PE2ToSEOvlp)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimal overlap of PE1 end onto PE2 end required to merge as SE '-g%d' must be in range %d..%d",MinPE2SEOvlp,cMinPE1PE2ToSEOvlp,cMaxPE1PE2ToSEOvlp);
@@ -523,7 +630,7 @@ if (!argerrors)
 		PE2SESteps = 0;
 		}
 
-	InitSEOvlp = initseovlp->count ? initseovlp->ival[0] : cDfltInitSEOvlp;
+	InitSEOvlp = initseovlp->count ? initseovlp->ival[0] : InitSEOvlp;
 	if(InitSEOvlp < cMinSEOvlp || InitSEOvlp > cMaxSEOvlp)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: initial minimal SE overlap required to merge SEs '-j%d' must be in the range %d..%d",InitSEOvlp,cMinSEOvlp,cMaxSEOvlp);
@@ -609,6 +716,8 @@ if (!argerrors)
 			pszDescr = "quick de Novo assemble";
 			break;
 		}
+
+	gDiagnostics.DiagOutMsgOnly(eDLInfo, "Using overlap threshold defaults derived from estimated sequence lengths : '%s'",bNoAutoOvlp ? "No" : "Yes");
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode is : '%s'",pszDescr);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"End trimming by: %dbp",TrimEnds);

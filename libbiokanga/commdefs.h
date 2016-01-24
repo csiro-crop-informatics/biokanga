@@ -153,7 +153,7 @@ typedef enum eOntologies {
 typedef INT32 tGeneID;			// gene identifier
 typedef INT32 tChromID;			// chromosome identifier
 typedef INT32 tAlignBlockID;	// alignment block identifier
-typedef INT8  tSpeciesID;		// species identifier
+typedef UINT8 tSpeciesID;		// species identifier
 
 #ifdef _SHORTMAXREADLEN_
 const int cMaxReadLen = 2048;				// can process reads (if more than this length then must be sequences!) of up to this length

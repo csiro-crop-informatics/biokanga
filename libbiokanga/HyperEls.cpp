@@ -1104,7 +1104,7 @@ while((LineLen = BAMfile.GetNxtSAMline(szLine)) > 0)
 		SeqBases[0] = eBaseEOS;
 		}
 
-		// check if element has been mapped, if not then shough ...
+		// check if element has been mapped, if not then slough ...
 	if(StartLoci == 0 || Flags & 0x04 || szCigar[0] == '*')	// set if unmapped or Cigar is unknown
 		{
 		NumUnmappedEls += 1;
@@ -1146,7 +1146,8 @@ while((LineLen = BAMfile.GetNxtSAMline(szLine)) > 0)
 					if(Rslt < 1)
 						{
 						gDiagnostics.DiagOut(eDLFatal,gszProcName,"ParseSAMFileElements:AddElCore failed");
-						break;
+						BAMfile.Close();
+						return(Rslt);
 						}
 					}
 				else

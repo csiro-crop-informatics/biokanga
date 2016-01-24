@@ -32,8 +32,17 @@ const int cDfltScaffMaxArtefactDev = 15;		// but when scaffolding with error cor
 const int cMaxMaxArtefactDev = 70;			// user can specify up to this maximum 
 
 
-const int cMaxPacBioErrCorLen = 250000;		// allowing for error corrected read sequences of up to this length
+const int cMaxPacBioErrCorLen = 250000;					// allowing for error corrected read sequences of up to this length
 const int cMaxPacBioMAFLen = (cMaxPacBioErrCorLen * 100);	// allowing for multialignment format buffering of up to this length
+
+const int cDfltRMIReqDataSize = (cMaxPacBioErrCorLen * 5);		// RMI: each worker thread default allocates to process up to this much request data
+const int cDfltRMIReqParamSize = 5000;					// RMI: each worker thread default allocates to process up to this much parameterisation data
+const int cDfltRMIRespDataSize = (cMaxPacBioErrCorLen * 5);		// RMI: each worker thread default allocates to return up to this much response data
+const int cDfltRMIBufferSize = (cDfltRMIRespDataSize - 10000);	// each worker thread default allocates to hold at most this sized MAlignCols2fasta/MAlignCols2MFA alignments
+
+const UINT32 cRMI_SecsTimeout = 180;				// allowing for most RMI SW requests to take at most this many seconds to complete (request plus response)
+const UINT32 cRMI_AlignSecsTimeout = 600;			// allowing for a RMI SW alignment request to take at most this many seconds to complete (request plus response)
+const UINT32 cRMIThreadsPerCore = 8;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
 
 
 typedef enum TAG_ePBPMode {								// processing mode
@@ -61,10 +70,11 @@ typedef struct TAG_sPBEScaffNode {
 	UINT32 VertexID;				// assembly graph vertex identifier
 	UINT32 EntryID;					// suffix array entry identifier for indexed sequence
 	UINT32 SeqLen;					// length in bp of this scaffolding node sequence
-	UINT8 flgCurProc:1;			// sequence is currently being processed
+	UINT8 flgCurProc:1;				// sequence is currently being processed
+	UINT8 flgCpltdProc:1;			// sequence processing completed
 	UINT8 flgContained:1;			// sequence is fully contained within at least one other sequence
 	UINT8 flgContains:1;			// sequence fully contains at least one other sequence
-	UINT8 flgUnderlength:1;        // sequence is under length
+	UINT8 flgUnderlength:1;         // sequence is under length
 	UINT8 flgHCseq:1;				// loaded as a high confidence (non-PacBio) sequence
 } tsPBEScaffNode;
 
@@ -133,6 +143,22 @@ typedef struct TAG_sThreadPBErrCorrect {
 	UINT32 MultiAlignBuffIdx;		// index into m_pszMultiAlignLineBuff at which to write next multialignment
 	UINT32 AllocdMultiAlignLineBuff;// allocation size for m_pszMultiAlignLineBuff
 	char *pszMultiAlignLineBuff;	// allocated buffering for multialignments
+
+// RMI support
+	bool bRMI;						// set true if using RMI SW methods
+	teBKSPType ServiceType;			// requesting this service type - currently only eBKSPTSmithWaterman supported
+	CBKSRequester *pRequester;		// requests for service are made through this class
+
+	tsSSWCell RMIHighScoreCell;		// highest scoring cell in SW alignment
+	UINT32 RMIReqDataSize;			// pRMIReqData allocation size
+	UINT8 *pRMIReqData;				// allocated to hold request data
+	UINT32 RMIParamDataSize;		// pRMIParamData allocation size
+	UINT8 *pRMIParamData;			// allocated to hold parameter data
+	UINT32 RMIRespDataSize;			// pRMIRespData allocation size
+	UINT8 *pRMIRespData;			// allocated to hold response data
+	UINT32 RMIBufferSize;			// RMIBuffer allocation size
+	UINT8 *pRMIBuffer;				// allocated to hold buffered data needing a life time extending past the RMI_ function
+
 } tsThreadPBErrCorrect;
 
 
@@ -142,6 +168,12 @@ typedef struct TAG_sThreadPBErrCorrect {
 class CPBErrCorrect
 {
 	etPBPMode m_PMode;						// processing mode
+
+	bool m_bRMI;							// set true if using RMI SW methods
+
+	char m_szRMIHostName[cMaxHostNameLen];	// listening on this host name if RMI SW methods utilised
+	char m_szRMIServiceName[cMaxServiceNameLen];	// listening on this service/port name for RMI SW service providers
+	CBKSRequester *m_pRequester;			// if using RMI SW methods then will be initialised to pt to an instance of CBKSRequester
 
 	UINT32 m_DeltaCoreOfs;					// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 	UINT32 m_MaxSeedCoreDepth;				// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
@@ -189,6 +221,7 @@ class CPBErrCorrect
 
 	char m_szErrCorFile[_MAX_PATH];			// name of file into which write error corrected and scored sequences
 	int m_hErrCorFile;						// file handle for writing error corrected and scored sequences
+	UINT32 m_ErrCorFileUnsyncedSize;		// count of chars which have been written to file handle m_hErrCorFile but may not be on disk
 
 	int ErrCorBuffIdx;						// index into m_szErrCorLineBuff at which to next copy a corrected sequence
 	int AllocdErrCorLineBuff;				// allocation size for m_pszErrCorLineBuff
@@ -200,16 +233,15 @@ class CPBErrCorrect
 
 	char m_szMultiAlignFile[_MAX_PATH];		// name of file into which write multialignments
 	int m_hMultiAlignFile;					// file handle for writing multialignments
+	UINT32 m_MultiAlignFileUnsyncedSize;	// count of chars which have been written to file handle m_hMultiAlignFile but may not be on disk
 
 	int m_ScaffLineBuffIdx;					// offset in m_szScaffLineBuff to write next overlap detail
 	char m_szScaffLineBuff[0x07fff];		// buffering for overlap distributions
 
-	int m_NumThreads;							// maximum number of worker threads to use
-
 	UINT32 m_NumPBScaffNodes;					// m_pPBScaffNodes currently holds many scaffolding nodes
     UINT32 m_MaxPBSeqLen;						// max length of any scaffolding node sequence
 	UINT32 m_AllocdPBScaffNodes;				// m_pPBScaffNodes allocated to hold this many scaffolding nodes
-	tsPBEScaffNode *m_pPBScaffNodes;				// allocated to hold scaffolding nodes
+	tsPBEScaffNode *m_pPBScaffNodes;			// allocated to hold scaffolding nodes
 	UINT32 *m_pMapEntryID2NodeIDs;				// used to map from suffix array entry identifiers to the corresponding scaffolding node identifier
 
 	CSfxArrayV3 *m_pSfxArray;					// suffix array file (m_szTargFile) is loaded into this
@@ -235,7 +267,14 @@ class CPBErrCorrect
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
 
 	int IdentifySequenceOverlaps(int MaxSeqLen,		// max length sequence to be overlapped
-							int NumOvlpThreads);	// identify all overlaps using this many threads
+							int NumOvlpCores,		// targeting number of running threads to maximise usage of this many cores
+							int NumOvlpThreads,		// identify all read overlaps using at most this this many threads ( max of m_MaxAllowedThreads and m_MaxRMIInstances)
+							teBKSPType BKSPType  = eBKSPTSmithWaterman,		// workers are requesting this service type
+							UINT32 RMIBufferSize =	cDfltRMIBufferSize,	// each worker thread default allocates to process up to this much buffered data
+							UINT32 RMIParamDataSize = cDfltRMIReqParamSize, // each worker thread default allocates to process up to this much parameter data
+							UINT32 RMIReqDataSize = cDfltRMIReqDataSize, // each worker thread default allocates to process up to this much request data
+							UINT32 RMIRespDataSize =cDfltRMIRespDataSize); // each worker thread default allocates to process up to this much response data
+
 
 	int IdentifyCoreHits(UINT32 ProbeNodeID,	// identify all overlaps of this probe sequence PBScaffNodeID onto target sequences
 				tsThreadPBErrCorrect *pPars);		// thread specific
@@ -270,6 +309,132 @@ static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 	void AcquireCASLock(void);
 	void ReleaseCASLock(void);
 
+	volatile unsigned int m_CASThreadPBErrCorrect; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	void AcquireCASThreadPBErrCorrect(void);
+	void ReleaseCASThreadPBErrCorrect(void);
+
+	volatile UINT32 m_RMINumCommitedClasses;			// when RMI service provider classes utilised then current number of class instances instantiated over all provider sessions
+	volatile UINT32 m_RMINumUncommitedClasses;		// when RMI service provider classes utilised then current number of class instances available to be instantiated over all provider sessions
+	volatile UINT32 m_LowestCpltdProcNodeID;		// lowest processing completed sequence node
+
+	time_t m_ProcessStatsThen;						// used to determine if sufficient time has elapsed since last reporting of process stats
+	UINT32 m_NumCPUCores;                           // total number of CPU cores 
+	UINT32 m_NumOvlpCores;							// processing is targeting this number of cores - will always be <= m_NumCPUCores
+	UINT32 m_MaxRMIInstances;						// max number of RMI service provider instances allowed
+	UINT32 m_MaxNonRMIThreads;						// max number of non-RMI SW threads allowed
+	UINT32 m_MaxActiveOvlpThreads;					// allowing a maximum of this total number of SW (total of both RMI and non-RMI) threads to be actively processing
+
+	volatile UINT32 m_ReduceNonRMIThreads;			// reduce number of actively processing non-RMI SW processing threads by this delta
+	volatile UINT32 m_CurAllowedActiveOvlpThreads;	// currently allowing a total of this many SW (total of both RMI and non-RMI) threads to be actively processing, always <= m_MaxActiveOvlpThreads
+	volatile UINT32 m_CurActiveRMIThreads;			// currently there are this many actively processing RMI SW processing threads
+	volatile UINT32 m_CurActiveNonRMIThreads;		// currently there are this many actively processing non-RMI SW processing threads
+
+	int UpdateProcessStats(void);					// determine  numbers of commited and uncommited service provider classses
+
+	int												// marshaled parameter required this many bytes
+			MarshalReq(UINT8 *pInto,				// marshal into this list
+					teRMIParamType Type,			// parameter type
+					void *pValue,					// parameter value
+					UINT32 ValLen);					// length of parameter ptd to by pValue, only used if parameter type is pUint8
+
+	int
+		UnmarshalResp(UINT32 DataLen,
+					UINT8 *pFrom,		// unmarshal from this marshalled parameter list
+					void *pValue);
+
+
+	UINT64 RMI_new(tsThreadPBErrCorrect *pThreadPar,UINT32 Timeout,						// class instances constructor, returns the ClassInstanceID
+											UINT32 SessionID = 0);						// requesting class instance on this specific session, 0 if on least loaded session
+	
+	void RMI_delete(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,UINT64 ClassInstanceID);	// delete the class instance
+
+	bool RMI_SetScores(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+				int MatchScore= cSSWDfltMatchScore,			// score for match
+				int MismatchPenalty  = cSSWDfltMismatchPenalty,	// penalty for mismatch
+				int GapOpenPenalty  = cSSWDfltGapOpenPenalty,	// penalty for opening a gap
+				int GapExtnPenalty  = cSSWDfltGapOpenPenalty,	// penalty if extending already opened gap
+				int DlyGapExtn = cSSWDfltDlyGapExtn,			// delayed gap penalties, only apply gap extension penalty if gap at least this length
+				int ProgPenaliseGapExtn = cSSWDfltProgPenaliseGapExtn,	// if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
+				int AnchorLen = cSSWDfltAnchorLen);				// identified first and last anchors in alignment to be of at least this length
+
+
+	bool RMI_SetCPScores(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+				int MatchScore= cSSWDfltMatchScore,		// ClassifyPath() score for match
+				int MismatchPenalty  = cSSWDfltMismatchPenalty,	// ClassifyPath() penalty for mismatch
+				int GapOpenPenalty  = cSSWDfltGapOpenPenalty,	// ClassifyPath() penalty for opening a gap
+				int GapExtnPenalty  = cSSWDfltGapOpenPenalty);	// ClassifyPath() penalty if extending already opened gap
+
+	bool RMI_SetMaxInitiatePathOfs(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+				int MaxInitiatePathOfs = cMaxInitiatePathOfs);	// require SW paths to have started within this many bp (0 to disable) on either the probe or target - effectively anchoring the SW 
+
+	bool RMI_PreAllocMaxTargLen( tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+							 UINT32 MaxTargLen,					// preallocate to process targets of this maximal length
+							 UINT32 MaxOverlapLen = 0);			// allocating tracebacks for this maximal expected overlap, 0 if no tracebacks required
+
+	int
+		RMI_StartMultiAlignments(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+					int SeqLen,						// probe sequence is this length
+					etSeqBase *pProbeSeq,			// probe sequence 
+					int Alignments);				// number of pairwise alignments to allocate for
+
+	bool RMI_SetProbe(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID, 
+					UINT32 Len,etSeqBase *pSeq);					// set probe sequence to use in subsequent alignments
+
+	bool RMI_SetTarg(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,  
+					UINT32 Len,etSeqBase *pSeq);					// set target sequence to use in subsequent alignments
+
+	int RMI_SetAlignRange(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,  
+						UINT32 m_ProbeStartRelOfs,	// when aligning then start SW from this probe sequence relative offset
+					  UINT32 m_TargStartRelOfs, 	// and SW starting from this target sequence relative offset
+						UINT32 m_ProbeRelLen = 0,	// and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+						UINT32 m_TargRelLen = 0);	// and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+
+		tsSSWCell *									// smith-waterman style local alignment, returns highest accumulated exact matches scoring cell
+				RMI_Align(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID, 
+						tsSSWCell *pPeakScoreCell = NULL,	// optionally also return conventional peak scoring cell
+						UINT32 MaxOverlapLen = 0);		// process tracebacks for this maximal expected overlap, 0 if no tracebacks required
+
+int												// attempting to determine if path is artfact resulting from aligning to a paralogous fragment
+		RMI_ClassifyPath(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+					int MaxArtefactDev,			// classify path as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
+					UINT32 ProbeStartOfs,			// alignment starts at this probe sequence offset (1..n)
+					UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset
+					UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
+					UINT32 TargEndOfs);				// alignment ends at this target sequence offset
+
+int												// number of alignment ops generated
+		RMI_TracebacksToAlignOps(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+					UINT32 ProbeStartOfs,	// alignment starts at this probe sequence offset (1..n)
+					UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset
+					UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
+					UINT32 TargEndOfs,				// alignment ends at this target sequence offset
+					tMAOp **ppAlignOps = NULL);     // optionally return ptr to alignment operations
+
+int
+		RMI_AddMultiAlignment(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+					  UINT32 ProbeStartOfs,			// alignment starts at this probe sequence offset (1..n)
+					  UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset inclusive
+					  UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
+					  UINT32 TargEndOfs,			// alignment ends at this target sequence offset inclusive
+					  UINT32 TargSeqLen,			// target sequence length
+					  etSeqBase *pTargSeq);			// alignment target sequence
+
+int
+		RMI_GenMultialignConcensus(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID);
+
+int      // total number of returned chars in pszBuffer for the textual representation of the error corrected consensus sequence (could be multiple consensus sequences)
+		RMI_MAlignCols2fasta(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+					UINT32 ProbeID,	// identifies sequence which was used as the probe when determining the multialignments
+				  int MinConf,				// sequence bases averaged over 100bp must be of at least this confidence (0..9)
+				  int MinLen,				// and sequence lengths must be of at least this length 
+				  UINT32 BuffSize,			// buffer allocated to hold at most this many chars
+				  char *pszBuffer);			// output error corrected sequences to this buffer
+
+int      // total number of returned chars in pszBuffer for the textual representation of the multialignment 
+		RMI_MAlignCols2MFA(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+						 UINT32 ProbeID,		// identifies sequence which was used as the probe when determining the multialignments
+					    UINT32 BuffSize,	// buffer allocated to hold at most this many chars
+					    char *pszBuffer);	// output multialignment textual representation to this buffer
 
 public:
 	CPBErrCorrect();
@@ -279,6 +444,10 @@ public:
 
 	int
 	Process(etPBPMode PMode,		// processing mode
+		char *pszHostName,			// listening on this host name or IPv4/IPv5 address for connections by service providers 
+		char *pszServiceName,			// Listen on this service name or port for for connections by service providers
+		int MaxRMI,					// max number of RMI SW service provider instances supported
+		int MaxNonRMI,				// max number of non-RMI SW threads supported
 		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences

@@ -94,7 +94,9 @@ am_pacbiokanga_OBJECTS = SQLiteSummaries.$(OBJEXT) SSW.$(OBJEXT) \
 	SWAlign.$(OBJEXT) PBAssemb.$(OBJEXT) PBECContigs.$(OBJEXT) \
 	SeqStore.$(OBJEXT) PBFilter.$(OBJEXT) PacBioUtility.$(OBJEXT) \
 	pacbiokanga.$(OBJEXT) PBSim.$(OBJEXT) PBErrCorrect.$(OBJEXT) \
-	MAConsensus.$(OBJEXT) AssembGraph.$(OBJEXT)
+	MAConsensus.$(OBJEXT) AssembGraph.$(OBJEXT) \
+	PBSWService.$(OBJEXT) BKSProvider.$(OBJEXT) \
+	BKSRequester.$(OBJEXT)
 pacbiokanga_OBJECTS = $(am_pacbiokanga_OBJECTS)
 pacbiokanga_LDADD = $(LDADD)
 pacbiokanga_DEPENDENCIES = ../libbiokanga/libbiokanga.a \
@@ -256,7 +258,11 @@ target_alias =
 top_build_prefix = ../
 top_builddir = ..
 top_srcdir = ..
-pacbiokanga_SOURCES = SQLiteSummaries.cpp SQLiteSummaries.h SSW.cpp SSW.h SWAlign.cpp SWAlign.h PBAssemb.cpp PBAssemb.h PBECContigs.cpp PBECContigs.h SeqStore.cpp SeqStore.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h pacbiokanga.cpp pacbiokanga.h PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h MAConsensus.cpp MAConsensus.h AssembGraph.cpp AssembGraph.h 
+pacbiokanga_SOURCES = SQLiteSummaries.cpp SQLiteSummaries.h SSW.cpp SSW.h SWAlign.cpp SWAlign.h PBAssemb.cpp PBAssemb.h PBECContigs.cpp PBECContigs.h \
+                     SeqStore.cpp SeqStore.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h pacbiokanga.cpp pacbiokanga.h \
+                     PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h MAConsensus.cpp MAConsensus.h AssembGraph.cpp AssembGraph.h \
+                     PBSWService.cpp PBSWService.h BKSProvider.cpp BKSProvider.h BKSRequester.cpp BKSRequester.h BKScommon.h 
+
 
 # set the include path found by configure
 INCLUDES = $(all_includes)
@@ -351,11 +357,14 @@ distclean-compile:
 	-rm -f *.tab.c
 
 include ./$(DEPDIR)/AssembGraph.Po
+include ./$(DEPDIR)/BKSProvider.Po
+include ./$(DEPDIR)/BKSRequester.Po
 include ./$(DEPDIR)/MAConsensus.Po
 include ./$(DEPDIR)/PBAssemb.Po
 include ./$(DEPDIR)/PBECContigs.Po
 include ./$(DEPDIR)/PBErrCorrect.Po
 include ./$(DEPDIR)/PBFilter.Po
+include ./$(DEPDIR)/PBSWService.Po
 include ./$(DEPDIR)/PBSim.Po
 include ./$(DEPDIR)/PacBioUtility.Po
 include ./$(DEPDIR)/SQLiteSummaries.Po

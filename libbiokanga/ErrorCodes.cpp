@@ -184,6 +184,9 @@ switch(ErrCode) {
 
 	case eBSErrSession:		return("session requested not active");
 	case cBSFSyncObjErr:	return("unable to synchronise access to object");
+
+	case cBSFSocketErr:     return("socket level error");
+	case cBSFNWSProtErr:    return("Services protocol error");
 	case eBSFerrInternal:	return("!!Internal software processing error - bug!!"); 
 	default:
 		return("Unrecognised result code");

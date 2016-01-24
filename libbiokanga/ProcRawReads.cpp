@@ -667,12 +667,6 @@ while((RdLen = read(m_hInFile,&m_pRdsBuff[BuffLen],cRRRdsBuffAlloc - BuffLen)) >
 			}
 		SeqNsCnts[SeqNsIdx] += 1;
 
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
-
 		NumReadsProc+=1;
 		}
 	memmove(m_pRdsBuff,&m_pRdsBuff[BuffOfs],BuffLen - BuffOfs);
@@ -1280,12 +1274,6 @@ else
 
 	}
 
-
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d raw sequence files were accepted for filtering", NumInputFilesProcessed);
 if(NumInputFilesProcessed == 0)
 	{
@@ -1514,13 +1502,6 @@ for(Idx = 0; Idx < NumInputFileSpecs; Idx++)
 		}
 	}
 
-
-
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d raw sequence files were accepted for filtering", NumInputFilesProcessed);
 if(NumInputFilesProcessed < 1)
 	{

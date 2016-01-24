@@ -18,7 +18,7 @@ const int cChromIDHashSize = 0x08000;		// chromosome hash table size - must be p
 // typedefs to make it easy to change common identifier types
 typedef INT32 tChromID;			// chromosome identifier
 typedef INT32 tAlignBlockID;	// alignment block identifier
-typedef INT8  tSpeciesID;		// species identifier
+typedef UINT8  tSpeciesID;		// species identifier
 
 typedef enum TAG_eMAOpen {
 	eMAPOReadOnly = 0,			// open for read only access, updates not allowed

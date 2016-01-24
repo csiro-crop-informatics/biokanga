@@ -614,7 +614,7 @@ m_CurMaxFieldLen = 0;
 bInComment = false;
 
 while(bMore) {
-	// ensure that at all times there is sufficent buffered for at least one line of m_MaxLineLen chars
+	// ensure that at all times there is sufficient buffered for at least one line of m_MaxLineLen chars
 	if(!m_bEOF && (!m_NumBuffered || (m_NumBuffered - m_BuffParseOfs) < m_MaxLineLen))
 		{
 		if(m_BuffParseOfs > 0)

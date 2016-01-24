@@ -12,6 +12,15 @@
 //   Please contact stuart.stephen@csiro.au for support or 
 //   to submit modifications to this source
 #include "stdafx.h"
+// Supporting at most this many concurrent TCP sessions between service requester (this server) and all service providers
+// this could be increased to an internally restricted maximum of 511 but there could then be a significant performance throughput degradation
+// because of the use of select() instead of ePoll or derivatives.
+// It is essential that there is consistency between the various source files in the cMaxConcurrentSessions value
+#ifdef WIN32
+#define cMaxConcurrentSessions 100                     // limit to less than 511
+#else
+#define cMaxConcurrentSessions 100
+#endif
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -20,9 +29,24 @@
 #if _WIN32
 #include <process.h>
 #include "../libbiokanga/commhdrs.h"
+// default on Windows is for a maximum of 64 sockets in a FD_SET select() descriptor set
+// increase this limit to the maximum number of supported TCP sessions for all service provider sessions
+// plus 1 for the listening socket and 1 for the control socket
+
+#if (cMaxConcurrentSessions + 2 > 64)
+#define FD_SETSIZE  (cMaxConcurrentSessions + 2)
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #else
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <sys/mman.h>
 #include <pthread.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <netdb.h>
+typedef struct sockaddr_storage SOCKADDR_STORAGE;
 #include "../libbiokanga/commhdrs.h"
 #endif
 
@@ -33,10 +57,17 @@
 #include "pacbiocommon.h"
 #include "SeqStore.h"
 #include "AssembGraph.h"
+#include "./BKScommon.h"
+#include "./BKSRequester.h"
 #include "PBErrCorrect.h"
+
 
 int
 ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
+		char *pszHostName,			// listening on this host name or IPv4/IPv5 address for connections by service providers 
+		char *pszServiceName,		// Listen on this service name or port for for connections by service providers
+		int MaxRMI,					// max number of RMI service provider instances supported
+		int MaxNonRMI,				// max number of non-RMI SW threads
 		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
@@ -116,6 +147,11 @@ int SampleRate;				// sample input sequences at this rate
 int NumberOfProcessors;		// number of installed CPUs
 int NumThreads;				// number of threads (0 defaults to number of CPUs)
 
+int MaxNonRMI;								// max number of non-RMI SW threads
+int MaxRMI;									// max number of RMI service provider instances supported
+char szHostName[cMaxHostNameLen];			// listening on this host name or IPv4/IPv5 address for connections by service providers 
+char szServiceName[cMaxServiceNameLen];		// Listen on this service name or port for for connections by service providers
+
 char szSQLiteDatabase[_MAX_PATH];	// results summaries to this SQLite file
 char szExperimentName[cMaxDatasetSpeciesChrom+1];			// experiment name
 char szExperimentDescr[1000];		// describes experiment
@@ -126,7 +162,7 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 error correct, 1 consensus sequence only, 2 scaffold overlap detail only");
+struct arg_int *pmode = arg_int0("m","pmode","<int>",					"processing mode - 0 error correct, 1 consensus sequence only, 2 scaffold overlap detail only");
 struct arg_int *minpbseqlen = arg_int0("l","minpbseqlen","<int>",		"minimum individual PacBio sequence length (default 10000, range 500 to 100000)");
 struct arg_int *maxpbseqlen = arg_int0("L", "maxpbseqlen", "<int>",		"maximum individual PacBio sequence length (default 35000, minimum minpbseqlen)");
 
@@ -161,6 +197,11 @@ struct arg_int *samplerate = arg_int0("R","samplerate","<int>",					"sample inpu
 
 struct arg_int *threads = arg_int0("T","threads","<int>",						"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
+struct arg_int *maxnonrmi = arg_int0("N","maxnonrmi","<int>",					"if RMI SW processing then limit non-RMI to this maximum number of SW threads (defaults to threads, range 0 ... threads)");
+struct arg_int *maxrmi = arg_int0("n","maxrmi","<int>",							"maximum number of RMI SW instances supported 0, Number of threads to 2000 (defaults to 0 which sets max RMI instances to 5 x number of threads)");
+struct arg_str  *rmihost = arg_str0("u", "rmihost", "<string>",					"listening on this host name or IPv4/IPv5 address for connections by SW service providers (default 127.0.0.1)");
+struct arg_str  *rmiservice = arg_str0("U", "rmiservice", "<string>",			"Listen on this service name or port for connections by SW service providers (default 7869)");
+
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",				"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");
@@ -168,7 +209,7 @@ struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"exper
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
+					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
 					minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
@@ -334,6 +375,30 @@ if (!argerrors)
 	NumPacBioFiles = 0;
 	NumHiConfFiles = 0;
 	szOutMAFile[0] = '\0';
+
+	szServiceName[0] = '\0';
+	szHostName[0] = '\0';
+	MaxRMI = 0;
+	MaxNonRMI = 0;
+	if(rmihost->count)
+		{
+		strncpy(szHostName,rmihost->sval[0],sizeof(szHostName)-1);
+		szHostName[sizeof(szHostName) - 1] = '\0';
+		CUtility::TrimQuotedWhitespcExtd(szHostName);
+		}
+
+	szServiceName[0] = '\0';
+	if (rmiservice->count)
+		{
+		strncpy(szServiceName, rmiservice->sval[0], sizeof(szServiceName) - 1);
+		szServiceName[sizeof(szServiceName) - 1] = '\0';
+		CUtility::TrimQuotedWhitespcExtd(szServiceName);
+		}
+
+	if(szHostName[0] == '\0' && szServiceName[0] != '\0')
+		strcpy(szHostName, "127.0.0.1");
+	if(szHostName[0] != '\0' && szServiceName[0] == '\0')
+		strcpy(szServiceName, "7869");
 
 	SampleRate = samplerate->count ? samplerate->ival[0] : 100;
 	if(SampleRate < 1 || SampleRate > 100)
@@ -722,21 +787,46 @@ if (!argerrors)
 			}
 		}
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
+
 #ifdef _WIN32
 	SYSTEM_INFO SystemInfo;
 	GetSystemInfo(&SystemInfo);
 	NumberOfProcessors = SystemInfo.dwNumberOfProcessors;
 #else
-	NumberOfProcessors = sysconf(_SC_NPROCESSORS_CONF);
+	NumberOfProcessors = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 	int MaxAllowedThreads = min(cMaxWorkerThreads,NumberOfProcessors);	// limit to be at most cMaxWorkerThreads
 	if((NumThreads = threads->count ? threads->ival[0] : MaxAllowedThreads)==0)
 		NumThreads = MaxAllowedThreads;
-	if(NumThreads < 0 || NumThreads > MaxAllowedThreads)
+	if(NumThreads < 1 || NumThreads > MaxAllowedThreads)
 		{
-		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Warning: Number of threads '-T%d' specified was outside of range %d..%d",NumThreads,1,MaxAllowedThreads);
 		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Warning: Defaulting number of threads to %d",MaxAllowedThreads);
 		NumThreads = MaxAllowedThreads;
+		}
+
+	if(szHostName[0] != '\0')
+		{
+		MaxRMI = maxrmi->count ? maxrmi->ival[0] : (NumThreads * 5);
+		if(MaxRMI == 0)
+			MaxRMI = (NumThreads * 5);
+		if(MaxRMI < NumThreads || MaxRMI > 2000)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range %d..2000",MaxRMI,NumThreads);
+			return(1);
+			}
+		MaxNonRMI = maxnonrmi->count ? maxnonrmi->ival[0] : NumThreads;
+		if(MaxNonRMI > NumThreads)		// silently clamping to no more than the max number of threads requested
+			MaxNonRMI = NumThreads;
+		if(MaxNonRMI < 0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of non-RMI SW threads '-N%d' must be in range 0..%d",MaxNonRMI,NumThreads);
+			return(1);
+			}
 		}
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
@@ -755,6 +845,14 @@ if (!argerrors)
 		}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: '%s'",pszMode);
+
+	if(szHostName[0] != '\0')
+		{
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Listening on this host name for RMI SW service connections: '%s'",szHostName);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Listening on this service/port for RMI SW service connections: '%s'",szServiceName);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allowing for a maximum of this many RMI SW service instances: '%d'",MaxRMI);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allowing a maximum of this many non-RMI SW threads: '%d'",MaxNonRMI);
+		}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling input sequence rate: %d",SampleRate);
 
@@ -831,8 +929,9 @@ if (!argerrors)
 
 	if(szExperimentName[0] != '\0')
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"This processing reference: %s",szExperimentName);
-
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"number of threads : %d",NumThreads);
+	
+	if(szHostName[0] != '\0')
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"number of threads : %d",NumThreads);
 
 	if(gExperimentID > 0)
 		{
@@ -883,6 +982,14 @@ if (!argerrors)
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szOutFile),"out",szOutFile);
 
+		if(szHostName[0] != '\0')
+			{
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szHostName),"rmihostname",szHostName);
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szServiceName),"rmiservice",szServiceName);
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MaxRMI),"maxrmi",&MaxRMI);
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MaxNonRMI),"maxnonrmi",&MaxNonRMI);
+			}
+
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(NumThreads),"threads",&NumThreads);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(NumberOfProcessors),"cpus",&NumberOfProcessors);
 
@@ -896,7 +1003,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
+	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
@@ -924,6 +1031,10 @@ return 0;
 
 int
 ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
+		char *pszHostName,			// listening on this host name or IPv4/IPv5 address for connections by service providers 
+		char *pszServiceName,		// Listen on this service name or port for for connections by service providers
+		int MaxRMI,					// max number of RMI service provider instances supported
+		int MaxNonRMI,				// max number of non-RMI SW threads
 		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
@@ -959,7 +1070,7 @@ if((pPBErrCorrect = new CPBErrCorrect)==NULL)
 	return(eBSFerrObj);
 	}
 
-Rslt = pPBErrCorrect->Process(PMode,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
+Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,NumThreads);
 delete pPBErrCorrect;
@@ -971,6 +1082,7 @@ CPBErrCorrect::CPBErrCorrect() // relies on base classes constructors
 m_pSfxArray = NULL;
 m_pPBScaffNodes = NULL;
 m_pMapEntryID2NodeIDs = NULL;
+m_pRequester = NULL;
 m_bMutexesCreated = false;
 m_hErrCorFile = -1;
 m_hMultiAlignFile = -1;
@@ -1025,6 +1137,17 @@ if(m_hMultiAlignFile != -1)
 	m_hMultiAlignFile = -1;
 	}
 
+if(m_pRequester != NULL)
+	{
+	m_pRequester->Terminate(120);
+	delete m_pRequester;
+	m_pRequester = NULL;
+	}
+
+m_bRMI = false;
+m_szRMIHostName[0] = '\0';
+m_szRMIServiceName[0] = '\0';
+
 m_NumPBScaffNodes = 0;
 m_AllocdPBScaffNodes = 0;
 m_MaxPBSeqLen = 0;
@@ -1035,6 +1158,8 @@ m_ProvOverlapped = 0;
 m_ProvContained = 0;
 m_ProvArtefact = 0;
 m_ProvSWchecked = 0;
+m_MultiAlignFileUnsyncedSize = 0;
+m_ErrCorFileUnsyncedSize = 0;
 
 m_MinErrCorrectLen = cDfltMinErrCorrectLen;
 m_MinConcScore = 2;
@@ -1076,7 +1201,11 @@ m_NumHiConfFiles = 0;
 memset(m_szPacBioFiles,0,sizeof(m_szPacBioFiles));
 memset(m_szHiConfFiles,0,sizeof(m_szHiConfFiles));
 
-m_NumThreads = 0;
+m_MaxRMIInstances = 0;
+
+m_ProcessStatsThen = 0;
+m_NumCPUCores = 0;
+
 if(m_bMutexesCreated)
 	DeleteMutexes();
 m_bMutexesCreated = false; 
@@ -1085,7 +1214,6 @@ m_bMutexesCreated = false;
 void
 CPBErrCorrect::Reset(bool bSync)			// if bSync true then fsync before closing output file handles
 {
-
 Init();
 }
 
@@ -1098,6 +1226,7 @@ if(m_bMutexesCreated)
 
 m_CASSerialise = 0;
 m_CASLock = 0;
+m_CASThreadPBErrCorrect = 0;
 m_bMutexesCreated = true;
 return(eBSFSuccess);
 }
@@ -1199,7 +1328,48 @@ __sync_val_compare_and_swap(&m_CASLock,1,0);
 }
 
 
+void
+CPBErrCorrect::AcquireCASThreadPBErrCorrect(void)
+{
+int SpinCnt = 10;
+int BackoffMS = 1;
 
+#ifdef _WIN32
+while(InterlockedCompareExchange(&m_CASThreadPBErrCorrect,1,0)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
+	}
+#else
+while(__sync_val_compare_and_swap(&m_CASThreadPBErrCorrect,0,1)!=0)
+	{
+	if(SpinCnt -= 1)
+		continue;
+	CUtility::SleepMillisecs(BackoffMS);
+	SpinCnt = 10;
+	if(BackoffMS < 50)
+		BackoffMS += 1;
+	else
+		BackoffMS = 1 + (rand() % 31);
+	}
+#endif
+}
+
+void
+CPBErrCorrect::ReleaseCASThreadPBErrCorrect(void)
+{
+#ifdef _WIN32
+InterlockedCompareExchange(&m_CASThreadPBErrCorrect,0,1);
+#else
+__sync_val_compare_and_swap(&m_CASThreadPBErrCorrect,1,0);
+#endif
+}
 
 // ProcessBioseqFile
 // Process input biosequence file into suffix file
@@ -1649,6 +1819,10 @@ return(eBSFSuccess);
 
 int
 CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
+		char *pszHostName,			// listening on this host name or IPv4/IPv5 address for connections by service providers 
+		char *pszServiceName,			// Listen on this service name or port for for connections by service providers
+		int MaxRMI,					// max number of RMI service provider instances supported
+		int MaxNonRMI,				// max number of non-RMI SW threads supported
 		int SampleRate,				// sample input sequences at this rate (1..100)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
@@ -1685,6 +1859,46 @@ tsPBEScaffNode *pCurPBScaffNode;
 Reset(false);
 
 CreateMutexes();
+
+bool bRslt;
+if(pszHostName[0] != '\0')
+	{
+	m_bRMI = true;
+	strncpy(m_szRMIHostName,pszHostName,sizeof(m_szRMIHostName));
+	m_szRMIHostName[sizeof(m_szRMIHostName)-1] = '\0';
+	strncpy(m_szRMIServiceName,pszServiceName,sizeof(m_szRMIServiceName));
+	m_szRMIServiceName[sizeof(m_szRMIServiceName)-1] = '\0';
+    m_MaxRMIInstances = MaxRMI;
+	m_MaxNonRMIThreads = MaxNonRMI;
+	if((m_pRequester = new CBKSRequester)==NULL)
+		{
+		Reset(false);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to instantiate CBKSRequester");
+		return(eBSFerrObj);
+		}
+
+	if((Rslt = m_pRequester->Initialise(pszHostName, pszServiceName))!=eBSFSuccess)
+		{
+		Reset(false);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to initialise CBKSRequester instance");
+		return(cBSFNWSProtErr);
+		}
+
+	if((bRslt = m_pRequester->Run())!=true)
+		{
+		Reset(false);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to run CBKSRequester");
+		return(cBSFNWSProtErr);
+		}
+	}
+else
+	{
+	m_bRMI = false;
+	m_MaxRMIInstances = 0;
+	m_pRequester = NULL;
+	m_szRMIHostName[0] = '\0';
+	m_szRMIServiceName[0] = '\0';
+	}
 
 m_SWMatchScore = SWMatchScore;
 m_SWMismatchPenalty = SWMismatchPenalty;
@@ -1780,7 +1994,7 @@ if(NumHiConfFiles && pszHiConfFiles != NULL)
 	SumFileSizes += HiConfFileSizes;
 	}
 
-m_NumThreads = NumThreads;	
+m_NumOvlpCores = NumThreads;	
 if(m_pSfxArray != NULL)
 	delete m_pSfxArray;
 if((m_pSfxArray = new CSfxArrayV3) == NULL)
@@ -1789,7 +2003,7 @@ if((m_pSfxArray = new CSfxArrayV3) == NULL)
 	return(eBSFerrObj);
 	}
 m_pSfxArray->Reset(false);
-m_pSfxArray->SetMaxQSortThreads(m_NumThreads);
+m_pSfxArray->SetMaxQSortThreads(min(NumThreads,32));
 
 Rslt=m_pSfxArray->Open(false,false);
 if(Rslt !=eBSFSuccess)
@@ -1853,7 +2067,7 @@ if(NumHiConfFiles && pszHiConfFiles != NULL)			// load any optional high confide
 		// get number of high confidence sequences accepted
 	NumHCSeqs = m_pSfxArray->GetNumEntries() - NumTargSeqs;
 	if(NumHCSeqs < 1)
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"No high confidence sequences for errror correction accepted from file(s)");
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"No high confidence sequences for error correction accepted from file(s)");
 	else
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loaded and accepted for processing a total of %d high confidence sequences",NumHCSeqs);
 	}
@@ -1911,12 +2125,12 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 m_NumPBScaffNodes = NumTargSeqs;
 m_MaxPBSeqLen = MaxSeqLen;
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences ...",NumTargSeqs);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences (max length %d) ...",NumTargSeqs, m_MaxPBSeqLen);
 
 if(m_NumPBScaffNodes > 1)
 	{
 	// sort scaffold nodes by sequence length descending
-	m_mtqsort.SetMaxThreads(NumThreads);
+	m_mtqsort.SetMaxThreads(min(NumThreads,16));
 	m_mtqsort.qsort(m_pPBScaffNodes,m_NumPBScaffNodes,sizeof(tsPBEScaffNode),SortLenDescending);
 	}
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences completed",NumTargSeqs);
@@ -1988,7 +2202,24 @@ else
 	m_hMultiAlignFile = -1;
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Identifying sequence overlaps ...");
-Rslt = IdentifySequenceOverlaps(MaxSeqLen,NumThreads);
+
+UINT32 MaxWorkerThreads;
+UINT32 ReqRMICores;
+if(m_bRMI)
+	{
+	MaxWorkerThreads = m_MaxRMIInstances;
+	ReqRMICores = (m_MaxRMIInstances+cRMIThreadsPerCore-1)/cRMIThreadsPerCore;
+	if(ReqRMICores < m_NumOvlpCores)
+		MaxWorkerThreads += min(m_NumOvlpCores - ReqRMICores, m_MaxNonRMIThreads);
+	}
+else
+	MaxWorkerThreads = NumThreads;
+Rslt = IdentifySequenceOverlaps(MaxSeqLen,m_NumOvlpCores,MaxWorkerThreads);
+#ifdef _DEBUG
+#ifdef _WIN32
+_ASSERTE( _CrtCheckMemory());
+#endif
+#endif
 Reset(false);
 return(Rslt);
 }
@@ -2006,21 +2237,104 @@ CPBErrCorrect *pPBErrCorrect = (CPBErrCorrect *)pPars->pThis;
 Rslt = pPBErrCorrect->ThreadPBErrCorrect(pPars);
 pPars->Rslt = Rslt;
 #ifdef _WIN32
-_endthreadex(0);
+_endthreadex(0)                                                                             ;
 return(eBSFSuccess);
 #else
 pthread_exit(NULL);
 #endif
 }
 
+
+int
+CPBErrCorrect::UpdateProcessStats(void)	// determine current CPU utilisation by this process and numbers of commited and uncommited service provider classses
+{
+UINT32 NumClasses;
+UINT32 NumCommitedClasses;
+UINT32 NumUncommitedClasses;
+UINT32 CurNodeID;
+tsPBEScaffNode *pCurPBScaffNode;
+time_t Now;
+
+UINT32 TargNonRMIThreads;
+UINT32 TargRMIThreads;
+
+if(m_ProcessStatsThen == 0)
+	Now = m_ProcessStatsThen = time(NULL);
+else
+	Now = time(NULL);
+
+if(m_bRMI)
+	NumClasses = m_pRequester->GetNumClassInstances(eBKSPTSmithWaterman,&NumCommitedClasses,&NumUncommitedClasses);
+else
+	{
+	NumClasses = 0;
+	NumCommitedClasses = 0;
+	NumUncommitedClasses = 0;
+	}
+
+AcquireCASSerialise();
+
+m_RMINumCommitedClasses = NumCommitedClasses;
+m_RMINumUncommitedClasses = NumUncommitedClasses;
+
+TargRMIThreads = min(NumClasses,m_MaxRMIInstances);	
+TargNonRMIThreads = m_NumOvlpCores - min(m_NumOvlpCores, (TargRMIThreads + cRMIThreadsPerCore - 1) / cRMIThreadsPerCore);
+if(TargNonRMIThreads < m_CurActiveNonRMIThreads)
+	m_ReduceNonRMIThreads = max(m_CurActiveNonRMIThreads - TargNonRMIThreads,6);
+else
+	m_ReduceNonRMIThreads = 0;
+m_CurAllowedActiveOvlpThreads = min(TargRMIThreads + TargNonRMIThreads,m_MaxActiveOvlpThreads);
+
+if((Now - m_ProcessStatsThen) >= 60)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artifact: %u",
+							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
+	if(m_bRMI)
+		{
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: Current number of RMI SW threads: %d, number of non_RMI SW threads: %d, allowing up to %d active SW threads",
+							m_CurActiveRMIThreads,m_CurActiveNonRMIThreads,m_CurAllowedActiveOvlpThreads);
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u RMI classes instantiated, %u RMI classes uninstantiated",m_RMINumCommitedClasses,m_RMINumUncommitedClasses);
+		}
+	m_ProcessStatsThen += 60;
+	}
+ReleaseCASSerialise();
+AcquireCASLock();
+pCurPBScaffNode = &m_pPBScaffNodes[m_LowestCpltdProcNodeID];
+for(CurNodeID = m_LowestCpltdProcNodeID + 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++, pCurPBScaffNode++)
+	{
+	if(pCurPBScaffNode->flgCpltdProc == 1 ||	// completed processing
+			pCurPBScaffNode->flgHCseq	  ||	// not error correcting already assumed to be high confidence sequences 
+			pCurPBScaffNode->flgUnderlength == 1 || // must be of a user specified minimum length 
+			pCurPBScaffNode->SeqLen < m_MinPBSeqLen)
+			continue;
+	 m_LowestCpltdProcNodeID = CurNodeID - 1;
+	break;
+	 }
+if(CurNodeID == m_NumPBScaffNodes+1)
+	m_LowestCpltdProcNodeID = CurNodeID - 1;
+ReleaseCASLock();
+return(0);
+}
+
+
+
+
 int
 CPBErrCorrect::IdentifySequenceOverlaps(int MaxSeqLen,		// max length sequence to be overlapped
-									int NumOvlpThreads)		// identify all read overlaps using this many threads
+									int NumOvlpCores,		// targeting to maximise usage of this many cores
+									int NumOvlpThreads,		// identify all read overlaps using at most this this many threads 
+								    teBKSPType RMIBKSPType,	// workers are to request this service type
+									UINT32 RMIBufferSize,	// each worker thread default allocates to process up to this much buffered data
+									UINT32 RMIParamDataSize,// each worker thread default allocates to process up to this much parameter data
+									UINT32 RMIReqDataSize,	// each worker thread default allocates to process up to this much request data
+									UINT32 RMIRespDataSize)	// each worker thread default allocates to process up to this much response data
 {
 tsThreadPBErrCorrect *pThreadPutOvlps;
 int ThreadIdx;
 tsThreadPBErrCorrect *pThreadPar;
-
+UINT32 NumCommitedClasses;
+UINT32 NumUncommitedClasses;
+int NumClasses;
 memset(m_ExactKmerDists,0,sizeof(m_ExactKmerDists));
 m_TotAlignSeqLen = 0;
 m_TotAlignSeqs = 0;
@@ -2062,8 +2376,6 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 		break;
 		}
 
-
-
 	if(m_szErrCorFile[0] != '\0')
 		{
 		pThreadPar->AllocdErrCorLineBuff = cMaxPacBioErrCorLen;
@@ -2099,6 +2411,40 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 	pThreadPar->MaxAcceptHitsPerSeedCore = cDfltMaxAcceptHitsPerSeedCore;
 	pThreadPar->MinPBSeqLen = m_MinPBSeqLen;
 	pThreadPar->MinOverlapLen = m_MinPBSeqOverlap;
+
+// RMI support
+	pThreadPar->bRMI = m_bRMI;
+	if(m_bRMI)
+		{
+		pThreadPar->ServiceType = RMIBKSPType;
+		pThreadPar->pRequester = m_pRequester;	
+		pThreadPar->RMIReqDataSize = RMIReqDataSize;		// pRMIReqData allocation size
+		if((pThreadPar->pRMIReqData = (UINT8 *)malloc(RMIReqDataSize))==NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate %d memory for RMIReqData buffering",RMIReqDataSize);
+			break;
+			}
+
+		pThreadPar->RMIParamDataSize = RMIParamDataSize;	// pRMIParamData allocation size
+		if((pThreadPar->pRMIParamData = (UINT8 *)malloc(RMIParamDataSize))==NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate %d memory for RMIParamData buffering",RMIParamDataSize);
+			break;
+			}
+
+		pThreadPar->RMIRespDataSize = RMIRespDataSize;		// pRMIRespData allocation size
+		if((pThreadPar->pRMIRespData = (UINT8 *)malloc(RMIRespDataSize))==NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate %d memory for RMIRespDatabuffering",RMIRespDataSize);
+			break;
+			}
+		pThreadPar->RMIBufferSize = RMIBufferSize;			// RMIBuffer allocation size
+		if((pThreadPar->pRMIBuffer = (UINT8 *)malloc(RMIBufferSize))==NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate %d memory for RMIBuffer buffering",RMIBufferSize);
+			break;
+			}
+		}
 	}
 
 if(ThreadIdx != NumOvlpThreads)	// any errors whilst allocating memory for core hits?
@@ -2124,8 +2470,16 @@ if(ThreadIdx != NumOvlpThreads)	// any errors whilst allocating memory for core 
 			}
 		if(pThreadPar->pProbeSeq != NULL)
 			delete pThreadPar->pProbeSeq;
-		if(pThreadPar->pSW != NULL)
-			delete pThreadPar->pSW;
+
+		if(pThreadPar->pRMIReqData != NULL)
+			free(pThreadPar->pRMIReqData);
+		if(pThreadPar->pRMIParamData != NULL)
+			free(pThreadPar->pRMIParamData);
+		if(pThreadPar->pRMIRespData != NULL)
+			free(pThreadPar->pRMIRespData);
+		if(pThreadPar->pRMIBuffer != NULL)
+			free(pThreadPar->pRMIBuffer);
+
 		pThreadPar -= 1;
 		ThreadIdx -= 1;
 		}
@@ -2134,6 +2488,28 @@ if(ThreadIdx != NumOvlpThreads)	// any errors whilst allocating memory for core 
 	Reset(false);
 	return((INT64)eBSFerrMem);
 	}
+
+if(m_bRMI)
+	{
+	NumClasses = m_pRequester->GetNumClassInstances(eBKSPTSmithWaterman,&NumCommitedClasses,&NumUncommitedClasses);
+	m_RMINumCommitedClasses = NumCommitedClasses;
+	m_RMINumUncommitedClasses = NumUncommitedClasses;
+	}
+else
+	{
+	m_RMINumCommitedClasses = 0;
+	m_RMINumUncommitedClasses = 0;
+	}
+m_LowestCpltdProcNodeID = 0;
+
+m_NumOvlpCores = NumOvlpCores;
+m_ReduceNonRMIThreads = 0;
+m_MaxActiveOvlpThreads = NumOvlpThreads;
+m_CurAllowedActiveOvlpThreads = 0;
+m_CurActiveRMIThreads = 0;
+m_CurActiveNonRMIThreads = 0;
+UpdateProcessStats();
+
 
 pThreadPar = pThreadPutOvlps;
 for (ThreadIdx = 1; ThreadIdx <= NumOvlpThreads; ThreadIdx++, pThreadPar++)
@@ -2147,36 +2523,30 @@ for (ThreadIdx = 1; ThreadIdx <= NumOvlpThreads; ThreadIdx++, pThreadPar++)
 #endif
 	}
 
-// allow threads a few seconds to startup
+// allow threads 30 seconds to startup
 #ifdef _WIN32
-Sleep(5000);
+Sleep(30000);
 #else
-sleep(5);
+sleep(30);
 #endif
 pThreadPar = pThreadPutOvlps;
 for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	{
 #ifdef _WIN32
-	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 60000))
+	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 30000))
 		{
-		AcquireCASSerialise();
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
-							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
-		ReleaseCASSerialise();
+		UpdateProcessStats();
 		};
 	CloseHandle(pThreadPar->threadHandle);
 #else
 	struct timespec ts;
 	int JoinRlt;
 	clock_gettime(CLOCK_REALTIME, &ts);
-	ts.tv_sec += 60;
+	ts.tv_sec += 30;
 	while ((JoinRlt = pthread_timedjoin_np(pThreadPar->threadID, NULL, &ts)) != 0)
 		{
-		AcquireCASSerialise();
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
-							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
-		ReleaseCASSerialise();
-		ts.tv_sec += 60;
+		UpdateProcessStats();
+		ts.tv_sec += 30;
 		}
 #endif
 	}
@@ -2205,9 +2575,22 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 		delete pThreadPar->pszMultiAlignLineBuff;
 	if(pThreadPar->pszErrCorLineBuff != NULL)
 		delete pThreadPar->pszErrCorLineBuff;
+
+	if(!m_bRMI && pThreadPar->pSW != NULL)
+		delete pThreadPar->pSW;
+
+	if(pThreadPar->pRMIReqData != NULL)
+		free(pThreadPar->pRMIReqData);
+	if(pThreadPar->pRMIParamData != NULL)
+		free(pThreadPar->pRMIParamData);
+	if(pThreadPar->pRMIRespData != NULL)
+		free(pThreadPar->pRMIRespData);
+	if(pThreadPar->pRMIBuffer != NULL)
+		free(pThreadPar->pRMIBuffer);
 	}
 
 delete pThreadPutOvlps;
+
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
 							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
 
@@ -2234,7 +2617,6 @@ if(m_hErrCorFile != -1)
 	}
 return(0);
 }
-
 
 int
 CPBErrCorrect::ThreadPBErrCorrect(tsThreadPBErrCorrect *pThreadPar)
@@ -2292,33 +2674,153 @@ UINT32 MinOverlapLen;
 tsPBEScaffNode *pHitScaffNode;
 sPBECoreHitCnts *pSummaryCnts;
 UINT32 CurNodeID;
+UINT32 LowestCpltdProcNodeID;
 int NumInMultiAlignment;
 int Class;
 char szTargSeqName[cMaxDatasetSpeciesChrom];
 char szProbeSeqName[cMaxDatasetSpeciesChrom];
 
+UINT64 ClassInstanceID;
+UINT32 ClassMethodID;
+bool bRMIInitialised;
+bool bRMIRslt;
+int iRMIRslt;
+bool bNonRMIRslt;
+int iNonRMIRslt;
+tsSSWCell RMIPeakMatchesCell;
 tsPBEScaffNode *pCurPBScaffNode;
+UINT32 RMINumUncommitedClasses;
+
 pThreadPar->pSW = NULL;
+pCurPBScaffNode = NULL;
+ClassInstanceID = 0;
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+RMIRestartThread:							// RMI error detected threads are restarted from here with a goto!
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+if(ClassInstanceID != 0)   // non-zero if must have been a RMI SW thread which is restarting 
+	{
+	RMI_delete(pThreadPar,cRMI_SecsTimeout,ClassInstanceID);
+	if(pCurPBScaffNode != NULL)
+		{
+		AcquireCASLock();
+		pCurPBScaffNode->flgCurProc = 0;
+		pCurPBScaffNode->flgCpltdProc = 0;
+		ReleaseCASLock();
+		}
+	AcquireCASSerialise();
+	if(m_CurActiveRMIThreads > 0)
+		m_CurActiveRMIThreads -= 1;
+	ReleaseCASSerialise();
+	}
+
+if(pThreadPar->pSW != NULL)  // non-NULL if must have been a non-RMI SW thread which is restarting
+	{
+	delete pThreadPar->pSW ;
+	pThreadPar->pSW = NULL;
+	pCurPBScaffNode = NULL;
+	AcquireCASSerialise();
+	if(m_CurActiveNonRMIThreads > 0)
+		m_CurActiveNonRMIThreads -= 1;
+	ReleaseCASSerialise();
+	}
+
+ClassInstanceID = 0;
+ClassMethodID = 0;
+bRMIInitialised = false;
+pThreadPar->bRMI = false;
+ 
+// if debugging and only interested in sessions with a specific identifier then set this to the session identifier of interest!!
+UINT32 ReqSessionID = 0;
+
+while(1)
+	{
+	AcquireCASThreadPBErrCorrect();
+	AcquireCASLock();
+	LowestCpltdProcNodeID = m_LowestCpltdProcNodeID;
+	if(LowestCpltdProcNodeID == m_NumPBScaffNodes)
+		{
+		ReleaseCASLock();
+		ReleaseCASThreadPBErrCorrect();
+		goto CompletedNodeProcessing;
+		}
+	ReleaseCASLock();
+	AcquireCASSerialise();
+	if((m_CurActiveRMIThreads + m_CurActiveNonRMIThreads) >= m_CurAllowedActiveOvlpThreads)
+		{
+		ReleaseCASSerialise();
+		ReleaseCASThreadPBErrCorrect();
+		CUtility::SleepMillisecs(60000);
+		continue;
+		}
+	RMINumUncommitedClasses = m_RMINumUncommitedClasses;
+	ReleaseCASSerialise();
+
+	if(m_bRMI && RMINumUncommitedClasses > 0)   // RMI class instance threads for SW have higher priority than non-RMI SW processing threads
+		{
+		if((ClassInstanceID = RMI_new(pThreadPar,cRMI_SecsTimeout,ReqSessionID))!=0)
+			{
+			pThreadPar->bRMI = true;
+			AcquireCASSerialise();
+			m_CurActiveRMIThreads += 1;
+			ReleaseCASSerialise();
+			ReleaseCASThreadPBErrCorrect();
+			break;
+			}
+		ReleaseCASThreadPBErrCorrect();
+		CUtility::SleepMillisecs(15000);
+		continue;
+		}
+	else											// not using RMI classes or if using RMI then there are no RMI uncommitted class instances remaining
+		{
+		AcquireCASSerialise();
+		if(m_CurActiveNonRMIThreads >= (UINT32)m_MaxNonRMIThreads || m_ReduceNonRMIThreads > 0)
+			{
+			ReleaseCASSerialise();
+			ReleaseCASThreadPBErrCorrect();
+			CUtility::SleepMillisecs(30000);
+			continue;
+			}
+		m_CurActiveNonRMIThreads += 1;
+		ReleaseCASSerialise();
+		ReleaseCASThreadPBErrCorrect();
+		break;
+		}
+	}
+
 NumInMultiAlignment = 0;
 AdjOverlapFloat = m_OverlapFloat + pThreadPar->CoreSeqLen;
 if (pThreadPar->CoreSeqLen < cMaxPacBioSeedExtn)
 	AdjOverlapFloat += 120;
 
-for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
+for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	{
+	AcquireCASSerialise();				// check if needing to reduce core loading
+	if(pThreadPar->bRMI == false && m_ReduceNonRMIThreads > 0)
+		{
+		m_ReduceNonRMIThreads -= 1;
+		ReleaseCASSerialise();
+		goto RMIRestartThread;
+		}
+	ReleaseCASSerialise();
+
 	pThreadPar->NumCoreHits = 0;
 	pCurPBScaffNode = &m_pPBScaffNodes[CurNodeID-1];
-	AcquireCASLock();
-	if(pCurPBScaffNode->flgCurProc == 1 ||    // another thread already processing this sequence? 
-			pCurPBScaffNode->flgHCseq ||	  // not error correcting already assumed to be high confidence sequences 
+	AcquireCASLock();                    // check if sequence is to be skipped
+	if(pCurPBScaffNode->flgCurProc == 1 ||			// another thread already processing this sequence? 
+			pCurPBScaffNode->flgCpltdProc == 1 ||	// completed processing
+			pCurPBScaffNode->flgHCseq ||			// not error correcting already assumed to be high confidence sequences 
 		    pCurPBScaffNode->flgUnderlength == 1 || // must be of a user specified minimum length 
 			pCurPBScaffNode->SeqLen < (UINT32)pThreadPar->MinPBSeqLen) 
        	{
 		ReleaseCASLock();
 		continue;
 		}
+
 	pCurPBScaffNode->flgCurProc = 1;
+	pCurPBScaffNode->flgCpltdProc = 0;
 	ReleaseCASLock();
+
 	pThreadPar->bRevCpl = false;
 	IdentifyCoreHits(CurNodeID,pThreadPar);
 
@@ -2564,22 +3066,71 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 		{
 		LongSAligns = 0;
 		LongAAligns = 0;
-		if(pThreadPar->pSW == NULL)
+
+		if(!pThreadPar->bRMI && pThreadPar->pSW == NULL)
 			{
+			bNonRMIRslt = false;
 			AcquireCASSerialise();
-			pThreadPar->pSW = new CSSW;
-			pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
-			pThreadPar->pSW->SetCPScores(m_SWMatchScore, m_SWMismatchPenalty, m_SWGapOpenPenalty, m_SWGapExtnPenalty);
-			pThreadPar->pSW->SetMaxInitiatePathOfs(cDfltMaxOverlapFloat);
-			pThreadPar->pSW->PreAllocMaxTargLen(m_MaxPBSeqLen, m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+			if((pThreadPar->pSW = new CSSW) != NULL)
+				bNonRMIRslt = true;
+			if(bNonRMIRslt == true)
+				bNonRMIRslt = pThreadPar->pSW->SetScores(m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
+			if(bNonRMIRslt == true)
+				bNonRMIRslt = pThreadPar->pSW->SetCPScores(m_SWMatchScore, m_SWMismatchPenalty, m_SWGapOpenPenalty, m_SWGapExtnPenalty);
+			if(bNonRMIRslt == true)
+				bNonRMIRslt = pThreadPar->pSW->SetMaxInitiatePathOfs(cDfltMaxOverlapFloat);
+			if(bNonRMIRslt == true)
+				bNonRMIRslt = pThreadPar->pSW->PreAllocMaxTargLen(m_MaxPBSeqLen, m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+			if(bNonRMIRslt == false)
+				goto RMIRestartThread;
 			ReleaseCASSerialise();
 			}
+		if(pThreadPar->bRMI && !bRMIInitialised)
+			{
+			bRMIRslt = RMI_SetScores(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,m_SWMatchScore,m_SWMismatchPenalty,m_SWGapOpenPenalty,m_SWGapExtnPenalty,m_SWProgExtnPenaltyLen,min(63,m_SWProgExtnPenaltyLen+3),cAnchorLen);
+			if(bRMIRslt != false)
+				bRMIRslt = RMI_SetCPScores(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,m_SWMatchScore, m_SWMismatchPenalty, m_SWGapOpenPenalty, m_SWGapExtnPenalty);
+			if(bRMIRslt != false)
+				bRMIRslt = RMI_SetMaxInitiatePathOfs(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,cDfltMaxOverlapFloat);
+			if(bRMIRslt != false)
+				bRMIRslt = RMI_PreAllocMaxTargLen(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,m_MaxPBSeqLen, m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+			if(bRMIRslt == false)
+				goto RMIRestartThread;
+			bRMIInitialised = true;
+			}		
 
 		if(m_PMode == ePBPMErrCorrect && pThreadPar->NumTargCoreHitCnts >= 2)
-			pThreadPar->pSW->StartMultiAlignments(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts);
+			{
+			if(!pThreadPar->bRMI)
+				{
+				iNonRMIRslt = pThreadPar->pSW->StartMultiAlignments(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts);
+				if(iNonRMIRslt < 0)
+					goto RMIRestartThread;
+				}
+			else
+				{
+				iRMIRslt = RMI_StartMultiAlignments(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts);
+				if(iRMIRslt < 0)
+					goto RMIRestartThread;
+				}
+			}
 
+		if(pCurPBScaffNode->SeqLen > m_MaxPBSeqLen)
+			gDiagnostics.DiagOut(eDLWarn,gszProcName,"####### Probe length of %dbp is longer than expected max length of %dbp #######",
+						pCurPBScaffNode->SeqLen,m_MaxPBSeqLen);
 		m_pSfxArray->GetIdentName(pCurPBScaffNode->EntryID,sizeof(szProbeSeqName),szProbeSeqName);
-		pThreadPar->pSW->SetProbe(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq);
+		if(!pThreadPar->bRMI)
+			{
+			bNonRMIRslt = pThreadPar->pSW->SetProbe(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq);
+			if(bNonRMIRslt == false)
+				goto RMIRestartThread;
+			}
+		else
+			{
+			bRMIRslt = RMI_SetProbe(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq);
+			if(bRMIRslt == false)
+				goto RMIRestartThread;
+			}
 		pSummaryCnts = &pThreadPar->TargCoreHitCnts[0];
 		NumInMultiAlignment = 0;
 		for(CurTargCoreHitCnts = 0; CurTargCoreHitCnts < pThreadPar->NumTargCoreHitCnts; CurTargCoreHitCnts++,pSummaryCnts++)
@@ -2604,7 +3155,23 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			if(!bTargSense)
 				CSeqTrans::ReverseComplement(TargSeqLen,pThreadPar->pTargSeq);
 			pThreadPar->pTargSeq[TargSeqLen] = eBaseEOS;
-			pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
+
+		if(TargSeqLen > m_MaxPBSeqLen)
+			gDiagnostics.DiagOut(eDLWarn,gszProcName,"####### Probe length of %dbp is longer than expected max length of %dbp #######",
+						TargSeqLen,m_MaxPBSeqLen);
+
+			if(!pThreadPar->bRMI)
+				{
+				bNonRMIRslt = pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
+				if(bNonRMIRslt == false)
+					goto RMIRestartThread;
+				}
+			else
+				{
+				bRMIRslt = RMI_SetTarg(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,TargSeqLen,pThreadPar->pTargSeq);
+				if(bRMIRslt == false)
+					goto RMIRestartThread;
+				}
 			
 			// restrict the range over which the SW will be processed to that of the overlap +/- m_OverlapFloat
 			int Rslt;
@@ -2626,8 +3193,20 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					pSummaryCnts->STargEndOfs = TargSeqLen - 1;
 				else
 					pSummaryCnts->STargEndOfs += AdjOverlapFloat;
-				Rslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
+				if(!pThreadPar->bRMI)
+					{
+					iNonRMIRslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
 											pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs);
+					if(iNonRMIRslt < 0)
+						goto RMIRestartThread;
+					}
+				else
+					{
+					iRMIRslt = Rslt = RMI_SetAlignRange(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
+											pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs);
+					if(iRMIRslt < 0)
+						goto RMIRestartThread;
+					}
 				}
 			else
 				{
@@ -2655,14 +3234,38 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					pSummaryCnts->ATargEndOfs = TargSeqLen - 1;
 				else
 					pSummaryCnts->ATargEndOfs += AdjOverlapFloat;
-
-				Rslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
+				if(!pThreadPar->bRMI)
+					{
+					iNonRMIRslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
 											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
+					if(iNonRMIRslt < 0)
+						goto RMIRestartThread;
+					}
+				else
+					{
+					iRMIRslt = Rslt = RMI_SetAlignRange(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
+											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
+					if(iRMIRslt < 0)
+						goto RMIRestartThread;
+					}
 				}
+
 #ifdef _PEAKSCOREACCEPT_
 			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 #else
-			pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+			if(!pThreadPar->bRMI)
+				pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+			else
+				{
+				pPeakMatchesCell = RMI_Align(pThreadPar,cRMI_AlignSecsTimeout ,ClassInstanceID,NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+				if(pPeakMatchesCell != NULL)
+					{
+					RMIPeakMatchesCell = *pPeakMatchesCell;
+					pPeakMatchesCell = &RMIPeakMatchesCell;
+					}
+				else
+					goto RMIRestartThread;
+				}
 #endif
 			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
@@ -2695,12 +3298,23 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 					ProvArtefact += 1;
 					}
 
-				if(m_PMode != ePBPMConsensus && Class == eOLCOverlapping && (PathClass = pThreadPar->pSW->ClassifyPath(m_MaxArtefactDev,
-																					PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-																					PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs)) > 0)
+				if(m_PMode != ePBPMConsensus && Class == eOLCOverlapping)
 					{
-					Class = (int)eOLCartefact;
-					ProvArtefact += 1;
+					if(!pThreadPar->bRMI)
+						PathClass = pThreadPar->pSW->ClassifyPath(m_MaxArtefactDev,	PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+																					PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
+					else
+						{
+						PathClass = iRMIRslt = RMI_ClassifyPath(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,m_MaxArtefactDev,	PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+																					PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
+						if(iRMIRslt < 0)
+							goto RMIRestartThread;
+						}
+					if(PathClass > 0)
+						{
+						Class = (int)eOLCartefact;
+						ProvArtefact += 1;
+						}
 					}
 
 				if(Class == eOLCOverlapping)
@@ -2721,7 +3335,8 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 						ProvContained += 1;
 						}
 					}
-				
+
+	
 				if(m_PMode == ePBPMErrCorrect && Class != (int)eOLCartefact && pThreadPar->NumTargCoreHitCnts >= 2)
 					{
 #undef _CHECKKMERDIST_
@@ -2747,14 +3362,31 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 						}
 					ReleaseCASSerialise();
 #endif
-					pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+					if(!pThreadPar->bRMI)
+						pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
-															
+					else
+						{
+						iRMIRslt = RMI_TracebacksToAlignOps(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
+						if(iRMIRslt < 0)
+							goto RMIRestartThread;
+						}		
 
-					pThreadPar->pSW->AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,pThreadPar->pTargSeq);
+
+					if(!pThreadPar->bRMI)
+						pThreadPar->pSW->AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq);
+					else
+						{
+						iRMIRslt = RMI_AddMultiAlignment(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq);
+						if(iRMIRslt < 0)
+							goto RMIRestartThread;
+						}
 					NumInMultiAlignment += 1;
 					}
+
 
 				if(m_PMode == ePBPMOverlapDetail && m_hErrCorFile != -1)
 					{
@@ -2818,30 +3450,77 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 			}
 		}
 
-	if(m_PMode == ePBPMErrCorrect && pThreadPar->pSW != NULL && NumInMultiAlignment >= 1 &&  (m_hMultiAlignFile != -1 || m_hErrCorFile != -1))
+	if(m_PMode == ePBPMErrCorrect && (pThreadPar->pSW != NULL || pThreadPar->bRMI) && NumInMultiAlignment >= 1 &&  (m_hMultiAlignFile != -1 || m_hErrCorFile != -1))
 		{
-		pThreadPar->pSW->GenMultialignConcensus();
-		AcquireCASSerialise();
+		if(!pThreadPar->bRMI)
+			pThreadPar->pSW->GenMultialignConcensus();
+		else
+			{
+			iRMIRslt = RMI_GenMultialignConcensus(pThreadPar,cRMI_SecsTimeout,ClassInstanceID);
+			if(iRMIRslt < 0)
+				goto RMIRestartThread;
+			}
+
 		if(m_hErrCorFile != -1)
 			{
-			if((pThreadPar->ErrCorBuffIdx=pThreadPar->pSW->MAlignCols2fasta(pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff)) > 0)
+			if(!pThreadPar->bRMI)
+				pThreadPar->ErrCorBuffIdx=pThreadPar->pSW->MAlignCols2fasta(pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff);
+			else
 				{
+				pThreadPar->ErrCorBuffIdx = iRMIRslt = RMI_MAlignCols2fasta(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff);
+				if(iRMIRslt < 0)
+					goto RMIRestartThread;
+				}
+			if(pThreadPar->ErrCorBuffIdx > 0)
+				{
+				AcquireCASSerialise();
 				CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx);
+				m_ErrCorFileUnsyncedSize += pThreadPar->ErrCorBuffIdx;
+				if(m_ErrCorFileUnsyncedSize > 50000)
+					{
+#ifdef _WIN32
+					_commit(m_hErrCorFile);
+#else
+					fsync(m_hErrCorFile);
+#endif
+					m_ErrCorFileUnsyncedSize = 0;
+					}
+				ReleaseCASSerialise();
 				pThreadPar->ErrCorBuffIdx = 0;
 				}
 			}
 
 		if(m_hMultiAlignFile != -1)
 			{
-			if((pThreadPar->MultiAlignBuffIdx=pThreadPar->pSW->MAlignCols2MFA(pCurPBScaffNode->EntryID,pThreadPar->AllocdMultiAlignLineBuff,pThreadPar->pszMultiAlignLineBuff)) > 0)
+			if(!pThreadPar->bRMI)
+				pThreadPar->MultiAlignBuffIdx=pThreadPar->pSW->MAlignCols2MFA(pCurPBScaffNode->EntryID,pThreadPar->AllocdMultiAlignLineBuff,pThreadPar->pszMultiAlignLineBuff);
+			else
+				{
+				pThreadPar->MultiAlignBuffIdx = iRMIRslt = RMI_MAlignCols2MFA(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->EntryID,pThreadPar->AllocdMultiAlignLineBuff,pThreadPar->pszMultiAlignLineBuff);
+				if(iRMIRslt < 0)
+					goto RMIRestartThread;
+				}
+			if(pThreadPar->MultiAlignBuffIdx > 0)
 				{
 				pThreadPar->pszMultiAlignLineBuff[pThreadPar->MultiAlignBuffIdx++] = '\n';
+				AcquireCASSerialise();
 				CUtility::SafeWrite(m_hMultiAlignFile,pThreadPar->pszMultiAlignLineBuff,pThreadPar->MultiAlignBuffIdx);
+				m_MultiAlignFileUnsyncedSize += pThreadPar->MultiAlignBuffIdx;
+				if(m_MultiAlignFileUnsyncedSize > 100000)
+					{
+#ifdef _WIN32
+					_commit(m_hMultiAlignFile);
+#else
+					fsync(m_hMultiAlignFile);
+#endif
+					m_MultiAlignFileUnsyncedSize = 0;
+					}
+				ReleaseCASSerialise();
 				pThreadPar->MultiAlignBuffIdx = 0;
 				}
 			}
-		ReleaseCASSerialise();
 		}
+
 	AcquireCASSerialise();
 	if(ProvOverlapping > 0)
 		m_ProvOverlapping += 1;
@@ -2855,6 +3534,9 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 		m_ProvSWchecked += ProvSWchecked;
 	m_NumOverlapProcessed += 1;
 	ReleaseCASSerialise();
+	AcquireCASLock();
+	pCurPBScaffNode->flgCpltdProc = 1;
+	ReleaseCASLock();
 	ProvOverlapping = 0;
 	ProvOverlapped = 0;
 	ProvContained = 0;
@@ -2864,6 +3546,8 @@ for(CurNodeID = 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	pThreadPar->NumTargCoreHitCnts = 0;
 	pThreadPar->NumCoreHits = 0;
 	}
+
+CompletedNodeProcessing:     // when no more nodes requiring processing then goto is used to branch here for thread cleanup
 AcquireCASSerialise();
 if(m_PMode == ePBPMErrCorrect && m_hErrCorFile != -1 && pThreadPar->ErrCorBuffIdx > 0)
 	{
@@ -2882,6 +3566,11 @@ if(m_PMode == ePBPMOverlapDetail && m_ScaffLineBuffIdx > 0)
 	}
 ReleaseCASSerialise();
 
+if(pThreadPar->bRMI && ClassInstanceID != 0)
+	{
+	RMI_delete(pThreadPar,cRMI_SecsTimeout,ClassInstanceID);
+	ClassInstanceID = 0;
+	}
 if(pThreadPar->pSW != NULL)
 	{
 	delete pThreadPar->pSW;
@@ -3063,6 +3752,854 @@ if(pPars->bRevCpl)
 return(pPars->NumCoreHits);
 }
 
+int											// marshaled parameter required this many bytes
+CPBErrCorrect::MarshalReq(UINT8 *pInto,					// marshal into this list
+				teRMIParamType Type,			// parameter type
+				void *pValue,				// parameter value
+				UINT32 ValLen)				// length of parameter ptd to by pValue, only used if parameter type is pUint8
+
+{
+switch(Type) {
+	case eRMIPTBool:	// boolean
+		*pInto++ = (UINT8)eRMIPTBool;
+		*pInto = *(bool *)pValue == true ? 1 : 0;
+		return(sizeof(UINT8) + 1);
+
+	case eRMIPTInt8:		// 8bit signed int
+		*pInto++ = (UINT8)eRMIPTInt8;
+		*pInto = *(INT8 *)pValue;
+		return(sizeof(INT8) + 1);
+
+	case eRMIPTUint8:       // 8bit  unsigned int
+		*pInto++ = (UINT8)eRMIPTUint8;
+		*pInto = *(UINT8 *)pValue;
+		return(sizeof(UINT8) + 1);
+
+	case eRMIPTInt32:		// 32bit signed int
+		*pInto++ = (UINT8)eRMIPTInt32;
+		*(INT32 *)pInto = *(INT32 *)pValue;
+		return(sizeof(INT32) + 1);
+
+	case eRMIPTUint32:		// 32bit unsigned int
+		*pInto++ = (UINT8)eRMIPTInt32;
+		*(UINT32 *)pInto = *(UINT32 *)pValue;
+		return(sizeof(UINT32) + 1);
+
+	case eRMIPTInt64:		// 64bit signed int
+		*pInto++ = (UINT8)eRMIPTInt64;
+		*(INT64 *)pInto = *(INT64 *)pValue;
+		return(sizeof(INT64) + 1);
+
+	case eRMIPTUint64:		// 64bit unsigned int
+		*pInto++ = (UINT8)eRMIPTUint64;
+		*(UINT64 *)pInto = *(UINT64 *)pValue;
+		return(sizeof(UINT64) + 1);
+
+	case eRMIPTDouble:		// floating point double
+		*pInto++ = (UINT8)eRMIPTDouble;
+		*(double *)pInto = *(double *)pValue;
+		return(sizeof(double) + 1);
+
+	case eRMIPTVarUint8:		// variable length
+		*pInto++ = (UINT8)eRMIPTVarUint8;
+		*(UINT32 *)pInto = ValLen;
+		if(ValLen > 0 && pValue != NULL)
+			{
+			pInto += sizeof(UINT32);
+			memcpy(pInto,pValue,ValLen);
+			}
+		return(sizeof(UINT32) + ValLen + 1);
+
+	default:
+		break;
+	}
+	
+return(0);
+}
+
+int
+CPBErrCorrect::UnmarshalResp(UINT32 DataLen,
+				UINT8 *pFrom,		// unmarshal from this marshalled parameter list
+				void *pValue)
+{
+UINT32 ValLen;
+switch(*pFrom++) {
+	case eRMIPTBool:	// boolean
+		*(bool *)pValue = *pFrom == 0 ? false : true;
+		return(sizeof(UINT8) + 1);
+
+	case eRMIPTInt8:		// 8bit signed int
+		*(INT8 *)pValue = *(INT8 *)pFrom;
+		return(sizeof(INT8) + 1);
+
+	case eRMIPTUint8:       // 8bit  unsigned int
+		*(UINT8 *)pValue = *(UINT8 *)pFrom;
+		return(sizeof(UINT8) + 1);
+
+	case eRMIPTInt32:		// 32bit signed int
+		*(INT32 *)pValue = *(INT32 *)pFrom;
+		return(sizeof(INT32) + 1);
+
+	case eRMIPTUint32:		// 32bit unsigned int
+		*(UINT32 *)pValue = *(UINT32 *)pFrom;
+		return(sizeof(UINT32) + 1);
+
+	case eRMIPTInt64:		// 64bit signed int
+		*(INT64 *)pValue = *(INT64 *)pFrom;
+		return(sizeof(INT64) + 1);
+
+	case eRMIPTUint64:		// 64bit unsigned int
+		*(UINT64 *)pValue = *(UINT64 *)pFrom;
+		return(sizeof(UINT64) + 1);
+
+	case eRMIPTDouble:		// floating point double
+		*(double *)pValue = *(double *)pFrom;
+		return(sizeof(double) + 1);
+
+	case eRMIPTVarUint8:		// variable length
+		ValLen = *(UINT32 *)pFrom;
+		if(ValLen > 0)
+			{
+			pFrom += sizeof(UINT32);
+			*(void **)pValue = pFrom;
+			return(sizeof(UINT32) + ValLen + 1);
+			}
+		*(void **)pValue = (void *)NULL;
+		return(sizeof(UINT32) + 1);
+
+	default:
+		break;
+	}
+return(0);
+}
+
+
+UINT64		// returned class instance identifier
+CPBErrCorrect::RMI_new(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,	// allow at most Timeout seconds for class instantiation
+						UINT32 SessionID)									// requesting class instance on this specific session, 0 if on least loaded session
+{
+int Rslt;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT64 ClassInstanceID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+
+Then = time(NULL);
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,0,eSWMConstruct,0,NULL,0,NULL, SessionID))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return((UINT64)0);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)
+	return(0);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return((UINT64)0);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, service provider session terminated??
+	return((UINT64)0);	
+return(ClassInstanceID);
+}
+
+volatile UINT32 gDeleteFailed = 0;
+void
+CPBErrCorrect::RMI_delete(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout, UINT64 ClassInstanceID) // allow at most Timeout seconds for class deletion
+{
+int Rslt;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMDestruct,0,NULL,0,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return;
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, service provider session terminated??
+	return;
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return;
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)
+#ifdef WIN32
+	InterlockedIncrement(&gDeleteFailed);
+#else
+	__sync_fetch_and_add(&gDeleteFailed,1);
+#endif
+return;
+}
+
+bool 
+CPBErrCorrect::RMI_SetScores(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+				int MatchScore,									// score for match
+				int MismatchPenalty,							// penalty for mismatch
+				int GapOpenPenalty,								// penalty for opening a gap
+				int GapExtnPenalty,								// penalty if extending already opened gap
+				int DlyGapExtn,									// delayed gap penalties, only apply gap extension penalty if gap at least this length
+				int ProgPenaliseGapExtn,						// if non-zero then progressively increment gap extension penalty for gaps of at least this length, 0 to disable, used for PacBio style error profiles
+				int AnchorLen)								// identified first and last anchors in alignment to be of at least this length
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MatchScore,sizeof(MatchScore));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&MismatchPenalty,sizeof(MismatchPenalty));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&GapOpenPenalty,sizeof(GapOpenPenalty));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&GapExtnPenalty,sizeof(GapExtnPenalty));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&DlyGapExtn,sizeof(DlyGapExtn));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&ProgPenaliseGapExtn,sizeof(ProgPenaliseGapExtn));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&AnchorLen,sizeof(AnchorLen));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMSetScores,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, service provider session terminated??
+	return(false);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+return((JobRslt == 0 || Rslt < 1) ? false : true);
+}
+
+bool 
+CPBErrCorrect::RMI_SetCPScores(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+				int MatchScore,		// ClassifyPath() score for match
+				int MismatchPenalty,	// ClassifyPath() penalty for mismatch
+				int GapOpenPenalty,	// ClassifyPath() penalty for opening a gap
+				int GapExtnPenalty)	// ClassifyPath() penalty if extending already opened gap
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MatchScore,sizeof(MatchScore));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&MismatchPenalty,sizeof(MismatchPenalty));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&GapOpenPenalty,sizeof(GapOpenPenalty));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&GapExtnPenalty,sizeof(GapExtnPenalty));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMSetCPScores,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(false);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+return((JobRslt == 0 || Rslt < 1) ? false : true);
+}
+
+
+bool 
+CPBErrCorrect::RMI_SetMaxInitiatePathOfs(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+			int MaxInitiatePathOfs)	// require SW paths to have started within this many bp (0 to disable) on either the probe or target - effectively anchoring the SW 
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MaxInitiatePathOfs,sizeof(MaxInitiatePathOfs));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMSetMaxInitiatePathOfs,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(false);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+return((JobRslt == 0 || Rslt < 1) ? false : true);
+}
+
+bool
+CPBErrCorrect::RMI_PreAllocMaxTargLen( tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+							 UINT32 MaxTargLen,					// preallocate to process targets of this maximal length
+							 UINT32 MaxOverlapLen)			// allocating tracebacks for this maximal expected overlap, 0 if no tracebacks required
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&MaxTargLen,sizeof(MaxTargLen));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&MaxOverlapLen,sizeof(MaxOverlapLen));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMPreAllocMaxTargLen,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(false);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+return((JobRslt == 0 || Rslt < 1) ? false : true);
+}
+
+int
+CPBErrCorrect::RMI_StartMultiAlignments(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+					int SeqLen,						// probe sequence is this length
+					etSeqBase *pProbeSeq,			// probe sequence 
+					int Alignments)					// number of pairwise alignments to allocate for
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&SeqLen,sizeof(SeqLen));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pProbeSeq,SeqLen);
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&Alignments,sizeof(Alignments));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMStartMultiAlignments,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+return(Rslt < 1 ? -1 : (int)JobRslt);
+}
+
+bool 
+CPBErrCorrect::RMI_SetProbe(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID, 
+					UINT32 Len,etSeqBase *pSeq)					// set probe sequence to use in subsequent alignments
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&Len,sizeof(Len));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pSeq,Len);
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMSetProbe,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(false);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+return((JobRslt == 0 || Rslt < 1) ? false : true);
+}
+
+bool 
+CPBErrCorrect::RMI_SetTarg(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,  
+			UINT32 Len,etSeqBase *pSeq)					// set target sequence to use in subsequent alignments
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&Len,sizeof(Len));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pSeq,Len);
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMSetTarg,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(false);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(false);
+	CUtility::SleepMillisecs(20);
+	}
+return((JobRslt == 0 || Rslt < 1) ? false : true);
+}
+
+int 
+CPBErrCorrect::RMI_SetAlignRange(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,  
+				UINT32 m_ProbeStartRelOfs,	// when aligning then start SW from this probe sequence relative offset
+				UINT32 m_TargStartRelOfs, 	// and SW starting from this target sequence relative offset
+				UINT32 m_ProbeRelLen,	// and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+				UINT32 m_TargRelLen)	// and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&m_ProbeStartRelOfs,sizeof(m_ProbeStartRelOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&m_TargStartRelOfs,sizeof(m_TargStartRelOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&m_ProbeRelLen,sizeof(m_ProbeRelLen));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&m_TargRelLen,sizeof(m_TargRelLen));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMSetAlignRange,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+return(Rslt < 1 ? -1 : (int)JobRslt);
+}
+
+
+tsSSWCell *									// smith-waterman style local alignment, returns highest accumulated exact matches scoring cell
+CPBErrCorrect::RMI_Align(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID, 
+				tsSSWCell *pPeakScoreCell,	// optionally also return conventional peak scoring cell
+				UINT32 MaxOverlapLen)		// process tracebacks for this maximal expected overlap, 0 if no tracebacks required
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = (sizeof(tsSSWCell) + 20) * 2;
+time_t Then;
+time_t Now;
+bool bPeakScoreCell;
+tsSSWCell *pCell;
+Then = time(NULL);
+if(pPeakScoreCell != NULL)
+	bPeakScoreCell = true;
+else
+	bPeakScoreCell = false;
+
+memset(&pThreadPar->RMIHighScoreCell,0,sizeof(pThreadPar->RMIHighScoreCell));
+
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTBool,&bPeakScoreCell,sizeof(bPeakScoreCell));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&MaxOverlapLen,sizeof(MaxOverlapLen));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMAlign,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(NULL);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(NULL);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(NULL);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1 || JobRslt != 0 || MaxResponseSize < sizeof(tsSSWCell))
+	return(NULL);
+
+RespDataOfs = UnmarshalResp(sizeof(pThreadPar->RMIHighScoreCell),pThreadPar->pRMIRespData,&pCell);
+if(RespDataOfs < sizeof(tsSSWCell))
+	return(NULL);
+if(pCell != NULL && RespDataOfs >= sizeof(tsSSWCell))
+	memcpy(&pThreadPar->RMIHighScoreCell,pCell,sizeof(tsSSWCell));
+if(bPeakScoreCell)
+	{
+	RespDataOfs += UnmarshalResp(sizeof(tsSSWCell),&pThreadPar->pRMIRespData[RespDataOfs],&pCell);
+	*pPeakScoreCell = *pCell;
+	}
+return(&pThreadPar->RMIHighScoreCell);
+}
+
+int												// attempting to determine if path is artfact resulting from aligning to a paralogous fragment
+CPBErrCorrect::RMI_ClassifyPath(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+			int MaxArtefactDev,			// classify path as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
+			UINT32 ProbeStartOfs,			// alignment starts at this probe sequence offset (1..n)
+			UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset
+			UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
+			UINT32 TargEndOfs)				// alignment ends at this target sequence offset
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MaxArtefactDev,sizeof(MaxArtefactDev));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&ProbeStartOfs,sizeof(ProbeStartOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&ProbeEndOfs,sizeof(ProbeEndOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargStartOfs,sizeof(TargStartOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargEndOfs,sizeof(TargEndOfs));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMClassifyPath,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+return(Rslt < 1 ? -1 : (int)JobRslt);
+}
+
+int												// number of alignment ops generated
+CPBErrCorrect::RMI_TracebacksToAlignOps(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+			UINT32 ProbeStartOfs,			// alignment starts at this probe sequence offset (1..n)
+			UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset
+			UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
+			UINT32 TargEndOfs,				// alignment ends at this target sequence offset
+			tMAOp **ppAlignOps)				// optionally return ptr to alignment operations
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize;
+time_t Then;
+time_t Now;
+bool bAlignOps;
+if(ppAlignOps != NULL)
+	{
+	MaxResponseSize = 1000000;
+	bAlignOps = true;
+	}
+else
+	{
+	MaxResponseSize = 0;
+	bAlignOps = false;
+	}
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&ProbeStartOfs,sizeof(ProbeStartOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&ProbeEndOfs,sizeof(ProbeEndOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargStartOfs,sizeof(TargStartOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargEndOfs,sizeof(TargEndOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTBool,&bAlignOps,sizeof(bAlignOps));
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMTracebacksToAlignOps,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1 || (bAlignOps && MaxResponseSize < 1))
+	return(-1);
+if(bAlignOps)
+	{
+	RespDataOfs = UnmarshalResp(sizeof(pThreadPar->RMIHighScoreCell),pThreadPar->pRMIRespData,pThreadPar->pRMIBuffer);
+	*ppAlignOps = (tMAOp *)pThreadPar->pRMIBuffer;
+	}
+return((int)JobRslt);
+}
+
+int
+CPBErrCorrect::RMI_AddMultiAlignment(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+				UINT32 ProbeStartOfs,			// alignment starts at this probe sequence offset (1..n)
+				UINT32 ProbeEndOfs,				// alignment ends at this probe sequence offset inclusive
+				UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
+				UINT32 TargEndOfs,				// alignment ends at this target sequence offset inclusive
+				UINT32 TargSeqLen,				// target sequence length
+				etSeqBase *pTargSeq)			// alignment target sequence
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&ProbeStartOfs,sizeof(ProbeStartOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&ProbeEndOfs,sizeof(ProbeEndOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargStartOfs,sizeof(TargStartOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargEndOfs,sizeof(TargEndOfs));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargEndOfs,sizeof(TargSeqLen));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pTargSeq,TargSeqLen);
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMAddMultiAlignment,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+return(Rslt < 1 ? -1 : (int)JobRslt);
+}
+
+int
+CPBErrCorrect::RMI_GenMultialignConcensus(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID)
+{
+int Rslt;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = 0;
+time_t Then;
+time_t Now;
+Then = time(NULL);
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMGenMultialignConcensus,0,NULL,0,NULL))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+return(Rslt < 1 ? -1 : (int)JobRslt);
+}
+
+int      // total number of returned chars in pszBuffer for the textual representation of the error corrected consensus sequence (could be multiple consensus sequences)
+CPBErrCorrect::RMI_MAlignCols2fasta(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+			UINT32 ProbeID,	// identifies sequence which was used as the probe when determining the multialignments
+			int MinConf,				// sequence bases averaged over 100bp must be of at least this confidence (0..9)
+			int MinLen,					// and sequence lengths must be of at least this length 
+			UINT32 BuffSize,			// buffer allocated to hold at most this many chars
+			char *pszBuffer)			// output error corrected sequences to this buffer
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize;
+char *pszAlignRow;
+time_t Then;
+time_t Now;
+if(BuffSize > pThreadPar->RMIBufferSize)
+	BuffSize = pThreadPar->RMIBufferSize;
+MaxResponseSize = BuffSize;
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&ProbeID,sizeof(ProbeID));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&MinConf,sizeof(MinConf));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&MinLen,sizeof(MinLen));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&BuffSize,sizeof(BuffSize));
+
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMMAlignCols2fasta,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)
+	return(-1);
+if(JobRslt > 0)
+	{
+	RespDataOfs = UnmarshalResp(JobRslt,pThreadPar->pRMIRespData,(UINT8 *)&pszAlignRow);
+	strncpy(pszBuffer,pszAlignRow,JobRslt);
+	pszBuffer[JobRslt] = '\0';
+	}
+return(JobRslt);
+}
+
+int      // total number of returned chars in pszBuffer for the textual representation of the multialignment or -1 if job not accepted 
+CPBErrCorrect::RMI_MAlignCols2MFA(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+					UINT32 ProbeID,		// identifies sequence which was used as the probe when determining the multialignments
+				UINT32 BuffSize,	// buffer allocated to hold at most this many chars
+				char *pszBuffer)	// output multialignment textual representation to this buffer
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize;
+char *pszAlignRow;
+time_t Then;
+time_t Now;
+if(BuffSize > pThreadPar->RMIBufferSize)
+	{
+	BuffSize = pThreadPar->RMIBufferSize;
+	}
+MaxResponseSize = BuffSize;
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&ProbeID,sizeof(ProbeID));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&BuffSize,sizeof(BuffSize));
+
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMMAlignCols2MFA,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
+	return(-1);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-1);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)
+	return(-1);
+if(JobRslt > 0)
+	{
+	RespDataOfs = UnmarshalResp(JobRslt,pThreadPar->pRMIRespData,(UINT8 *)&pszAlignRow);
+	strncpy(pszBuffer,pszAlignRow,JobRslt);
+	pszBuffer[JobRslt] = '\0';
+	}
+return(JobRslt);
+}
 
 // SortLenDescending
 // Sort scaffolding nodes by length descending with entry identifiers as tie breaker

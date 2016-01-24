@@ -87,6 +87,11 @@ typedef enum eBSFrsltCodes {
 	eBSFerrGOTagVal,		// unable to locate requested GO: tag value
 	eBSErrSession,			// session requested not active
 	cBSFSyncObjErr,			// unable to synchronise access to object
+
+	cBSFSocketErr,			// TCP socket level error
+	cBSFNWSProtErr,			// Services protocol error
+
+
 	eBSFerrInternal = -1	// internal processing error, inconsistency detected
 } teBSFrsltCodes; 
 

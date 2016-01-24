@@ -44,6 +44,42 @@ const UINT32 cMaxMAFBlockLen = (cMaxMAFBlockErrCorLen * 100);	// allowing for mu
 
 const int cMaxProbeSWs = 200;							// explore with SW at most this many probe alignments against target sequences
 
+// following are the method enumerations used when service providers are utilised
+typedef enum TAG_eSWMethod {
+	eSWMUndefined = 0,			// illegal as is undefined
+	eSWMConstruct,				// class constructor
+	eSWMDestruct,				// class destructor
+	eSWMSetScores,				// SetScores()
+	eSWMSetCPScores,			// SetCPScores()
+	eSWMSetMaxInitiatePathOfs,	// SetMaxInitiatePathOfs
+	eSWMPreAllocMaxTargLen,		// PreAllocMaxTargLen
+	eSWMStartMultiAlignments,	// StartMultiAlignments
+	eSWMSetProbe,				// SetProbe
+	eSWMSetTarg,				// SetTarg
+	eSWMSetAlignRange,			// SetAlignRange
+	eSWMAlign,					// Align
+	eSWMClassifyPath,			// ClassifyPath
+	eSWMTracebacksToAlignOps,	// TracebacksToAlignOps
+	eSWMAddMultiAlignment,		// AddMultiAlignment
+	eSWMGenMultialignConcensus,	// GenMultialignConcensus
+	eSWMMAlignCols2fasta,		// MAlignCols2fasta
+	eSWMMAlignCols2MFA,			// MAlignCols2MFA
+	eSWMPlaceHolder,			// used to mark range of methods
+	} teSWMethod;
+
+typedef enum TAG_eRMIParamType {
+	eRMIPTBool = 0,	// boolean
+	eRMIPTInt8,		// 8bit signed int
+	eRMIPTUint8,       // 8bit  unsigned int
+	eRMIPTInt32,		// 32bit signed int
+	eRMIPTUint32,		// 32bit unsigned int
+	eRMIPTInt64,		// 64bit signed int
+	eRMIPTUint64,		// 64bit unsigned int
+	eRMIPTDouble,		// floating point double
+	eRMIPTVarUint8,	// variable length UINT8
+	eRMIPTPlaceKeeper,	
+} teRMIParamType;
+
 #pragma pack(1)
 // each cell in stripe or column
 typedef struct TAG_sSSWCell {
@@ -103,7 +139,7 @@ typedef struct TAG_sPermInDels {
 	int SeqLen;					// sequence length including InDels
 	int NxtSeqID;				// SeqID of next sequence with identical sequence, 0 if this sequence is unique
 	UINT8 flgCharacterised:1;   // 0 until sequence has been characterised, if 1 then flgNoPermutate, flgAllInDels, flgNoInDels, flgRepInstance, and NumCopies have been set appropriately
-	UINT8 flgNoPermutate:1;		// if 1 then do not permutate this sequence
+	UINT8 flgNoPermutate:1;		// if 1 then do not permute this sequence
 	UINT8 flgUndef:1;			// sequence contains at least one undefined base, this sequence will not be further processed
 	UINT8 flgAllInDels:1;		// sequence contains all InDels, no bases
 	UINT8 flgNoInDels:1;		// sequence contains no InDels, is all bases
@@ -364,6 +400,7 @@ public:
 					  UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset inclusive
 					  UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
 					  UINT32 TargEndOfs,			// alignment ends at this target sequence offset inclusive
+					  UINT32 TargSeqLen,			// target sequence length
 					  etSeqBase *pTargSeq);			// alignment target sequence
 
 	int

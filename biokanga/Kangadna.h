@@ -100,7 +100,7 @@ const int cMinPEOvlp = 35;				// user can specify down to this minimal sum of en
 const int cMaxPEOvlp = 200;				// user can specify up to this maximum sum of end overlaps required to merge PEs
 const int cDfltInitPEOvlp = 150;		// initial minimal PE sum of end overlaps required to merge PEs
 const int cDfltFinPEOvlp  = 35;			// default final minimal PE sum of end overlaps required to merge PEs
-const int cMinPE1PE2ToSEOvlp  = 15;		// user can specify down to this minimal overlap of PE1 onto PE2 required to merge as SE
+const int cMinPE1PE2ToSEOvlp  = 16;		// user can specify down to this minimal overlap of PE1 onto PE2 required to merge as SE
 const int cMaxPE1PE2ToSEOvlp  = 100;	// user can specify up to this maximum overlap of PE1 onto PE2 required to merge as SE
 const int cDfltMinPE1PE2ToSEOvlp  = 20;	// minimal overlap of PE1 onto PE2 required to merge as SE
 
@@ -113,7 +113,7 @@ const int cMaxCmpOverlapBases = (cMaxOvrlapSeqWrds*15);	// handle sequences of t
 const int cMaxSortSfxLen = cMaxCmpOverlapBases;		// sort suffixes out to this maximal suffix (bases)
 const int cMinSeedContigLen = 100;					// will accept seed contigs which are >= this minimum length
 const int cMaxSeedContigLen = cMaxCmpOverlapBases;	// truncate seed contigs which are > this length to this length
-const  int cMinDfltSeqLenToAssemb = 90;			// default is to require any sequence, after any trimming, loaded for assembly to be at least this length in bp 
+const  int cMinDfltSeqLenToAssemb = 80;			// default is to require any sequence, after any trimming, loaded for assembly to be at least this length in bp 
 
 const int cOVLnone = 0x01;					// Overlay classification flags - flags no overlay between Seq1 and Seq2
 

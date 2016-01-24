@@ -17,6 +17,7 @@
 #include "./commhdrs.h"
 #else
 #include "./commhdrs.h"
+#include <sys/resource.h>
 #endif
 
 UINT16			// generated 16bit hash over the lowercased chromosome name; hashes as 0 if pszName == null or is empty
@@ -359,6 +360,64 @@ while(Written >= 0 && Max2Write > 0)
 		}
 	}
 return(Max2Write == 0 ? true : false);
+}
+
+char *			// returns current and maximum resource limits ( getrlimit ), returns NULL if WIN32
+CUtility::ReportResourceLimits(void)
+{
+#ifdef WIN32		// currently not bothering with windows resources
+	return(NULL);
+#else
+int Ofs;
+int Idx;
+int PhysMemGB;
+int NumberOfProcessors;
+char szCurLimit[50];
+char szHardLimit[50];
+static char szResourceLimits[500];
+struct rlimit RLimit;
+Ofs = 0;
+NumberOfProcessors = sysconf(_SC_NPROCESSORS_ONLN);
+PhysMemGB = (int)(((((UINT64)sysconf(_SC_PHYS_PAGES) * (UINT64)sysconf(_SC_PAGESIZE)) + 0x01fffffff)) / ((UINT64)0x03fffffff));
+
+Ofs = sprintf(szResourceLimits,"cores: %d physmem: %d (GB) ", NumberOfProcessors, PhysMemGB);
+
+for(Idx = 0; Idx < 5; Idx++)
+	{
+	switch(Idx) {
+		case 0:        // address space
+			getrlimit(RLIMIT_AS,&RLimit);
+			Ofs += sprintf(&szResourceLimits[Ofs],"virtual mem:");
+			break;
+		case 1:        // max locked memory
+			getrlimit(RLIMIT_MEMLOCK,&RLimit);
+			Ofs += sprintf(&szResourceLimits[Ofs],"locked mem:");
+			break;
+		case 2:        // data seg size
+			getrlimit(RLIMIT_DATA,&RLimit);
+			Ofs += sprintf(&szResourceLimits[Ofs],"data seg size:");
+			break;
+		case 3:        // threads
+			getrlimit(RLIMIT_NPROC,&RLimit);
+			Ofs += sprintf(&szResourceLimits[Ofs],"threads:");
+			break;
+		case 4:        // stack size
+			getrlimit(RLIMIT_STACK,&RLimit);
+			Ofs += sprintf(&szResourceLimits[Ofs],"stack size:");
+			break;			
+		}
+	if(RLimit.rlim_cur == RLIM_INFINITY)
+		strcpy(szCurLimit,"Unlimited");
+	else
+		sprintf(szCurLimit,"%lu",RLimit.rlim_cur);
+	if(RLimit.rlim_max == RLIM_INFINITY)
+		strcpy(szHardLimit,"Unlimited");
+	else
+		sprintf(szHardLimit,"%lu",RLimit.rlim_max);
+	Ofs += sprintf(&szResourceLimits[Ofs]," %s (cur) %s (max) ", szCurLimit, szHardLimit);
+	}
+return(szResourceLimits);
+#endif
 }
 
 // GetNumSubseqs
@@ -980,14 +1039,14 @@ if(pFname != NULL && *pszFullPath)
 }
 
 void 
-CUtility::SleepMillisecs(int milliseconds) // cross-platform sleep function
+CUtility::SleepMillisecs(UINT32 milliseconds) // cross-platform sleep function
 {
 #ifdef WIN32
     Sleep(milliseconds);
 #elif _POSIX_C_SOURCE >= 199309L
     struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = milliseconds * 1000000;
+    ts.tv_sec = milliseconds / 1000;
+    ts.tv_nsec = (milliseconds % 1000) * 1000000;
     nanosleep(&ts, NULL);
 #else
     usleep(milliseconds * 1000);

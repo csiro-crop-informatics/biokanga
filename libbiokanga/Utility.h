@@ -60,6 +60,10 @@ public:
 	static int arg_parsefromfile(int argc,		// cnt of args ptd to by *argv[]
 							char *argv[],		// pts to array of args
 							char **retargv[]);	// returned array of args
+
+	static char *			// returns current and maximum resource limits ( getrlimit ), returns NULL in WIndows
+		ReportResourceLimits(void);
+
 	static int
 		GetNumSubseqs(int AlignLen,		// alignment length incl InDels
 			   int NumSeqs,				// number of sequences
@@ -102,7 +106,7 @@ public:
 						int MaxLen,				// max length to copy
 						char *pszTarg1,char *pszTarg2, ...); // var number of source files, use NULL or empty (pszSource[0] == '\0') to terminate
 
-	static void SleepMillisecs(int milliseconds); // cross-platform sleep function
+	static void SleepMillisecs(UINT32 milliseconds); // cross-platform sleep function
 
 
 };

@@ -169,11 +169,6 @@ __sync_val_compare_and_swap(&m_CASLock,1,0);
 void 
 CAssembGraph::Reset(void)	
 {
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 if(m_pGraphVertices != NULL)
 	{
 #ifdef _WIN32
@@ -932,11 +927,6 @@ if(m_VerticesSortOrder != eVSOSeqID)
 	m_VerticesSortOrder = eVSOSeqID;
 	}
 
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 return(m_UsedGraphVertices);
 }
 
@@ -954,11 +944,6 @@ tEdgeID *pInEdge;
 UINT32 EdgeIdx;
 tVertID CurVertexID;
 tsGraphVertex *pVertex;
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 
 if(m_pGraphVertices == NULL || m_UsedGraphVertices < 2 ||
    m_pGraphOutEdges == NULL || m_UsedGraphOutEdges < 1)
@@ -1145,11 +1130,6 @@ if(!m_bVertexEdgeSet)
 	m_bVertexEdgeSet = true;
 	}
 
-#ifdef _DEBUG
-#ifdef _WIN32
-_ASSERTE( _CrtCheckMemory());
-#endif
-#endif
 return(m_UsedGraphOutEdges);
 }
 

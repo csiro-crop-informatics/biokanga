@@ -15,12 +15,6 @@
 // pacbiokanga.cpp : Defines the entry point for the console application.
 
 #include "stdafx.h"
-// define _USEMPI_ if using MPI
-#undef _USEMPI_ 
-
-#ifdef _USEMPI_
-#include "mpi.h"
-#endif
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -37,7 +31,7 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "1.1.0";		// increment with each release
+const char *cpszProgVer = "1.2.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 
@@ -46,7 +40,7 @@ extern int ProcFilter(int argc, char* argv[]);
 extern int ProcErrCorrect(int argc, char* argv[]);
 extern int ProcAssemb(int argc, char* argv[]);
 extern int ProcECContigs(int argc, char* argv[]);
-
+extern int ProcSWService(int argc, char* argv[]);
 
 // inplace text cleaning; any leading/trailing or internal quote characters are removed; excessive whitespace is reduced to single
 char *
@@ -83,7 +77,9 @@ tsSubProcess SubProcesses[] = {
 	{"filter","Filter Reads", "Filter PacBio reads for retained hairpins", ProcFilter },
 	{"ecreads","Error Correct Reads", "Error correct PacBio reads", ProcErrCorrect },
 	{"contigs","Assemb Contigs","Assemble error corrected PacBio reads into contigs",ProcAssemb},
-	{"eccontigs","Error Correct Contigs","Error correct assembled PacBio contigs",ProcECContigs}
+	{"eccontigs","Error Correct Contigs","Error correct assembled PacBio contigs",ProcECContigs},
+	{"swservice","SW Service","Distributed computing SW service provider",ProcSWService},
+
 	};
 const int cNumSubProcesses = (sizeof(SubProcesses) / sizeof(tsSubProcess));
 
@@ -97,7 +93,7 @@ int	gProcessingID = 0;					// SQLite processing identifier
 char gszProcName[_MAX_FNAME];			// this processes name
 tsSubProcess *gpszSubProcess;			// selected subprocess
 
-
+#ifdef UsEtHis
 #ifdef _WIN32
 // required by str library
 #if !defined(__AFX_H__)  ||  defined(STR_NO_WINSTUFF)
@@ -113,7 +109,7 @@ const STRCHAR* STR_get_debugname()
 }
 // end of str library required code
 #endif
-
+#endif
 
 void
 GiveHelpSubProcesses(char *pszProcOverview)
@@ -208,37 +204,6 @@ int SubProcID;
 char szSubProc[1024];
 char *pszSubProc;
 char *pArg;
-int MPIRslt;
-
-int NumMPIprocesses;
-
-#ifdef _USEMPI_
-int Rank;
-char szMPIHost[100];
-int namelen;
-
-MPIRslt = MPI_Init(&argc, &argv);
-MPIRslt = MPI_Get_processor_name(szMPIHost, &namelen);			// on which host is this instance running on?
-MPIRslt = MPI_Comm_rank(MPI_COMM_WORLD, &Rank);
-if (Rank > 0)		// master will have rank of 0, workers will have rank >= 1, only 1 master can be accepted
-	{
-	printf("\nMPI Master only supported; MPI Rank is %d", Rank);
-	return(-1);
-	}
-
-// check how many workers including this master; if only one then not actually using MPI
-MPIRslt = MPI_Comm_size(MPI_COMM_WORLD,&NumMPIprocesses);
-
-if(NumMPIprocesses == 1)
-	{
-	MPI_Finalize();
-	NumMPIprocesses = 0;
-	}
-
-#else
-MPIRslt = 0;
-NumMPIprocesses = 0;
-#endif
 
 pArg  = (char *)argv[1];
 SubProcID = 0;

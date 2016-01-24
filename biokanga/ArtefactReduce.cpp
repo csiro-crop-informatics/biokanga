@@ -43,7 +43,7 @@ ProcessArtefactReduce(etARPMode PMode,	// processing mode; currently eAR2Fasta, 
 		int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
 		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
 		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
-		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 70bp, range 50..500)
+		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...1000)
 		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 		int MinFlankLen,				// non-overlapping flank must be at least this length (defults to 1, else range 1bp to 25bp, only applies if overlap processing)
@@ -90,7 +90,7 @@ bool bStrand;				// if true then strand specific filtering
 int MaxNs;					// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
 int Trim5;					// trim this number of 5' bases from input sequences (default is 0, range 0..20)
 int Trim3;					// trim this number of 3' bases from input sequences (default is 0, range 0..20)
-int MinSeqLen;              // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 70..500)
+int MinSeqLen;              // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 int TrimSeqLen;				// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...1000)
 int MinOverlap;				// minimum required overlap (in %) ( if <= 0 then no overlap processing required)
 int MinFlankLen;			// non-overlapping flank must be at least this length (defults to 1, range 1bp to 25bp, only applies if overlap processing)
@@ -140,7 +140,7 @@ struct arg_int *trimseqlen = arg_int0("L","trimseqlen","<int>",	"trim sequences 
 struct arg_int *minoverlap = arg_int0("y","minoverlap","<int>",	"accept as overlapping if overlaps are at least this percentage of read length (defaults to 70%% of read length, range 50 to 95%%p, if 0 then no overlap processing)");
 struct arg_int *minflanklen = arg_int0("Y","minflanklen","<int>","non-overlapping flank must be at least this length (default 1, range 1bp to 25bp, only applies if overlap processing)");
 
-struct arg_int *minseqlen= arg_int0("l","minlen","<int>",       "filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 70..500)");
+struct arg_int *minseqlen= arg_int0("l","minlen","<int>",       "filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)");
 struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 struct arg_lit  *strand   = arg_lit0("S","strand",              "strand specific filtering - filter reads with read orientation - default is for non-strand specific");
 struct arg_lit  *nodedupe   = arg_lit0("D","nodedupe",          "do not dedupe exactly matching input sequences - default is to only retain a single copy of duplicate sequences");
@@ -741,7 +741,7 @@ ProcessArtefactReduce(etARPMode PMode,	// processing mode, currently eAR2Fasta, 
 		int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
 		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
 		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
-		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..10000)
+		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
 		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 		int MinFlankLen,				// non-overlapping flank must be at least this length (defults 1, else range 1bp to 25bp, only applies if overlap processing)
@@ -875,7 +875,7 @@ CArtefactReduce::Process(etARPMode PMode,	// processing mode, currently eAR2Fast
 		int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
 		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
 		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
-		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 50bp, range 20..10000)
+		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
 		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
 		int MinFlankLen,				// non-overlapping flank must be at least this length (defults to 1, else range 1bp to 25bp, only applies if overlap processing)

@@ -1981,7 +1981,7 @@ for(SubOfs = 0; SubOfs <= (int)(CurProbeSeqLen - pPars->ProbeMinReqOverlap); Sub
 							bMergedExtn = true;
 							}
 
-						// always the possibilty that the merged PE1 and PE2 themselves can be merged into a single SE or contig sequence!
+						// always the possibility that the merged PE1 and PE2 themselves can be merged into a single SE or contig sequence!
 						// check if a putative merge would result in an overlap of at least MinPEMergeOverlap
 						ProbeTargOverlap = GetOverlapAB(pPars->MinPEMergeOverlap,&LeftFlankLen,pPars->PE1ProbeSeqLen,(tSeqWrd4 *)pPars->pPE1Seq,pPars->PE2ProbeSeqLen,(tSeqWrd4 *)pPars->pPE2Seq,true,pPars->MaxSubs1K,pPars->MaxEnd12Subs);
 						int MergeLen;
@@ -2069,7 +2069,7 @@ for(SubOfs = 0; SubOfs <= (int)(CurProbeSeqLen - pPars->ProbeMinReqOverlap); Sub
 							bMergedExtn = true;
 							}
 
-						// always the possibilty that the merged PE1 and PE2 themselves can be merged into a single SE or contig sequence!
+						// always the possibility that the merged PE1 and PE2 themselves can be merged into a single SE or contig sequence!
 						// check if a putative merge would result in an overlap of at least MinPEMergeOverlap
 						ProbeTargOverlap = GetOverlapAB(pPars->MinPEMergeOverlap,&LeftFlankLen,pPars->PE1ProbeSeqLen,(tSeqWrd4 *)pPars->pPE1Seq,pPars->PE2ProbeSeqLen,(tSeqWrd4 *)pPars->pPE2Seq,true,pPars->MaxSubs1K,pPars->MaxEnd12Subs);
 						int MergeLen;
@@ -2192,7 +2192,7 @@ for(SubOfs = 0; SubOfs <= (int)(CurProbeSeqLen - pPars->ProbeMinReqOverlap); Sub
 						}
 
 
-					// always the possibilty that the merged PE1 and PE2 themselves can be merged into a single SE or contig sequence!
+					// always the possibility that the merged PE1 and PE2 themselves can be merged into a single SE or contig sequence!
 					// check if a putative merge would result in an overlap of at least MinPEMergeOverlap
 					ProbeTargOverlap = GetOverlapAB(pPars->MinPEMergeOverlap,&LeftFlankLen,pPars->PE1ProbeSeqLen,(tSeqWrd4 *)pPars->pPE1Seq,pPars->PE2ProbeSeqLen,(tSeqWrd4 *)pPars->pPE2Seq,true,pPars->MaxSubs1K,pPars->MaxEnd12Subs);
 					int MergeLen;
