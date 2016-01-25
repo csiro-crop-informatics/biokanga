@@ -250,12 +250,18 @@ if (!argerrors)
 	strncpy(szRemappedFile,RemappedFile->filename[0],_MAX_PATH);
 	szRemappedFile[_MAX_PATH-1] = '\0';
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 	const char *pszDescr;
 	switch(PMode) {
 		case 0:
 			pszDescr = "Remapping alignment loci";
 			break;
 		}
+
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode is : '%s'",pszDescr);
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input element loci file: '%s'",szInLociFile);

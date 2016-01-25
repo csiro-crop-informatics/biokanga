@@ -71,7 +71,12 @@ CUtility::splitpath((char *)argv[0],NULL,gszProcName);
 
 	// give credit where credit is due!
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"This module integrates code derived from PBSIM 1.0.3 and full attribution is hereby given to the authors:\n \"PBSIM: PacBio reads simulator - toward accurate genome assembly\",Yukiteru Ono, Kiyoshi Asai and Michiaki Hamada, Bioinformatics (2013) 29 (1) 119-121.");
-  
+
+  // show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 
   struct sim_t sim;
   char *tp, *tmp_buf;

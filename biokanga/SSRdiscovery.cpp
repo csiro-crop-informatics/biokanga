@@ -336,6 +336,11 @@ if (!argerrors)
 			break;
 		}
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode is : '%s'",pszDescr);
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"identify repeating K-mer elements of this minimum length: %d",MinRepElLen);

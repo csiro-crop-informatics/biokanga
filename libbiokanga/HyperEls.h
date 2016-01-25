@@ -1,7 +1,7 @@
 #pragma once
 #include "./commdefs.h"
 
-const int cElInitalAllocNum = 25000000;	// initially alloc to hold this many tsHyperElement instances
+const int cElInitalAllocNum = 40000000;				// initially alloc to hold this many tsHyperElement instances
 const int cElGrowAllocNum =   (cElInitalAllocNum/2);	// grow by this many tsHyperElement instances
 
 const int cChromsInitalAllocNum = 100000;	// initially alloc to hold this many tsHyperChrom instances

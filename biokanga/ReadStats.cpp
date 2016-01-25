@@ -403,14 +403,7 @@ if (!argerrors)
 	else
 		szOutFile[0] = '\0';
 	
-//	if(outhtmlfile->count)
-//		{
-//		strncpy(szOutHTMLFile, outhtmlfile->filename[0], _MAX_PATH);
-//		szOutHTMLFile[_MAX_PATH - 1] = '\0';
-//		CUtility::TrimQuotedWhitespcExtd(szOutHTMLFile);
-//		}
-//	else
-		szOutHTMLFile[0] = '\0';
+	szOutHTMLFile[0] = '\0';
 
 	if (szOutFile[0] == '\0' /* && szOutHTMLFile[0] == '\0' */)
 		{
@@ -430,6 +423,11 @@ if (!argerrors)
 		MaxContamSubRate = 0;
 		MinContamLen = 0;
 		}
+
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 #ifdef _WIN32
 	SYSTEM_INFO SystemInfo;

@@ -180,6 +180,10 @@ if (!argerrors)
 		exit(1);
 		}
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	strcpy(szPSLinFile,infile->filename[0]);
 	strcpy(szOutFile,outfile->filename[0]);

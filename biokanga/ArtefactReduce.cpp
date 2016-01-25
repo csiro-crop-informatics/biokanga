@@ -502,6 +502,10 @@ if (!argerrors)
 	strncpy(szOutFile,outfile->filename[0],_MAX_PATH);
 	szOutFile[_MAX_PATH-1] = '\0';
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 #ifdef _WIN32
 	SYSTEM_INFO SystemInfo;
@@ -562,6 +566,11 @@ if (!argerrors)
 		pthread_setaffinity_np(Me,sizeof(NewCpuSet), &NewCpuSet);
 #endif
 		}
+
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 	const char *pszDescr;

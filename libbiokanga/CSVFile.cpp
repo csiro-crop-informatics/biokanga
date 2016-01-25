@@ -64,6 +64,7 @@ int MaxChrsRow;
 bool bInDoubleQuotes;
 bool bInSingleQuotes;
 int NumFieldsQuoted;
+int StatRslt;
 
 if(pMaxNumFields != NULL)
 	*pMaxNumFields = 0;
@@ -78,10 +79,10 @@ if(pFileSize != NULL)
 
 #ifdef _WIN32
 struct _stat64 st;
-if(!_stat64(pszFile,&st))
+if((StatRslt=_stat64(pszFile,&st))==0)
 #else
 struct stat64 st;
-if(!stat64(pszFile,&st))
+if((StatRslt = stat64(pszFile,&st)) == 0)
 #endif
 	FileSize = (INT64)st.st_size;
 else
@@ -92,7 +93,7 @@ if(pFileSize != NULL)
 
 if(FileSize == 0)		// 0 if file not readable or if 0 length
 	{
-	gDiagnostics.DiagOut(eDLWarn,gszProcName,"CSVEstSizes: Unable to estimate sizes for file '%s', does file exist and not 0 length, or is it readable",pszFile);
+	gDiagnostics.DiagOut(eDLWarn,gszProcName,"CSVEstSizes: Unable to estimate sizes for file '%s', does file exist and not 0 length, or is it readable (error == %d)",pszFile, StatRslt);
 	return(0);
 	}
 

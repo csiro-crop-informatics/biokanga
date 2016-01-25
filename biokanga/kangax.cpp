@@ -343,6 +343,11 @@ if (!argerrors)
 		szDescription[cMBSFFileDescrLen-1] = '\0';
 		}
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 	int AvailGBMemory;
 #ifdef _WIN32
 	SYSTEM_INFO SystemInfo;

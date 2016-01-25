@@ -300,6 +300,11 @@ if (!argerrors)
 			}
 		}
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Version: %s Processing parameters:",cpszProgVer);
 
 	for(Idx=0; Idx < NumInputFiles; Idx++)
