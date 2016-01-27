@@ -523,6 +523,10 @@ else
 return 0;
 }
 
+typedef struct TAG_sSAMFileEls {
+	UINT32 SeqLen;				// estimated mean sequence length
+	UINT32 NumAlignments;		// estimated number of alignments		
+	} tsSAMFileEls;
 
 int GSMProcess(etRPMode PMode,				// processing mode
 			int MinCovBases,				// accept SNPs with at least this number covering bases
@@ -545,13 +549,133 @@ char *pszAlignFile;
 char szProbeSpecies[cMaxLenName];
 int FileIdx;
 int Rslt;
+tsSAMFileEls EstSAMFileEls[cMaxMarkerSpecies];
+
+UINT64 TotSNPRows;
+UINT64 TotAlignments;
+UINT64 SumMeanSeqLens;
+INT32 MeanSeqLen;
 CMarkers *pMarkers = NULL;
+CCSVFile *pCSV = NULL;
+CSAMfile *pSAM = NULL;
+size_t TotMemToAlloc;
 
 if((pMarkers = new CMarkers)==NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate CMarkers");
 	return(eBSFerrObj);
 	}
+
+if((pCSV = new CCSVFile)==NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate CCSVFile");
+	return(eBSFerrObj);
+	}
+
+// try to guestimate minimum memory requirements
+TotSNPRows = 0;
+for(FileIdx = 0; FileIdx < NumSNPFiles; FileIdx++)
+	{
+	UINT32 NumRows;
+	INT64 FileSize;
+	int MaxChrsPerRow;
+	int MaxFields;
+	int MeanFields;
+	int MeanChrsRow;
+	
+	pszSNPFile = pszSNPFiles[FileIdx];
+	if(((NumRows = pCSV->CSVEstSizes(pszSNPFile,&FileSize,&MaxFields,&MeanFields,&MaxChrsPerRow,&MeanChrsRow))==0) || MeanFields < 23)
+		{
+		delete pCSV;
+		delete pMarkers;
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to estimate memory required for SNPs in file: '%s'",pszSNPFile);
+		if(MeanFields < 23)
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Expected at least 23 fields per row if a SNP file");
+		return(eBSFerrParse);
+		}
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Estimating %d SNPs in file: '%s'",NumRows,pszSNPFile);		
+	TotSNPRows += NumRows; 
+	}
+delete pCSV;
+
+if((pSAM = new CSAMfile)==NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate CSAMfile");
+	return(eBSFerrObj);
+	}
+TotAlignments = 0;
+SumMeanSeqLens = 0;
+int MaxEstSAMFileIdx = 0;
+size_t EstSAMFileMem;
+size_t MaxEstSAMFileMem;
+
+MaxEstSAMFileMem = 0;
+for(FileIdx = 0; FileIdx < NumAlignFiles; FileIdx++)
+	{
+	UINT32 NumAlignments;
+	EstSAMFileEls[FileIdx].NumAlignments = 0;
+	EstSAMFileEls[FileIdx].SeqLen = 0;
+	pszAlignFile = pszAlignFiles[FileIdx];
+	
+	if((NumAlignments = pSAM->EstSizes(pszAlignFile,NULL,NULL,NULL,NULL,&MeanSeqLen,NULL))==0)
+		{
+		delete pSAM;
+		delete pMarkers;
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to estimate memory required for alignments in file: '%s'",pszAlignFile);
+		return(eBSFerrParse);
+		}
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Estimating %u alignments with mean sequence length %u in file: '%s'",NumAlignments,MeanSeqLen,pszAlignFile);
+
+	NumAlignments = (UINT32)(((UINT64)NumAlignments * 105)/100); // allow 5% extra when allocating memory in case underestimating
+	MeanSeqLen = (UINT32)(((UINT64)MeanSeqLen * 105)/100);
+
+
+	EstSAMFileEls[FileIdx].NumAlignments = NumAlignments;
+	EstSAMFileEls[FileIdx].SeqLen = MeanSeqLen;
+	EstSAMFileMem = NumAlignments * (sizeof(tsHyperElement) + MeanSeqLen);
+	if(EstSAMFileMem > MaxEstSAMFileMem)
+		{
+		MaxEstSAMFileIdx = FileIdx;
+		MaxEstSAMFileMem = EstSAMFileMem;
+		}
+	TotAlignments += NumAlignments;
+	}
+delete pSAM;
+// estimate a minimum total memory required
+TotSNPRows = (TotSNPRows * 125) / 100;  // assume a ~25% overhead for additional SNPs from imputed alignments
+TotMemToAlloc = MaxEstSAMFileMem;
+TotMemToAlloc += TotSNPRows * sizeof(tsAlignLoci);
+// allow 15% overhead for indexes, reallocs, other allocations etc
+TotMemToAlloc = (TotMemToAlloc * 115)/100;
+gDiagnostics.DiagOut(eDLFatal,gszProcName,"Estimating minimum total memory requirements to be: %dGB",(int)((TotMemToAlloc + 0x040000000 - 1)/0x040000000));
+
+// try to prealloc for SNPs 
+gDiagnostics.DiagOut(eDLFatal,gszProcName,"Pre-allocating memory for %lld SNP loci allowing 25%% additional for impuned SNPS",TotSNPRows);
+
+if((Rslt = pMarkers->PreAllocSNPs(TotSNPRows)) != eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to pre-allocate %dGB memory for SNP loci",TotSNPRows * sizeof(tsAlignLoci));
+	delete pMarkers;
+	return(eBSFerrMem);
+	}
+
+// then try an allocation of memory for the maximal sized SAM file sequences to check if allocations whilst imputing SNPs are likely to be successful
+CHyperEls *pHyperEls;
+if((pHyperEls = new CHyperEls) == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate CHyperEls");
+	delete pMarkers;
+	return(eBSFerrObj);
+	}
+gDiagnostics.DiagOut(eDLFatal,gszProcName,"Pre-allocating memory for maximal %u SAM alignments with mean sequence length of %u in any SAM file allowing 5%% additional for underestimation",EstSAMFileEls[MaxEstSAMFileIdx].NumAlignments, EstSAMFileEls[MaxEstSAMFileIdx].SeqLen);
+
+if((Rslt = pHyperEls->PreAllocMem(EstSAMFileEls[MaxEstSAMFileIdx].NumAlignments,EstSAMFileEls[MaxEstSAMFileIdx].SeqLen)) != eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to pre-allocate memory for SAM alignments");
+	delete pMarkers;
+	return(eBSFerrMem);
+	}
+delete pHyperEls;
 
 // load all aligner identified  SNPS
 for(FileIdx = 0; FileIdx < NumSNPFiles; FileIdx++)
@@ -579,7 +703,7 @@ if(Rslt == 0)
 	return(Rslt);
 	}
 
-// if no SNPs are being called at a loci for one cultivar was it because there was no coverage?
+// if no SNPs are being called at a loci for one cultivar then was it because there was no coverage?
 // sort the SNPs by refseq.loci.probespecies ascending
 // iterate looking for missing probespecies at each refseq.loci
 // load the probespecies alignments and check for coverage at the missing refseq.loci
@@ -592,7 +716,7 @@ for(FileIdx = 0; FileIdx < NumAlignFiles; FileIdx++)
 	Rslt = pMarkers->AddImputedAlignments(MinCovBases,	// must be at least this number of reads covering the SNP loci
 					pszRefGenome,				// this is the reference species 
 					szProbeSpecies,				// this species reads were aligned to the reference species from which SNPs were called 
-					pszAlignFile,0,true);				// alignment file to parse and load
+					pszAlignFile,0,true,EstSAMFileEls[FileIdx].NumAlignments, EstSAMFileEls[FileIdx].SeqLen);		// alignment file to parse and load
 	if(Rslt < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddImputedAlignments(%s) returned error",pszAlignFile);

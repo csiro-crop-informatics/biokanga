@@ -126,6 +126,8 @@ public:
 	int AddRefSpecies(char *pszRefSpecies);	// returns unique ref species identifier
 	int AddRelSpecies(char *pszRelSpecies);	// returns unique rel species list identifier
 
+	int PreAllocMem(int EstNumEls, int MeanSeqLen); // preallocate memory for this estimate of number elements having this mean sequence length
+
 	int AddElCore(int SrcID,	// identifier as parsed from source CSV file
 		  char *pszElType,		// element type
 		  char *pszRefSpecies,	// reference species

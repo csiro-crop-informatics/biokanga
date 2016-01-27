@@ -342,6 +342,114 @@ m_MRARelSpeciesID = m_NumRelSpecies;
 return(m_NumRelSpecies);
 }
 
+int 
+CHyperEls::PreAllocMem(int EstNumEls, int MeanSeqLen) // preallocate memory for this estimate of number elements having this mean sequence length
+{
+size_t memreqseqs;
+size_t memreqels;
+m_EstNumEls = ((size_t)EstNumEls * 105)/100;						// allowing additional to reduce chances of requiring a subsequent realloc
+memreqseqs = (size_t)m_EstNumEls * sizeof(etSeqBase) * MeanSeqLen; 
+memreqels = (size_t)m_EstNumEls * sizeof(tsHyperElement);
+
+if(m_pSeqBases != NULL && m_MemAllocSeqBases >= memreqseqs && 		// why alloc if already allocated?
+   m_pElements != NULL && m_MemAllocEls >= memreqels)
+	{
+	m_MemUsedSeqBases = 0;
+	m_NumSeqs = 0;
+	m_NumEls = 0;
+	m_NumElsPlus = 0;
+	m_NumElsMinus = 0;
+	m_MaxLenEl = 0;
+	m_MinLenEl = -1;
+	return(eBSFSuccess);
+	}
+
+if(m_pSeqBases != NULL && m_MemAllocSeqBases < memreqseqs)
+	{
+#ifdef _WIN32
+	free(m_pSeqBases);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
+#else
+	if(m_pSeqBases != MAP_FAILED)
+		munmap(m_pSeqBases,m_MemAllocSeqBases);
+#endif
+	m_pSeqBases = NULL;	
+	m_MemAllocSeqBases = 0;
+	}
+
+if(m_pElements != NULL &&  m_MemAllocEls < memreqels)
+	{
+#ifdef _WIN32
+	free(m_pElements);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
+#else
+	if(m_pElements != MAP_FAILED)
+		munmap(m_pElements,m_MemAllocEls);
+#endif
+	m_pElements = NULL;
+	m_MemAllocEls = 0;
+	}
+
+
+if(m_pSeqBases == NULL)
+	{
+	m_MemAllocSeqBases = memreqseqs; 
+
+#ifdef _WIN32
+	m_pSeqBases = (etSeqBase *) malloc(m_MemAllocSeqBases);	// initial and perhaps the only allocation
+	if(m_pSeqBases == NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"PreAllocMem: Memory allocation of %lld bytes - %s",(INT64)m_MemAllocSeqBases,strerror(errno));
+		Reset();
+		return(eBSFerrMem);
+		}
+#else
+		// gnu malloc is still in the 32bit world and can't handle more than 2GB allocations
+	m_pSeqBases = (etSeqBase *)mmap(NULL,m_MemAllocSeqBases, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
+	if(m_pSeqBases == MAP_FAILED)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"PreAllocMem: Memory allocation of %lld bytes through mmap()  failed - %s",(INT64)m_MemAllocSeqBases,strerror(errno));
+		m_pSeqBases = NULL;
+		Reset();
+		return(eBSFerrMem);
+		}
+#endif
+	}
+memset(m_pSeqBases,0,m_MemAllocSeqBases);
+m_MemUsedSeqBases = 0;
+m_NumSeqs = 0;
+
+if(m_pElements == NULL)
+	{
+	m_NumElsAllocd = m_EstNumEls;
+	m_MemAllocEls = memreqels;
+#ifdef _WIN32
+	m_pElements = (tsHyperElement *) malloc(m_MemAllocEls);	// initial and perhaps the only allocation
+	if(m_pElements == NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddElCore: Memory allocation of %lld bytes - %s",(INT64)m_MemAllocEls,strerror(errno));
+		Reset();
+		return(eBSFerrMem);
+		}
+#else
+		// gnu malloc is still in the 32bit world and can't handle more than 2GB allocations
+	m_pElements = (tsHyperElement *)mmap(NULL,m_MemAllocEls, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
+	if(m_pElements == MAP_FAILED)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddElCore: Memory allocation of %lld bytes through mmap()  failed - %s",(INT64)m_MemAllocEls,strerror(errno));
+		m_pElements = NULL;
+		Reset();
+		return(eBSFerrMem);
+		}
+#endif
+	}
+memset(m_pElements,0,m_MemAllocEls);	
+m_NumEls = 0;
+m_NumElsPlus = 0;
+m_NumElsMinus = 0;
+m_MaxLenEl = 0;
+m_MinLenEl = -1;
+return(eBSFSuccess);
+}
+
 int
 CHyperEls::AddElCore(int SrcID,	// element identifier as parsed from source file
 		  char *pszElType,	// element type

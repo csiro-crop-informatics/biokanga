@@ -197,7 +197,7 @@ class CSAMfile
 			 int depth,				// R-tree depth - defaults to 5 which is same as used in the BAI indexes
 			int *bins);				// returned bins
 
-	/* calulate depth (R-tree levels) from the maximum targeted sequence length */
+	/* calculate depth (R-tree levels) from the maximum targeted sequence length */
 	int	CSIDepth(INT64 MaxSeqLen,			// max sequence length for any alignment ending at 
 			 int min_shift = 14);		// # bits for minimum interval - defaults to 14 which is same as used in the BAI indexes
 

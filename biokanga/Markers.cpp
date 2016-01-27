@@ -420,6 +420,45 @@ m_NumSeqNames += 1;
 return(pSeqName->SeqID);
 }
 
+int CMarkers::PreAllocSeqs(int EstNumSeqs, int MeanSeqLen) // preallocate memory for this estimate of number sequences having this mean sequence length
+{
+int Rslt;
+Rslt = m_pHypers->PreAllocMem(EstNumSeqs,MeanSeqLen);
+return(Rslt);
+}
+
+int
+CMarkers::PreAllocSNPs(INT64 EstNumSNPS)	// estimating will be required to process this many SNP loci
+{
+size_t memreq; 
+INT64 AllocdAlignLoci;
+
+AllocdAlignLoci = ((99 + EstNumSNPS) * (INT64)105) / (INT64)100;  // allowing for an extra 5% to reduce probability of a realloc being subsequently required if estimate was a little low
+memreq = (size_t)AllocdAlignLoci * sizeof(tsAlignLoci); 
+#ifdef _WIN32
+m_pAllocAlignLoci = (tsAlignLoci *) malloc(memreq);	// initial and perhaps the only allocation
+if(m_pAllocAlignLoci == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"PreAllocSNPs: Memory allocation of %lld bytes - %s",(INT64)memreq,strerror(errno));
+	return(eBSFerrMem);
+	}
+#else
+// gnu malloc is still in the 32bit world and can't handle more than 2GB allocations
+m_pAllocAlignLoci = (tsAlignLoci *)mmap(NULL,memreq, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
+if(m_pAllocAlignLoci == MAP_FAILED)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"PreAllocSNPs: Memory allocation of %lld bytes through mmap()  failed - %s",(INT64)memreq,strerror(errno));
+	m_pAllocAlignLoci = NULL;
+	return(eBSFerrMem);
+	}
+#endif
+m_AllocMemAlignLoci = memreq;
+m_UsedAlignLoci = 0;
+m_AllocAlignLoci = AllocdAlignLoci;
+memset(m_pAllocAlignLoci,0,memreq);
+return(eBSFSuccess);
+}
+
 int 
 CMarkers::AddLoci(UINT16 TargSpeciesID,	// reads were aligned to this cultivar or species
 				UINT32 TargSeqID,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
@@ -682,7 +721,9 @@ CMarkers::AddImputedAlignments(int MinBases,			// must be at least this number o
 					char *pszProbeSpecies,				// this species reads were aligned to the reference species from which SNPs were called 
 					char *pszAlignFile,					// file containing alignments
 					int FType,							// input alignment file format: 0 - auto, 1 - CSV, 2 - BED, 3 - SAM)
-					bool bSeqs)							// if alignment file contains the read sequence then impute bases from the actual sequences				
+					bool bSeqs,							// if alignment file contains the read sequence then impute bases from the actual sequences	
+					int EstNumSeqs,						// estimated number of sequences (0 if no estimate)
+					int EstSeqLen)						// estimated mean sequence length (0 if no estimate)           			
 
 {
 int Rslt;
@@ -719,6 +760,13 @@ if((m_pHypers = new CHyperEls)==NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate CHyperEls");
 	return(eBSFerrObj);
 	}
+
+if(EstNumSeqs != 0)
+	if((Rslt = m_pHypers->PreAllocMem(EstNumSeqs,EstSeqLen)) != eBSFSuccess)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to prealloc allocate memory for sequences");
+		return(eBSFerrObj);
+		}
 
 etClassifyFileType FileType;
 

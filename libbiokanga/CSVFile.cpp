@@ -35,7 +35,7 @@ Reset();
 
 // CSVEstSizes
 // Assumes CSV rows are reasonably inter-row field populated
-const int cEstChrsBuff = 500000;		// 1st 500K chars from file should contain sufficent rows to give reasonable estimate for total rows in file
+const int cEstChrsBuff = 500000;		// 1st 500K chars from file should contain sufficient rows to give reasonable estimate for total rows in file
 
 UINT32									// returns estimated number of rows, 0 if unable to estimate
 CCSVFile::CSVEstSizes(char *pszFile,	// CSV file path+name to estimate sizes
@@ -97,7 +97,7 @@ if(FileSize == 0)		// 0 if file not readable or if 0 length
 	return(0);
 	}
 
-if(FileSize < 10)		// arbitary minimum CSV file size...
+if(FileSize < 10)		// arbitrary minimum CSV file size...
 	{
 	gDiagnostics.DiagOut(eDLWarn,gszProcName,"CSVEstSizes: Unable to estimate sizes for file '%s', file exists but is only %d long",pszFile,FileSize);
 	return(0);

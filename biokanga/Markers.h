@@ -96,6 +96,7 @@ class CMarkers
 	size_t m_AllocMemAlignLoci;			// allocation memory size
 	tsAlignLoci *m_pAllocAlignLoci;		// allocated to hold alignment loci 
 
+
 	int AddLoci(UINT16 TargSpeciesID,		// reads were aligned to this cultivar or species
 				UINT32 TargSeqID,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				UINT32 TargLoci,			// loci within target sequence at which SNPs observed
@@ -127,12 +128,14 @@ public:
 					  char *pszSNPFile);	// SNP file to parse and load
 
 	int 
-		AddImputedAlignments(int MinBases,			// must be at least this number of reads covering the SNP loci
-					  char *pszRefSpecies,				// this is the reference species 
-					char *pszProbeSpecies,				// this species reads were aligned to the reference species from which SNPs were called 
-					char *pszAlignFile,					// file containing alignments
-					int FType = 0,						// input alignment file format: 0 - auto, 1 - CSV, 2 - BED, 3 - SAM)
-					bool bSeqs = false);			// if alignment file contains the read sequence then impute bases from the actual sequences				
+		AddImputedAlignments(int MinBases,		// must be at least this number of reads covering the SNP loci
+					  char *pszRefSpecies,		// this is the reference species 
+					char *pszProbeSpecies,		// this species reads were aligned to the reference species from which SNPs were called 
+					char *pszAlignFile,			// file containing alignments
+					int FType = 0,				// input alignment file format: 0 - auto, 1 - CSV, 2 - BED, 3 - SAM)
+					bool bSeqs = false,			// if alignment file contains the read sequence then impute bases from the actual sequences	
+					int EstNumSeqs = 0,			// estimated number of sequences (0 if no estimate)
+					int EstSeqLen = 0);			// estimated mean sequence length (0 if no estimate)			
 
 	UINT16									// returned species identifer (1..cMaxSpecies)
 		AddSpecies(char *pszSpecies,bool IsRefSpecies = false);	// cultivar or species
@@ -152,6 +155,10 @@ public:
 
 	char *								// returned sequence name
 		SeqIDtoName(UINT32 SeqID);		// sequence identifier for which name is to be returned
+
+	int PreAllocSNPs(INT64 EstNumSNPS);	// preallocate memory for this many estimated SNP loci
+	int PreAllocSeqs(int EstNumSeqs, int MeanSeqLen); // preallocate memory for this estimate of number sequences having this mean sequence length
+
 
 	int AddLoci(char *pszTargSpecies,	// reads were aligned to this cultivar or species
 				char *pszTargSeq,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
