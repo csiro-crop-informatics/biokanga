@@ -459,7 +459,13 @@ memset(m_pAllocAlignLoci,0,memreq);
 return(eBSFSuccess);
 }
 
-int 
+INT64 
+CMarkers::NumAlignLoci(void)					// returns current number of alignment/SNP loci
+{
+return(m_UsedAlignLoci);
+}
+
+INT64 
 CMarkers::AddLoci(UINT16 TargSpeciesID,	// reads were aligned to this cultivar or species
 				UINT32 TargSeqID,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				UINT32 TargLoci,		// loci within target sequence at which SNPs observed
@@ -501,10 +507,12 @@ if(m_pAllocAlignLoci == NULL)		// initial allocation?
 	}
 else
 	{
-	if(m_AllocAlignLoci <= (m_UsedAlignLoci + 10))	// play safe and increase allocation?
+	if(m_AllocAlignLoci <= (m_UsedAlignLoci + 100))	// play safe and increase allocation?
 		{
 		size_t memreq;
-		memreq = (cAllocAlignLoci + m_AllocAlignLoci) * sizeof(tsAlignLoci);
+		INT64 AllocTo;
+		AllocTo = (INT64)cReAllocAlignPerc * m_AllocAlignLoci; 
+		memreq = (AllocTo * sizeof(tsAlignLoci))/100;
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"AddLoci: memory re-allocation to %lld from %lld bytes",(INT64)memreq,(INT64)m_AllocMemAlignLoci);
 
 #ifdef _WIN32
@@ -521,7 +529,7 @@ else
 			}
 		m_pAllocAlignLoci = pLoci;
 		m_AllocMemAlignLoci = memreq;
-		m_AllocAlignLoci += cAllocAlignLoci; 
+		m_AllocAlignLoci = AllocTo; 
 		}
 	}
 
@@ -544,7 +552,7 @@ return(m_UsedAlignLoci);
 
 // AddLoci
 // Add loci on target which has identified SNP when aligned to from probe sequences
-int 
+INT64  
 CMarkers::AddLoci(char *pszTargSpecies,	// reads were aligned to this cultivar or species
 				char *pszTargSeq,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				UINT32 TargLoci,			// loci within target sequence at which SNPs observed
@@ -559,7 +567,7 @@ CMarkers::AddLoci(char *pszTargSpecies,	// reads were aligned to this cultivar o
 UINT16 TargID;
 UINT16 ProbeID;
 UINT32 TargSeqID;
-int Rslt;
+INT64 Rslt;
 
 TargID = AddSpecies(pszTargSpecies,true);
 if(TargID == 0 || TargID != m_RefSpeciesID)
@@ -573,9 +581,7 @@ TargSeqID = AddTargSeq(pszTargSeq);
 if(TargSeqID == 0)
 	return(-1);
 
-if((Rslt = AddLoci(TargID,TargSeqID,TargLoci,TargRefBase,ProbeID,ProbeCntA,ProbeCntC,ProbeCntG,ProbeCntT,ProbeCntN,cFlgSNPcnts)) < 0)
-	return(Rslt);
-
+Rslt = AddLoci(TargID,TargSeqID,TargLoci,TargRefBase,ProbeID,ProbeCntA,ProbeCntC,ProbeCntG,ProbeCntT,ProbeCntN,cFlgSNPcnts);
 return(Rslt);
 }
 
@@ -587,6 +593,7 @@ CMarkers::LoadSNPFile(int MinBases,			// accept SNPs with at least this number c
 					  char *pszSNPFile)		// SNP file to parse and load
 {
 int Rslt;
+INT64 Rslt64;
 int NumFields;
 int NumElsParsed;
 
@@ -685,7 +692,7 @@ while((Rslt=pCSV->NextLine()) > 0)	// onto next line containing fields
 			break;
 		}
 
-	Rslt = AddLoci(pszRefSpecies,		// reads were aligned to this cultivar or species
+	Rslt64 = AddLoci(pszRefSpecies,		// reads were aligned to this cultivar or species
 				pszRefSeq,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				StartLoci,		// loci within target sequence at which SNPs observed
 				RefBase,		// loci has this reference base
@@ -696,7 +703,7 @@ while((Rslt=pCSV->NextLine()) > 0)	// onto next line containing fields
 				MMBaseT,		// number instances probe base T aligned to TargRefBase
 				MMBaseN);		// number instances probe base U aligned to TargRefBase
 
-	if(Rslt < 1)
+	if(Rslt64 < 1)
 		{
 		if(pCSV != NULL)
 			delete pCSV;
@@ -715,7 +722,7 @@ return(NumElsParsed - NumFilteredOut);
 // AddImputedAlignments
 // Add alignments for species where no snp was called but other species do have snp called
 // The no call could be because there were none or insufficent reads covering the loci, or there was coverage but no snp!
-int 
+INT64 
 CMarkers::AddImputedAlignments(int MinBases,			// must be at least this number of reads covering the SNP loci
 					  char *pszRefSpecies,				// this is the reference species 
 					char *pszProbeSpecies,				// this species reads were aligned to the reference species from which SNPs were called 
@@ -727,6 +734,7 @@ CMarkers::AddImputedAlignments(int MinBases,			// must be at least this number o
 
 {
 int Rslt;
+INT64 Rslt64;
 int NumEls;
 UINT16 RefSpeciesID;
 UINT16 ProbeSpeciesID;
@@ -830,7 +838,7 @@ switch(FileType) {
 NumEls = m_pHypers->NumEls();
 if(NumEls == 0)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"No elements with length range %d..%d in CSV file: '%s'",MinLength,MaxLength,pszAlignFile);
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"No elements with length range %d..%d in file: '%s'",MinLength,MaxLength,pszAlignFile);
 	Reset();
 	return(Rslt);
 	}
@@ -842,8 +850,8 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loaded and parsed %d elements",NumEls)
 
 // try to find overlaps on to SNPs called on other species where this probe species is not represented!
 bool bProbeAligned;
-UINT32 AlignIdx;
-UINT32 UsedAlignLoci;
+INT64 AlignIdx;
+INT64 UsedAlignLoci;
 tsAlignLoci *pAlign;
 UINT32 CurTargSeqID;
 UINT32 CurTargLociLoci;
@@ -853,8 +861,8 @@ int HyperChromID;
 char *pszTargSeq;
 etSeqBase TargRefBase;
 
-UINT32 TotNonOverlapping;
-UINT32 TotOverlapping;
+INT64 TotNonOverlapping;
+INT64 TotOverlapping;
 
 UINT32 ProbeCntA;		// number instances probe base A aligned to TargRefBase 
 UINT32 ProbeCntC;		// number instances probe base C aligned to TargRefBase
@@ -940,7 +948,7 @@ for(AlignIdx = 0; AlignIdx < UsedAlignLoci; AlignIdx++)
 			TotOverlapping += 1;
 
 		// add number overlapping to a new loci record with refbase count set to NumOverlapping
-		Rslt = AddLoci(RefSpeciesID,	// reads were aligned to this cultivar or species
+		Rslt64 = AddLoci(RefSpeciesID,	// reads were aligned to this cultivar or species
 				CurTargSeqID,			// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				CurTargLociLoci,		// loci within target sequence at which SNPs observed
 				TargRefBase,			// loci has this reference base
@@ -951,11 +959,11 @@ for(AlignIdx = 0; AlignIdx < UsedAlignLoci; AlignIdx++)
 				ProbeCntT,		// number instances probe base T aligned to TargRefBase
 				ProbeCntN,		// number instances probe base U aligned to TargRefBase
 				ImputFlags);			// user flag to indicate these are imputed counts, not from the SNP file
-		if(Rslt < 1)
+		if(Rslt64 < 1)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddImputedAlignments: AddLoci returned error %d",Rslt);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddImputedAlignments: AddLoci returned error %d",(int)Rslt64);
 			Reset();
-			return(Rslt);			
+			return(Rslt64);			
 			}
 
 		pAlign = &m_pAllocAlignLoci[AlignIdx];
@@ -1025,7 +1033,7 @@ if(!bProbeAligned)
 		TotOverlapping += 1;
 
 		// add number overlapping to a new loci record with refbase count set to NumOverlapping
-	Rslt = AddLoci(RefSpeciesID,	// reads were aligned to this cultivar or species
+	Rslt64 = AddLoci(RefSpeciesID,	// reads were aligned to this cultivar or species
 				CurTargSeqID,			// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				CurTargLociLoci,		// loci within target sequence at which SNPs observed
 				TargRefBase,			// loci has this reference base
@@ -1037,11 +1045,11 @@ if(!bProbeAligned)
 				ProbeCntN,		// number instances probe base U aligned to TargRefBase
 				ImputFlags);			// user flag to indicate these are imputed counts, not from the SNP file
 
-	if(Rslt < 1)
+	if(Rslt64 < 1)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddImputedAlignments: AddLoci returned error %d",Rslt);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddImputedAlignments: AddLoci returned error %d",(int)Rslt64);
 		Reset();
-		return(Rslt);
+		return(Rslt64);
 		}	
 	pAlign = &m_pAllocAlignLoci[AlignIdx];
 	}
@@ -1137,7 +1145,7 @@ return(0);
 }
 
 const int cRptBuffSize = 0x03ffff;          // will allocate this sized reporting buffer
-int 
+INT64 
 CMarkers::Report(char *pszRefGenome,		// reference genome assembly against which other species were aligned
 			int NumRelGenomes,				// number of relative genome names
 			char *pszRelGenomes[],			// relative genome names
@@ -1157,8 +1165,8 @@ UINT32 CurTargSeqID;
 char *pszRefSeq;
 UINT32 PrevTargSeqID;
 bool bFirstReport;
-int NumSloughed;
-int NumReported;
+INT64 NumSloughed;
+INT64 NumReported;
 
 SortTargSeqLociSpecies();
 
@@ -1312,7 +1320,7 @@ return(NumReported);
 
 static tsAlignLoci *gpAllocAlignLoci;		// as allocated to hold alignment loci;
 
-int
+INT64
 CMarkers::SortTargSeqLociSpecies(void)	
 {
 // check if anything to sort ....

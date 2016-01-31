@@ -18,8 +18,6 @@
 const int cMaxLenName = 100;			// accept species or chrom/contig names of at most this length
 const int cMaxMarkerSpecies = 1000;		// allow at most 1000 different species or cultivars
 const int cMaxSeqID = 100000000;		// allow at most 10^8 different target species sequences
-const int cDfltThreads = 1;				// by default use 1 threads when sorting
-const int cMaxWorkerThreads = 8;		// allow up to this many worker threads
 
 // following two constants are used when determining species specific SNPs
 const int cAltMaxBases = 1;			// must be no more than this number of bases in alternative species
@@ -32,12 +30,12 @@ const UINT16 cFlgAlignCnts = 0x04;		// alignment base counts imputed from alignm
 
 #pragma pack(1)
 typedef struct TAG_sAlignLoci {
-	UINT32 AlignID;		// uniquely identifies this alignment instance (1..N)
-	UINT16 TargSpeciesID;// identifies aligned to cultivar or species
-	UINT32 TargSeqID;	// identifies aligned to sequence - could be a chrom/contig/transcript
-	UINT32 TargLoci;	// loci within SeqID at which SNPs observed
-	UINT8 TargRefBase;	// loci is this reference base
-	UINT16 ProbeSpeciesID;	// identifies cultivar or species with sequences aligning to TargSpecies
+	INT64 AlignID;				// uniquely identifies this alignment instance (1..N)
+	UINT16 TargSpeciesID;		// identifies aligned to cultivar or species
+	UINT32 TargSeqID;			// identifies aligned to sequence - could be a chrom/contig/transcript
+	UINT32 TargLoci;			// loci within SeqID at which SNPs observed
+	UINT8 TargRefBase;			// loci is this reference base
+	UINT16 ProbeSpeciesID;		// identifies cultivar or species with sequences aligning to TargSpecies
 	UINT8 FiltLowTotBases:1;	// 1 if this alignment has fewer TotBases than reporting threshold
 	UINT16 NumSpeciesWithCnts;	// number of species at this loci which have TotBases >= reporting threshold
 	UINT32 TotBases;			// sum of base counts in ProbeBaseCnts
@@ -47,7 +45,8 @@ typedef struct TAG_sAlignLoci {
 	UINT32 ProbeBaseCnts[5];	// indexed by A,C,G,T,N : number instances probe base aligned to TargRefBase 
 } tsAlignLoci;
 
-const int cAllocAlignLoci = 20000000;	// initially allocate to hold this many alignments
+const int cAllocAlignLoci = 40000000;	// initially allocate to hold this many alignments
+const int cReAllocAlignPerc = 125;	    // if required to realloc then realloc by this percentage of the current allocation
 
 typedef struct TAG_sSNPSSpecies {
 	UINT16 SpeciesID;	// uniquely identifies this species instance
@@ -62,9 +61,9 @@ typedef struct TAG_sSeqName {
 	UINT64 NxtSeqOfs;		// offset into m_pAllocSeqNames at which next sequence with same name hash starts
 	UINT8 szSeqName[1];		// sequence name including terminating '\0'
 } tsSeqName;
-const size_t cAllocSeqNames = 500000;	// allocate to incrementally hold this many sequence names
+const size_t cAllocSeqNames = 5000000;	// allocate to incrementally hold this many sequence names
 const size_t cAllocMemSeqNames = (sizeof(tsSeqName) + cMaxLenName) * cAllocSeqNames; // allocate in this sized increments memory (m_pAllocSeqNames) for holding sequence names
-const size_t cAllocMinDiffSeqNames = (sizeof(tsSeqName) + cMaxLenName) * 5; // reallocate if less than this many bytes remaining 
+const size_t cAllocMinDiffSeqNames = (sizeof(tsSeqName) + cMaxLenName) * 100; // reallocate if less than this many bytes remaining 
 #pragma pack()
 
 class CMarkers
@@ -91,13 +90,13 @@ class CMarkers
 	UINT8 m_szCurSeqName[cMaxLenName+1];	// holds last processed sequence name
 	UINT32 m_CurSeqNameID;				// and it's corresponding identifer
 
-	UINT32 m_UsedAlignLoci;				// currently using this many alignment loci
-	UINT32 m_AllocAlignLoci;			// allocated to hold this many alignment loci
+	INT64 m_UsedAlignLoci;				// currently using this many alignment loci
+	INT64 m_AllocAlignLoci;				// allocated to hold this many alignment loci
 	size_t m_AllocMemAlignLoci;			// allocation memory size
 	tsAlignLoci *m_pAllocAlignLoci;		// allocated to hold alignment loci 
 
 
-	int AddLoci(UINT16 TargSpeciesID,		// reads were aligned to this cultivar or species
+	INT64 AddLoci(UINT16 TargSpeciesID,		// reads were aligned to this cultivar or species
 				UINT32 TargSeqID,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				UINT32 TargLoci,			// loci within target sequence at which SNPs observed
 				etSeqBase TargRefBase,	// loci has this reference base
@@ -117,7 +116,7 @@ public:
 	~CMarkers(void);
 	void Reset(void);	// clears all allocated resources
 
-	int		// qsorts alignment loci by TargSeqID,TargLoci,ProbeSpeciesID ascending
+	INT64		// qsorts alignment loci by TargSeqID,TargLoci,ProbeSpeciesID ascending
 		SortTargSeqLociSpecies(void);
 
 	int 
@@ -127,7 +126,7 @@ public:
 					  char *pszProbeSpecies, // this species reads were aligned to the reference species from which SNPs were called 
 					  char *pszSNPFile);	// SNP file to parse and load
 
-	int 
+	INT64 
 		AddImputedAlignments(int MinBases,		// must be at least this number of reads covering the SNP loci
 					  char *pszRefSpecies,		// this is the reference species 
 					char *pszProbeSpecies,		// this species reads were aligned to the reference species from which SNPs were called 
@@ -160,7 +159,7 @@ public:
 	int PreAllocSeqs(int EstNumSeqs, int MeanSeqLen); // preallocate memory for this estimate of number sequences having this mean sequence length
 
 
-	int AddLoci(char *pszTargSpecies,	// reads were aligned to this cultivar or species
+	INT64 AddLoci(char *pszTargSpecies,	// reads were aligned to this cultivar or species
 				char *pszTargSeq,		// alignments to this sequence - could be a chrom/contig/transcript - from pszSpecies
 				UINT32 TargLoci,		// loci within target sequence at which SNPs observed
 				etSeqBase TargRefBase,	// loci has this reference base
@@ -177,8 +176,9 @@ public:
 						int MinSpeciesWithCnts = 0,			// must be at least this number of species with base counts more than MinSpeciesTotCntThres - 0 if no limit 
 						int MinSpeciesTotCntThres = 0);		// individual species must have at least this number of total bases at SNP loci - 0 if no threshold
 
+	INT64 NumAlignLoci(void);					// returns current number of alignment/SNP loci
 
-	int											// number of markers reported
+	INT64											// number of markers reported
 		Report(char *pszRefGenome,			    // reference genome assembly against which other species were aligned
 			int NumRelGenomes,					// number of relative genome names
 			char *pszRelGenomes[],				// relative genome names

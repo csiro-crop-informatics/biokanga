@@ -712,11 +712,20 @@ Rslt = eBSFSuccess;
 PrevContigID = 0;
 PrevChromID = 0;
 NumMappedChroms = 0;
+time_t Then = time(NULL);
+time_t Now;
 while(Rslt >= eBSFSuccess && (LineLen = m_pInBAMfile->GetNxtSAMline(szLine)) > 0)
 	{
 	NumParsedElLines += 1;
-	if(!(NumParsedElLines % 5000000) || NumParsedElLines == 1)
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Parsed %d element lines",NumParsedElLines);
+	if(!(NumParsedElLines % 100000) || NumParsedElLines == 1)
+		{
+		Now = time(NULL);
+		if((Now - Then) >= 60)
+			{
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Parsed %d element lines",NumParsedElLines);
+			Then += 60;
+			}
+		}
 
 	szLine[sizeof(szLine)-1] = '\0';
 	pTxt = TrimWhitespace(szLine);

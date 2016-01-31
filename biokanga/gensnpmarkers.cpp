@@ -128,7 +128,6 @@ struct arg_file *snpfiles = arg_filen("i","insnps","<file>",1,cMaxMarkerSpecies,
 struct arg_file *alignfiles = arg_filen("I","inaligns","<file>",1,cMaxMarkerSpecies,"Load alignments from file(s)");
 
 struct arg_file *markerfile = arg_file1("o","out","<file>",		"Output marker SNP loci to this file");
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..n (defunct,not used)");
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",		"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");
@@ -136,7 +135,7 @@ struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 	summrslts,experimentname,experimentdescr,
-	pmode,mincovbases,maxpvalue,snpmajorpc,mintotcntthres,altspeciesmaxcnt,mincovspecies,refgenome,relgenomes,snpfiles,alignfiles,markerfile,threads,
+	pmode,mincovbases,maxpvalue,snpmajorpc,mintotcntthres,altspeciesmaxcnt,mincovspecies,refgenome,relgenomes,snpfiles,alignfiles,markerfile,
 	end};
 char **pAllArgs;
 int argerrors;
@@ -549,11 +548,15 @@ char *pszAlignFile;
 char szProbeSpecies[cMaxLenName];
 int FileIdx;
 int Rslt;
+INT64 Rslt64;
 tsSAMFileEls EstSAMFileEls[cMaxMarkerSpecies];
 
-UINT64 TotSNPRows;
-UINT64 TotAlignments;
-UINT64 SumMeanSeqLens;
+INT64 PrevAlignLoci;
+INT64 CurAlignLoci;
+INT64 InitalAlignLoci;
+INT64 TotSNPRows;
+INT64 TotAlignments;
+INT64 SumMeanSeqLens;
 INT32 MeanSeqLen;
 CMarkers *pMarkers = NULL;
 CCSVFile *pCSV = NULL;
@@ -642,7 +645,7 @@ for(FileIdx = 0; FileIdx < NumAlignFiles; FileIdx++)
 	}
 delete pSAM;
 // estimate a minimum total memory required
-TotSNPRows = (TotSNPRows * 125) / 100;  // assume a ~25% overhead for additional SNPs from imputed alignments
+TotSNPRows *= 11;					// assume a 10x overhead for additional SNPs from imputed alignments
 TotMemToAlloc = MaxEstSAMFileMem;
 TotMemToAlloc += TotSNPRows * sizeof(tsAlignLoci);
 // allow 15% overhead for indexes, reallocs, other allocations etc
@@ -650,7 +653,7 @@ TotMemToAlloc = (TotMemToAlloc * 115)/100;
 gDiagnostics.DiagOut(eDLFatal,gszProcName,"Estimating minimum total memory requirements to be: %dGB",(int)((TotMemToAlloc + 0x040000000 - 1)/0x040000000));
 
 // try to prealloc for SNPs 
-gDiagnostics.DiagOut(eDLFatal,gszProcName,"Pre-allocating memory for %lld SNP loci allowing 25%% additional for impuned SNPS",TotSNPRows);
+gDiagnostics.DiagOut(eDLFatal,gszProcName,"Pre-allocating memory for %lld SNP loci allowing 10x additional for impuned SNPS",TotSNPRows);
 
 if((Rslt = pMarkers->PreAllocSNPs(TotSNPRows)) != eBSFSuccess)
 	{
@@ -703,39 +706,49 @@ if(Rslt == 0)
 	return(Rslt);
 	}
 
+CurAlignLoci = pMarkers->NumAlignLoci();			// report on total number of accepted SNP alignments
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted a total of %lld SNP alignments to further process for markers",CurAlignLoci);
+
 // if no SNPs are being called at a loci for one cultivar then was it because there was no coverage?
 // sort the SNPs by refseq.loci.probespecies ascending
 // iterate looking for missing probespecies at each refseq.loci
 // load the probespecies alignments and check for coverage at the missing refseq.loci
-gDiagnostics.DiagOut(eDLFatal,gszProcName,"Checking for imputed alignments where no SNP called in one or more cultivars...");
+gDiagnostics.DiagOut(eDLFatal,gszProcName,"Now checking for imputed alignments where no SNP called in one or more cultivars...");
+
+InitalAlignLoci = PrevAlignLoci = CurAlignLoci;
 for(FileIdx = 0; FileIdx < NumAlignFiles; FileIdx++)
 	{
 	pszAlignFile = pszAlignFiles[FileIdx];
 	sprintf(szProbeSpecies,"ProbeSpecies%d",FileIdx+1);
-
-	Rslt = pMarkers->AddImputedAlignments(MinCovBases,	// must be at least this number of reads covering the SNP loci
+	Rslt64 = pMarkers->AddImputedAlignments(MinCovBases,	// must be at least this number of reads covering the SNP loci
 					pszRefGenome,				// this is the reference species 
 					szProbeSpecies,				// this species reads were aligned to the reference species from which SNPs were called 
 					pszAlignFile,0,true,EstSAMFileEls[FileIdx].NumAlignments, EstSAMFileEls[FileIdx].SeqLen);		// alignment file to parse and load
-	if(Rslt < 0)
+	if(Rslt64 < 0)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddImputedAlignments(%s) returned error",pszAlignFile);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddImputedAlignments('%s') returned error %d",pszAlignFile,(int)Rslt64);
 		delete pMarkers;
-		return(Rslt);
+		return((int)Rslt64);
 		}
+	CurAlignLoci =  pMarkers->NumAlignLoci();
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"AddImputedAlignments('%s') imputed %lld alignments, subtotal %lld",pszAlignFile,CurAlignLoci - PrevAlignLoci, CurAlignLoci - InitalAlignLoci);
+	PrevAlignLoci = CurAlignLoci;
 	}
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Discovered %d imputations",Rslt);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Total alignments %lld or which %lld are imputed alignments",CurAlignLoci, CurAlignLoci - InitalAlignLoci);
 
-Rslt = pMarkers->SortTargSeqLociSpecies();
+Rslt64 = pMarkers->SortTargSeqLociSpecies();
 pMarkers->IdentSpeciesSpec(AltSpeciesMaxCnt,	// max count allowed for base being processed in any other species, 0 if no limit
 						MinCovBases,			// min count required for base being processed in species
 						   SNPMmajorPC);		// to be processed major putative SNP base must be at least this proportion of total
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting markers to '%s'...",pszMarkerFile);
-Rslt = pMarkers->Report(pszRefGenome,NumRelGenomes,pszRelGenomes,pszMarkerFile,MinSpeciesWithCnts,MinSpeciesTotCntThres,PMode == eRPMInterCultOnly ? true : false);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting of %u markers to '%s' completed",Rslt,pszMarkerFile);
+Rslt64 = pMarkers->Report(pszRefGenome,NumRelGenomes,pszRelGenomes,pszMarkerFile,MinSpeciesWithCnts,MinSpeciesTotCntThres,PMode == eRPMInterCultOnly ? true : false);
+if(Rslt64 < 0)
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting of markers to '%s' error %d",pszMarkerFile,(int)Rslt64);
+else
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting of %lld markers to '%s' completed",Rslt64,pszMarkerFile);
 delete pMarkers;
-return(Rslt);
+return(Rslt64 < 0 ? (int)Rslt64 : eBSFSuccess);
 }
 

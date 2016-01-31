@@ -1180,12 +1180,20 @@ if((Rslt = (teBSFrsltCodes)BAMfile.Open(pszFile)) != eBSFSuccess)
 NumParsedElLines = 0;
 NumAcceptedEls = 0;
 NumUnmappedEls = 0;
-
+time_t Then = time(NULL);
+time_t Now;
 while((LineLen = BAMfile.GetNxtSAMline(szLine)) > 0)
 	{
 	NumParsedElLines += 1;
-	if(!(NumParsedElLines % 5000000) || NumParsedElLines == 1)
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Parsed %d element lines",NumParsedElLines);
+	if(!(NumParsedElLines % 100000) || NumParsedElLines == 1) // too expensive to check if time for a progress report every parsed line!
+		{
+		Now = time(NULL);
+		if((Now - Then) >= 60)
+			{
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Parsed %d element lines",NumParsedElLines);
+			Then += 60;
+			}
+		}
 
 	szLine[sizeof(szLine)-1] = '\0';
 	pTxt = TrimWhitespace(szLine);
