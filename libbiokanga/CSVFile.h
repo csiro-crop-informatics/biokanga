@@ -5,7 +5,7 @@ const char cDfltCommentChar = '#';	// default character used as a comment line i
 const char cDfltTextChar = '"';		// default character used to quote text in CSV file
 
 
-const int cCSVMaxFields   = 1024;	// max number of fields
+const int cCSVMaxFields   = 2048;	// max number of fields
 const int cCSVDfltFields  = 100;	// default number of fields
 const int cCSVMinFields   = 10;		// can always handle at least 10 fields
 

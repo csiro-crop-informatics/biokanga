@@ -991,6 +991,12 @@ if(pCSV == NULL)
 	return(eBSFerrObj);
 	}
 
+if(CSVtype == 0)		// marker CSV files can contain a large number of fields
+	{
+    if(((NumSpecies * 9) + 4) > cCSVDfltFields)
+		pCSV->SetMaxFields((NumSpecies * 9) + 4);
+	}
+
 if((Rslt=pCSV->Open(pszInFile))!=eBSFSuccess)
 	{
 	while(pCSV->NumErrMsgs())
@@ -1082,7 +1088,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 			SeqID = AddSeq(ExprID,pszSeqName);
 
 			pCSV->GetInt(2,&Loci);		// loci on sequence at which marker has been determined
-			pCSV->GetText(3,&pszLociBase); // cannonical target sequence base at the marker loci
+			pCSV->GetText(3,&pszLociBase); // canonical target sequence base at the marker loci
 			switch(*pszLociBase) {
 				case 'a': case 'A':
 					LociBase = 'A';
@@ -1125,7 +1131,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 						MarkerBase = 'N';
 						break;
 					}
-				pCSV->GetInt(FieldIdx+2,&MarkerScore);		// cannonical target sequence base at the marker loci
+				pCSV->GetInt(FieldIdx+2,&MarkerScore);		// canonical target sequence base at the marker loci
 				pCSV->GetInt(FieldIdx+3,&TotCovCnt);	
 				pCSV->GetInt(FieldIdx+4,&Acnt);
 				pCSV->GetInt(FieldIdx+5,&Ccnt);

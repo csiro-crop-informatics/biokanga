@@ -198,9 +198,9 @@ struct arg_int *samplerate = arg_int0("R","samplerate","<int>",					"sample inpu
 struct arg_int *threads = arg_int0("T","threads","<int>",						"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_int *maxnonrmi = arg_int0("N","maxnonrmi","<int>",					"if RMI SW processing then limit non-RMI to this maximum number of SW threads (defaults to threads, range 0 ... threads)");
-struct arg_int *maxrmi = arg_int0("n","maxrmi","<int>",							"maximum number of RMI SW instances supported 0, Number of threads to 2000 (defaults to 0 which sets max RMI instances to 5 x number of threads)");
+struct arg_int *maxrmi = arg_int0("n","maxrmi","<int>",							"maximum number of RMI SW instances supported 0, Number of threads to 2000 (defaults to 0 which sets max RMI instances to 10 x number of threads)");
 struct arg_str  *rmihost = arg_str0("u", "rmihost", "<string>",					"listening on this host name or IPv4/IPv5 address for connections by SW service providers (default 127.0.0.1)");
-struct arg_str  *rmiservice = arg_str0("U", "rmiservice", "<string>",			"Listen on this service name or port for connections by SW service providers (default 7869)");
+struct arg_str  *rmiservice = arg_str0("U", "rmiservice", "<string>",			"Listen on this service name or port for connections by SW service providers (default 43123)");
 
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",				"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
@@ -398,7 +398,7 @@ if (!argerrors)
 	if(szHostName[0] == '\0' && szServiceName[0] != '\0')
 		strcpy(szHostName, "127.0.0.1");
 	if(szHostName[0] != '\0' && szServiceName[0] == '\0')
-		strcpy(szServiceName, "7869");
+		strcpy(szServiceName, "43123");
 
 	SampleRate = samplerate->count ? samplerate->ival[0] : 100;
 	if(SampleRate < 1 || SampleRate > 100)
@@ -811,9 +811,9 @@ if (!argerrors)
 
 	if(szHostName[0] != '\0')
 		{
-		MaxRMI = maxrmi->count ? maxrmi->ival[0] : (NumThreads * 5);
+		MaxRMI = maxrmi->count ? maxrmi->ival[0] : (NumThreads * 10);
 		if(MaxRMI == 0)
-			MaxRMI = (NumThreads * 5);
+			MaxRMI = (NumThreads * 10);
 		if(MaxRMI < NumThreads || MaxRMI > 2000)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range %d..2000",MaxRMI,NumThreads);
@@ -930,8 +930,7 @@ if (!argerrors)
 	if(szExperimentName[0] != '\0')
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"This processing reference: %s",szExperimentName);
 	
-	if(szHostName[0] != '\0')
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"number of threads : %d",NumThreads);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"number of threads : %d",NumThreads);
 
 	if(gExperimentID > 0)
 		{
@@ -1894,6 +1893,7 @@ if(pszHostName[0] != '\0')
 else
 	{
 	m_bRMI = false;
+	m_MaxNonRMIThreads = NumThreads;
 	m_MaxRMIInstances = 0;
 	m_pRequester = NULL;
 	m_szRMIHostName[0] = '\0';
@@ -2497,6 +2497,7 @@ if(m_bRMI)
 	}
 else
 	{
+	NumClasses= 0;
 	m_RMINumCommitedClasses = 0;
 	m_RMINumUncommitedClasses = 0;
 	}
@@ -3081,9 +3082,9 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 				bNonRMIRslt = pThreadPar->pSW->SetMaxInitiatePathOfs(cDfltMaxOverlapFloat);
 			if(bNonRMIRslt == true)
 				bNonRMIRslt = pThreadPar->pSW->PreAllocMaxTargLen(m_MaxPBSeqLen, m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+			ReleaseCASSerialise();
 			if(bNonRMIRslt == false)
 				goto RMIRestartThread;
-			ReleaseCASSerialise();
 			}
 		if(pThreadPar->bRMI && !bRMIInitialised)
 			{

@@ -73,7 +73,7 @@ ProcSWService(int argc, char** argv)
 	struct arg_int *maxconnwait = arg_int0("w", "wait", "<int>", "wait for at most this many minutes for service requester connection (0 - defaults to 15min, max of 240)");
 
 	struct arg_str  *host = arg_str0("u", "rmihost", "<string>", "Connect to this service requester host name or IPv4/IPv5 address (default 127.0.0.1)");
-	struct arg_str  *service = arg_str0("U", "rmiservice", "<string>", "Connect to service requester on this service name or port (default 7869)");
+	struct arg_str  *service = arg_str0("U", "rmiservice", "<string>", "Connect to service requester on this service name or port (default 43123)");
 
 	struct arg_end *end = arg_end(100);
 	void *argtable[] = { help,version,FileLogLevel,LogFile,
@@ -221,12 +221,12 @@ ProcSWService(int argc, char** argv)
 		szServiceName[0] = '\0';
 		if (service->count)
 			{
-			strncpy(szServiceName, service->sval[0], sizeof(szServiceName) - 1);
+			strncpy(szServiceName, service->sval[0], sizeof(szServiceName));
 			szServiceName[sizeof(szServiceName) - 1] = '\0';
 			CUtility::TrimQuotedWhitespcExtd(szServiceName);
 			}
 		if (szServiceName[0] == '\0')
-			strcpy(szServiceName, "7869");
+			strcpy(szServiceName, "43123");
 
 
 		char *pszMode;

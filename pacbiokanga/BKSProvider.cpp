@@ -36,7 +36,7 @@ typedef struct sockaddr_storage SOCKADDR_STORAGE;
 #include "./SSW.h"
 #include "./BKScommon.h"
 #include "./BKSProvider.h"
-const char * cDfltServerPort = "7869";		// default server port to connect to if not user specified
+const char * cDfltServerPort = "43123";		// default server port to connect to if not user specified
 
 CBKSProvider::CBKSProvider()
 {
@@ -1540,9 +1540,9 @@ do {
 		break;
 
 #ifdef WIN32
-	Sleep(5000);
+	Sleep(30000);
 #else
-	sleep(5);
+	sleep(30);
 #endif
 	gDiagnostics.DiagOut(eDLInfo, gszProcName, "InitialiseConnect: Retrying connection ...");
 	}

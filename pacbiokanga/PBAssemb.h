@@ -123,10 +123,17 @@ static int SortLenDescending(const void *arg1, const void *arg2); // Sort scaffo
 	int CreateMutexes(void);
 	void DeleteMutexes(void);
 
-	volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+#ifdef WIN32
+	alignas(4)	volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	alignas(4)	volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
+#else
+	__attribute__((aligned(4))) volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	__attribute__((aligned(4))) volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
+#endif
+
+
 	void AcquireCASSerialise(void);
 	void ReleaseCASSerialise(void);
-	volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
 	void AcquireCASLock(void);
 	void ReleaseCASLock(void);
 

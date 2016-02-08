@@ -52,7 +52,7 @@ typedef struct sockaddr_storage SOCKADDR_STORAGE;
 
 #include "./BKScommon.h"
 #include "./BKSRequester.h"
-const char * cDfltListenerPort = "7869";		// default server port to listen on if not user specified
+const char * cDfltListenerPort = "43123";		// default server port to listen on if not user specified
 
 CBKSRequester::CBKSRequester()
 {
@@ -69,6 +69,9 @@ m_NumInitTypes = 0;
 m_NumSessions = 0;
 m_NumSessEstabs = 0;	
 m_CASSerialise = 0;
+m_NumPendingReqs = 0;
+m_NumPendingResps = 0;
+m_TotRespsAvail = 0;
 m_bNotifiedReqs = false;
 m_bSessionTermReq = false;
 
@@ -725,6 +728,7 @@ if(pUncommited != NULL)
 return(NumCommited + NumUncommited);
 }
 
+
 // NOTE: processing is to attempt to distribute jobs evenly to all service providers
 int				// -2: parameter errors, -1: class instance no longer exists, 0: currently no available service instance 1: if job accepted
 CBKSRequester::AddJobRequest(tJobIDEx *pJobID,	// returned unique job identifier by which job can later be referenced
@@ -761,7 +765,19 @@ if(pType->Detail.BKSPType != TypeID ||
    InDataSize >  pType->Detail.MaxQuerySeqLen || (InDataSize > 0 && pInData == NULL))
 	return(-2);
 
+#ifdef WIN32
+	InterlockedIncrement(&m_NumPendingReqs);	  // letting TCP session handling thread there is at least one pending request to be processed	
+#else
+	__sync_fetch_and_add(&m_NumPendingReqs,1);
+#endif
+
 AcquireLock(true);
+
+#ifdef WIN32
+	InterlockedDecrement(&m_NumPendingReqs);	  // letting TCP session handling thread know this request no longer outstanding	
+#else
+	__sync_fetch_and_sub(&m_NumPendingReqs,1);
+#endif	
 
 if(pType->NumSessions == 0)			// need at least one service provider to continue exploring if job can be accepted
 	{
@@ -870,7 +886,6 @@ for(InstanceID = 1; InstanceID <= pSession->Session.MaxInstances; InstanceID++)
 		}
 	pReqRespInst = (tsReqRespInst *)((UINT8 *)pReqRespInst + pType->ReqRespInstSize);
 	}
-
 ReleaseLock(true);
 return(0);		// currently no service provider capacity to accept request
 }
@@ -1047,6 +1062,13 @@ if(pResponse->DataSize > 0)
 pInstance->FlgCpltd = 1;
 pSession->Session.NumProcs -= 1;
 pSession->Session.NumCpltd += 1;
+
+#ifdef WIN32
+InterlockedIncrement(&m_TotRespsAvail);	  	
+#else
+__sync_fetch_and_add(&m_TotRespsAvail,1);
+#endif
+
 pSession->Session.TotNumCpltd += 1;
 pTxdRxd->flgKeepAliveReq = 1;
 
@@ -1073,6 +1095,7 @@ UINT32 ReqID;
 UINT32 SessionID;
 UINT32 InstanceID;
 UINT32 TypeSessionID;
+UINT32 TotRespsAvail;
 tsBKSRegSessionEx *pSession;
 tsReqRespInst *pReqRespInst;
 UINT32 ReqRespInstOfs;
@@ -1090,7 +1113,26 @@ if(!UnpackFromJobIDEx(JobID,&ReqID,&SessionID,&InstanceID,&TypeID,&TypeSessionID
 if(TypeID == eBKSPTUndefined || TypeID >= eBKSPTPlaceHolder)
 	return(-1);
 
+#ifdef WIN32
+TotRespsAvail = InterlockedCompareExchange(&m_TotRespsAvail,0,0);
+#else
+TotRespsAvail = __sync_val_compare_and_swap(&m_TotRespsAvail,0,0);
+#endif
+if(TotRespsAvail == 0)
+	return(0);
+
+#ifdef WIN32
+	InterlockedIncrement(&m_NumPendingResps);	  // letting TCP session handling thread there is at least one worker thread wanting to check for a job response	
+#else
+	__sync_fetch_and_add(&m_NumPendingResps,1);
+#endif
+
 AcquireLock(true);
+#ifdef WIN32
+	InterlockedDecrement(&m_NumPendingResps);	  // letting TCP session handling thread one less worker thread wanting to check for a job response	
+#else
+	__sync_fetch_and_sub(&m_NumPendingResps,1);
+#endif
 pType = &m_pBKSTypes[TypeID - 1];
 if(pType->Detail.BKSPType != TypeID || TypeSessionID == 0 || TypeSessionID > pType->MaxSessions)
 	{
@@ -1135,6 +1177,12 @@ if(pReqRespInst->FlgCpltd)		// set if job has completed
 		pReqRespInst->ClassInstanceID = 0;
 		pReqRespInst->ClassMethodID = 0;
 		pSession->Session.NumCpltd -= 1;
+
+#ifdef WIN32
+		InterlockedDecrement(&m_TotRespsAvail);	  // letting TCP session handling thread there is at least one worker thread wanting to check for a job response	
+#else
+		__sync_fetch_and_sub(&m_TotRespsAvail,1);
+#endif
 		pSession->Session.NumBusy -= 1;
 		memset(pReqRespInst,0,pType->ReqRespInstSize);
 		UnallocReqID(ReqID);
@@ -1321,6 +1369,9 @@ m_MaxChkPtReqs = 0;
 memset(m_SessionIDVect, 0, sizeof(m_SessionIDVect));
 memset(m_ReqIDVect, 0, sizeof(m_ReqIDVect));
 m_CASSerialise = 0;
+m_NumPendingReqs = 0;
+m_NumPendingResps = 0;
+m_TotRespsAvail = 0;
 m_bSessionTermReq = false;
 return(eBSFSuccess);
 }
@@ -1378,6 +1429,15 @@ if (m_NumSessions)
 							free(pSession->TxdRxd.pRxdBuff);
 						if (pSession->TxdRxd.pTxdBuff != NULL)
 							free(pSession->TxdRxd.pTxdBuff);
+
+
+						if(pSession->Session.NumCpltd != 0)
+#ifdef WIN32
+							InterlockedAdd(&m_TotRespsAvail,(int)pSession->Session.NumCpltd);	  	
+#else
+							__sync_fetch_and_sub(&m_TotRespsAvail,pSession->Session.NumCpltd);
+#endif
+
 						if (pSession->pReqResp != NULL)
 							{
 							pInstance = (tsReqRespInst *)pSession->pReqResp;
@@ -2684,6 +2744,9 @@ for (pNxtAddrInfoRes = pAddrInfoRes; pNxtAddrInfoRes != NULL; pNxtAddrInfoRes = 
 #endif
 		continue;		// try next address
 
+	int SockOptEnable = 1;
+	setsockopt(ListenerSocket, SOL_SOCKET, SO_REUSEADDR , (char *)&SockOptEnable, sizeof(SockOptEnable));
+
 	if ((Rslt = bind(ListenerSocket, pNxtAddrInfoRes->ai_addr, (int)pNxtAddrInfoRes->ai_addrlen)) == 0)  // 0 if bound successfully
 		break;
 
@@ -3484,7 +3547,31 @@ while (1)
 			}
 		}
 
-	SendRequestFrames();
+	UINT32 NumPendingReqs;
+	UINT32 NumPendingResps;
+	UINT32 TotRespsAvail;
+
+    // if any RMI worker threads have pending requests or wanting to check for responses then allow these access
+	ReleaseLock(true);
+	do
+		{
+#ifdef WIN32
+		NumPendingReqs = InterlockedCompareExchange(&m_NumPendingReqs,0,0);
+		NumPendingResps = InterlockedCompareExchange(&m_NumPendingResps,0,0);
+		TotRespsAvail = InterlockedCompareExchange(&m_TotRespsAvail,0,0);
+#else
+		NumPendingReqs = __sync_val_compare_and_swap(&m_NumPendingReqs,0,0);
+		NumPendingResps = __sync_val_compare_and_swap(&m_NumPendingResps,0,0);
+		TotRespsAvail = __sync_val_compare_and_swap(&m_TotRespsAvail,0,0);
+#endif
+		if(NumPendingReqs == 0 && (TotRespsAvail == 0 || NumPendingResps == 0))
+			break;
+		CUtility::SleepMillisecs(10);
+		}
+	while(1);
+	AcquireLock(true);
+
+ 	SendRequestFrames();
 	SelectTimeout.tv_sec = 5;
 	SelectTimeout.tv_usec = 0;
 	HiFDS = SetupFDSets(ReadFDs, WriteFDs, ExceptFDs);

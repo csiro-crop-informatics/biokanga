@@ -302,20 +302,38 @@ static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 	int CreateMutexes(void);
 	void DeleteMutexes(void);
 
-	volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+#ifdef WIN32
+	alignas(4)	volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	alignas(4)	volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
+	alignas(4)	volatile unsigned int m_CASThreadPBErrCorrect; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	alignas(4)	volatile UINT32 m_RMINumCommitedClasses;			// when RMI service provider classes utilised then current number of class instances instantiated over all provider sessions
+	alignas(4)	volatile UINT32 m_RMINumUncommitedClasses;		// when RMI service provider classes utilised then current number of class instances available to be instantiated over all provider sessions
+	alignas(4)	volatile UINT32 m_LowestCpltdProcNodeID;		// lowest processing completed sequence node
+	alignas(4)	volatile UINT32 m_ReduceNonRMIThreads;			// reduce number of actively processing non-RMI SW processing threads by this delta
+	alignas(4)	volatile UINT32 m_CurAllowedActiveOvlpThreads;	// currently allowing a total of this many SW (total of both RMI and non-RMI) threads to be actively processing, always <= m_MaxActiveOvlpThreads
+	alignas(4)	volatile UINT32 m_CurActiveRMIThreads;			// currently there are this many actively processing RMI SW processing threads
+	alignas(4)	volatile UINT32 m_CurActiveNonRMIThreads;		// currently there are this many actively processing non-RMI SW processing threads
+#else
+	__attribute__((aligned(4))) volatile unsigned int m_CASSerialise; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	__attribute__((aligned(4))) volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
+	__attribute__((aligned(4))) volatile unsigned int m_CASThreadPBErrCorrect; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
+	__attribute__((aligned(4))) volatile UINT32 m_RMINumCommitedClasses;			// when RMI service provider classes utilised then current number of class instances instantiated over all provider sessions
+	__attribute__((aligned(4))) volatile UINT32 m_RMINumUncommitedClasses;		// when RMI service provider classes utilised then current number of class instances available to be instantiated over all provider sessions
+	__attribute__((aligned(4))) volatile UINT32 m_LowestCpltdProcNodeID;		// lowest processing completed sequence node
+	__attribute__((aligned(4))) volatile UINT32 m_ReduceNonRMIThreads;			// reduce number of actively processing non-RMI SW processing threads by this delta
+	__attribute__((aligned(4))) volatile UINT32 m_CurAllowedActiveOvlpThreads;	// currently allowing a total of this many SW (total of both RMI and non-RMI) threads to be actively processing, always <= m_MaxActiveOvlpThreads
+	__attribute__((aligned(4))) volatile UINT32 m_CurActiveRMIThreads;			// currently there are this many actively processing RMI SW processing threads
+	__attribute__((aligned(4))) volatile UINT32 m_CurActiveNonRMIThreads;		// currently there are this many actively processing non-RMI SW processing threads
+#endif
+
 	void AcquireCASSerialise(void);
 	void ReleaseCASSerialise(void);
-	volatile unsigned int m_CASLock; // used with synchronous compare and swap (CAS) for serialising access -  - replaces AcquireLock(True) as much more efficient
 	void AcquireCASLock(void);
 	void ReleaseCASLock(void);
 
-	volatile unsigned int m_CASThreadPBErrCorrect; // used with synchronous compare and swap (CAS) for serialising access - replaces AcquireSerialise() as much more efficient
 	void AcquireCASThreadPBErrCorrect(void);
 	void ReleaseCASThreadPBErrCorrect(void);
 
-	volatile UINT32 m_RMINumCommitedClasses;			// when RMI service provider classes utilised then current number of class instances instantiated over all provider sessions
-	volatile UINT32 m_RMINumUncommitedClasses;		// when RMI service provider classes utilised then current number of class instances available to be instantiated over all provider sessions
-	volatile UINT32 m_LowestCpltdProcNodeID;		// lowest processing completed sequence node
 
 	time_t m_ProcessStatsThen;						// used to determine if sufficient time has elapsed since last reporting of process stats
 	UINT32 m_NumCPUCores;                           // total number of CPU cores 
@@ -324,10 +342,6 @@ static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 	UINT32 m_MaxNonRMIThreads;						// max number of non-RMI SW threads allowed
 	UINT32 m_MaxActiveOvlpThreads;					// allowing a maximum of this total number of SW (total of both RMI and non-RMI) threads to be actively processing
 
-	volatile UINT32 m_ReduceNonRMIThreads;			// reduce number of actively processing non-RMI SW processing threads by this delta
-	volatile UINT32 m_CurAllowedActiveOvlpThreads;	// currently allowing a total of this many SW (total of both RMI and non-RMI) threads to be actively processing, always <= m_MaxActiveOvlpThreads
-	volatile UINT32 m_CurActiveRMIThreads;			// currently there are this many actively processing RMI SW processing threads
-	volatile UINT32 m_CurActiveNonRMIThreads;		// currently there are this many actively processing non-RMI SW processing threads
 
 	int UpdateProcessStats(void);					// determine  numbers of commited and uncommited service provider classses
 

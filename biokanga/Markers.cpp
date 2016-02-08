@@ -1067,7 +1067,7 @@ CMarkers::IdentSpeciesSpec(int AltMaxCnt,	// max count allowed for base being pr
 						int MinSpeciesTotCntThres)		// individual species must have at least this number of total bases at SNP loci - 0 if no threshold
 
 {
-UINT32 AlignIdx;
+INT64 AlignIdx;
 tsAlignLoci *pAlign;
 tsAlignLoci *pAlignSpecies;
 tsAlignLoci *pAlignSpeciesA;

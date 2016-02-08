@@ -192,6 +192,10 @@ class CBKSRequester
 	alignas(4) volatile UINT32 m_Terminate;							// set to 1 if requester thread is required to self terminate
 	alignas(4) volatile UINT32 m_LockEnabled;						// set to 1 if AcquireLock has been initialised and can be used for serialisation
 	alignas(4) volatile UINT32 m_CASSerialise;						// used with synchronous compare and swap (CAS) for serialising access 
+	alignas(4) volatile UINT32 m_NumPendingReqs;					// number of outstanding pending requests from RMI worker threads to be processed
+	alignas(4) volatile UINT32 m_NumPendingResps;					// number of outstanding pending response checks from RMI worker threads to be processed
+	alignas(4) volatile LONG m_TotRespsAvail;						// current total number of responses available to RMI worker threads over all sessions
+
 #else
 #ifdef _ChkLockDepth_		// if checking that serialisation locks are actually working!
 	__attribute__((aligned(4))) volatile	UINT32 m_LockDepth;
@@ -202,6 +206,9 @@ class CBKSRequester
 	__attribute__((aligned(4))) volatile UINT32 m_Terminate;		// set to 1 if requester thread is required to self terminate
 	__attribute__((aligned(4))) volatile UINT32 m_LockEnabled;		// set to 1 if AcquireLock has been initialised and can be used for serialisation
 	__attribute__((aligned(4))) volatile UINT32 m_CASSerialise;		// used with synchronous compare and swap (CAS) for serialising access 
+	__attribute__((aligned(4))) volatile UINT32 m_NumPendingReqs;	// number of outstanding pending requests from RMI worker threads to be processed
+	__attribute__((aligned(4))) volatile UINT32 m_NumPendingResps;	// number of outstanding pending response checks from RMI worker threads to be processed
+	__attribute__((aligned(4))) volatile UINT32 m_TotRespsAvail;	// current total number of responses available to RMI worker threads over all sessions
 #endif
 
 	bool m_bNotifiedReqs;								// set TRUE if control message has been sent to control socket 2
