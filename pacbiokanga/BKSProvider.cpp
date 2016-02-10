@@ -522,9 +522,14 @@ CostNumInstances(teBKSPType BKSPType,				// determine number of service instance
 {
 	UINT32 MaxServiceInstances;
 
+double Divisor;  // used to place a floor on divisor of 0.0001
+Divisor =  ((ScalePayload * (double)(MaxReqPayloadSize + MaxRespPayloadSize)) +
+														 (ScaleScaledTargQuery * (((double)MaxQuerySeqLen * ScaleQueryLen) * ((double)MaxTargSeqLen * ScaleTargLen))));
+if(Divisor < 0.0001)
+	Divisor = 0.0001;
+
 	// in this implementation using same default costing function for all service types
-	MaxServiceInstances = (UINT32)((AvailResources + 0.5) / ((ScalePayload * (double)(MaxReqPayloadSize + MaxRespPayloadSize)) +
-															 (ScaleScaledTargQuery * (((double)MaxQuerySeqLen * ScaleQueryLen) * ((double)MaxTargSeqLen * ScaleTargLen)))));
+	MaxServiceInstances = (UINT32)((AvailResources + 0.5) / Divisor);
 	if (MaxServiceInstances > MaxServiceInsts)
 		MaxServiceInstances = MaxServiceInsts;
 	return(MaxServiceInstances);

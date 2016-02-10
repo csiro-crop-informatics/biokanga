@@ -954,9 +954,9 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 				{
 				if((ProbeCovLen = (m_ProbeStartRelOfs + IdxP) - pCell->StartPOfs) > 1000 && (TargCovLen = (m_TargStartRelOfs + IdxT) - pCell->StartTOfs) > 1000)
 					{
-					ScoreRatio=(pCell->CurScore * 1000)/pCell->PeakScore; // expecting the score to not have dropped by more than 0.9 from the peak
-					CovRatio = (ProbeCovLen*1000)/TargCovLen;   // expecting the probe and targ coverage lengths to be within 15% of each other
-					MeanMatchLen = (pCell->NumMatches * 1000)/(pCell->NumGapsIns + pCell->NumGapsDel); // expecting the mean lengths of matching subsequences between probe and targ to be at least 3bp
+					ScoreRatio=(pCell->CurScore * 1000)/(1+pCell->PeakScore); // expecting the score to not have dropped by more than 0.9 from the peak
+					CovRatio = (ProbeCovLen*1000)/(1+TargCovLen);   // expecting the probe and targ coverage lengths to be within 15% of each other
+					MeanMatchLen = (pCell->NumMatches * 1000)/(1+pCell->NumGapsIns + pCell->NumGapsDel); // expecting the mean lengths of matching subsequences between probe and targ to be at least 3bp
 					if(ScoreRatio < 900 || CovRatio < 850 || CovRatio > 1150 || MeanMatchLen < 3000)
 						{
 						memset(pCell,0,sizeof(tsSSWCell));
@@ -2449,7 +2449,7 @@ do {
 	if(TraceBackIdx >= (cTraceBackWin - 1))
 	    {
 		OldestScoreIdx = (LatestScoreIdx + 1) % cTraceBackWin;
-		WindowAlignScore = (1000 * (TraceBackScores[LatestScoreIdx].Score - TraceBackScores[OldestScoreIdx].Score)) / (TraceBackScores[LatestScoreIdx].ProbeOfs - TraceBackScores[OldestScoreIdx].ProbeOfs);
+		WindowAlignScore = (1000 * (TraceBackScores[LatestScoreIdx].Score - TraceBackScores[OldestScoreIdx].Score)) / (1 + TraceBackScores[LatestScoreIdx].ProbeOfs - TraceBackScores[OldestScoreIdx].ProbeOfs);
 		if(WindowAlignScore < 0)
 			WindowAlignScore = 0;
 		if(TraceBackIdx < cMaxMAFBlockErrCorLen)
@@ -2485,9 +2485,9 @@ for(WinScoreIdx = 1; WinScoreIdx < m_NumWinScores; WinScoreIdx+=1,pWinScore+=1 )
 	if(CurWinScore < MinWinScore)
 		MinWinScore = CurWinScore;
 	}
-MeanWinScore = (int)(SumWinScores / m_NumWinScores);
+MeanWinScore = (int)(SumWinScores / (1+m_NumWinScores));
 
-if(MaxWinScore > (MeanWinScore * (MaxArtefactDev + 100))/100 || (MinWinScore * (MaxArtefactDev + 100))/100 < MeanWinScore)	
+if(MaxWinScore > (MeanWinScore * (MaxArtefactDev + 100))/100 || ((MinWinScore * (MaxArtefactDev + 100))/100) < MeanWinScore)	
 	return(1);			// classify as being artefact
 
 
@@ -2770,7 +2770,7 @@ do
 	pCol->ConsBase = AbundIdxs[0] < eBaseInDel ? AbundIdxs[0] : eBaseUndef;
 	ConsMostAbundCnt = BaseCnts[AbundIdxs[0]];
 	ConsMNextAbundCnt = BaseCnts[AbundIdxs[1]];
-	ConsConf = TotBaseCnts * (ConsMostAbundCnt - ConsMNextAbundCnt) / (ConsMostAbundCnt + ConsMNextAbundCnt);
+	ConsConf = TotBaseCnts * (ConsMostAbundCnt - ConsMNextAbundCnt) / (1 + ConsMostAbundCnt + ConsMNextAbundCnt);
 	pCol->ConsConf = ConsConf > 9 ? 9 : ConsConf;
 	if(pCol->NxtColIdx == 0)
 		pCol = NULL;
@@ -3216,7 +3216,7 @@ for(SeqIdx = 0; SeqIdx < NumSeqs; SeqIdx++,pPermInDels++)
 	pPermInDels->CurInDelPsns = pPermInDels->InitialInDelPsns;
 	}
 
-if(NumSeqsNoUndefs == 0)  // if all bases were undefined then flag as being error
+if(NumSeqsNoUndefs <= 0)  // if all bases were undefined then flag as being error
 	return(-1.0);
 if(NumSeqsNoUndefs <= 2)  // if no more than 2 sequences marked as having at least one InDel then don't bother permuting
 	return(0.0);

@@ -982,7 +982,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 				((NumAlignedBases - NumExactBases) * m_ScaffScoreMismatch) +		// score the mismatches
 				((NumProbeInserts + NumTargInserts) *  m_ScaffScoreGapOpen) +     // score the gap (InDel) openings
 				((NumProbeInsertBases - NumProbeInserts + NumTargInsertBases - NumTargInserts) *  m_ScaffScoreGapExtn); // score the gap extensions
-	Scaffold1KScore = (int)((((INT64)ScaffoldScore * 1000) + 500) / ScoreAlignLen); // rounding up
+	Scaffold1KScore = (int)((((INT64)ScaffoldScore * 1000) + 500) / (1+ScoreAlignLen)); // rounding up
 
 	if(ScoreAlignLen < (int)m_MinScaffOverlap)
 		{
