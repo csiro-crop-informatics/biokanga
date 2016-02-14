@@ -172,7 +172,7 @@ public:
 
 	int IdentSpeciesSpec(int AltMaxCnt,	// max count allowed for base being processed in any other species, 0 if no limit
 						int MinCnt,		// min count required for base being processed in species
-						double SNPMmajorPC,		// to be processed major putative SNP base must be at least this proportion of total
+						double SNPMmajorPC,		// to be processed major putative SNP base must be at least this percentage of total
 						int MinSpeciesWithCnts = 0,			// must be at least this number of species with base counts more than MinSpeciesTotCntThres - 0 if no limit 
 						int MinSpeciesTotCntThres = 0);		// individual species must have at least this number of total bases at SNP loci - 0 if no threshold
 

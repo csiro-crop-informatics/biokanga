@@ -489,6 +489,7 @@ else
 	m_bInEOF = false;
 	m_CurInBAMIdx = 0;
 	m_TotInBAMProc = 0;
+	m_CurBAMLen = 0;
 	}
 
 // initialisation completed

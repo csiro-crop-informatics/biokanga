@@ -1062,7 +1062,7 @@ return(TotOverlapping);
 int
 CMarkers::IdentSpeciesSpec(int AltMaxCnt,	// max count allowed for base being processed in any other species, 0 if no limit
 						int MinCnt,		// min count required for base being processed in species
-						double SNPMmajorPC,		// to be processed major putative SNP base must be at least this proportion of total
+						double SNPMmajorPC,		// to be processed major putative SNP base must be at least this percentage of total
 						int MinSpeciesWithCnts,			// must be at least this number of species with base counts more than MinSpeciesTotCntThres - 0 if no limit 
 						int MinSpeciesTotCntThres)		// individual species must have at least this number of total bases at SNP loci - 0 if no threshold
 
@@ -1107,7 +1107,7 @@ for(AlignIdx = 0; AlignIdx < m_UsedAlignLoci; AlignIdx += NumSpecies, pAlign += 
 		for(BaseIdx = 0; BaseIdx < 4; BaseIdx++)
 			{
 			CurConf = (pAlignSpecies->ProbeBaseCnts[BaseIdx] / (double)pAlignSpecies->TotBases);
-			if(pAlignSpecies->ProbeBaseCnts[BaseIdx] >= (UINT32)MinCnt && (CurConf >= SNPMmajorPC))
+			if(pAlignSpecies->ProbeBaseCnts[BaseIdx] >= (UINT32)MinCnt && ((CurConf * 100.0) >= SNPMmajorPC))
 				{
 				bAcceptSpec = true;
 				pAlignSpeciesA = pAlign;
@@ -1152,7 +1152,7 @@ CMarkers::Report(char *pszRefGenome,		// reference genome assembly against which
 			char *pszReportFile,			// report to this file
 			int MinSpeciesWithCnts,			// must be at least this number of species with base counts more than MinSpeciesTotCntThres - 0 if no limit 
 			int MinSpeciesTotCntThres,		// individual species must have at least this number of total bases at SNP loci - 0 if no limit
-			bool bSloughRefOnly)			// do not report if no inter-cultivar SNP marker, i.e if cultivars all same with the polymorthic site relative to reference only 
+			bool bSloughRefOnly)			// do not report if no inter-cultivar SNP marker, i.e if cultivars all same with the polymorphic site relative to reference only 
 {
 UINT32 Idx;
 int m_hOutFile;
@@ -1218,7 +1218,7 @@ for(Idx = 0; Idx < m_UsedAlignLoci; Idx++, pAlign++)
 	if(MinSpeciesWithCnts > pAlign->NumSpeciesWithCnts)
 		continue;
 
-	// user may have requesed that only variants between the cultivars are of interest; if all cultivars have same variant, even if different to reference, then slough
+	// user may have requested that only variants between the cultivars are of interest; if all cultivars have same variant, even if different to reference, then slough
 	if(bSloughRefOnly && (bFirstReport || pAlign->TargLoci != CurTargLoci || pAlign->TargSeqID != CurTargSeqID))	// starting new row
 		{
 		tsAlignLoci *pTmpAlign = pAlign;
