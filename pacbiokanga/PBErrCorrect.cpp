@@ -171,10 +171,10 @@ struct arg_int *minpbseqovl = arg_int0("b","minpbseqovl","<int>",		"minimum PacB
 struct arg_int *minhcseqlen = arg_int0("p","minhcseqlen","<int>",		"minimum individual high confidence sequence length (default 1000, range 250 to 100000)");
 struct arg_int *minhcseqovl = arg_int0("P","minhcseqovl","<int>",		"minimum high confidence sequence overlap onto PacBio length required (default 500, range 250 to 100000)");
 
-struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 12, range 10 to 50)");
-struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",			"require at least this many accepted seed cores between overlapping sequences to use SW (default 10, range 1 to 50)");
+struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 15, range 12 to 50)");
+struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",				"require at least this many accepted seed cores between overlapping sequences to use SW (default 10, range 1 to 50)");
 
-struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 2, range 1 to 10)");
+struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 1, range 1 to 10)");
 struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",				"explore cores of less than this maximum depth (default 10000, range 1000 to 20000)");
 
 struct arg_int *matchscore = arg_int0("x","matchscore","<int>",					"SW score for matching bases (default 3, range 1 to 50)");
@@ -2280,7 +2280,7 @@ m_RMINumUncommitedClasses = NumUncommitedClasses;
 TargRMIThreads = min(NumClasses,m_MaxRMIInstances);	
 TargNonRMIThreads = m_NumOvlpCores - min(m_NumOvlpCores, (TargRMIThreads + cRMIThreadsPerCore - 1) / cRMIThreadsPerCore);
 if(TargNonRMIThreads < m_CurActiveNonRMIThreads)
-	m_ReduceNonRMIThreads = max(m_CurActiveNonRMIThreads - TargNonRMIThreads,6);
+	m_ReduceNonRMIThreads = max(m_CurActiveNonRMIThreads - TargNonRMIThreads,cRMIThreadsPerCore);
 else
 	m_ReduceNonRMIThreads = 0;
 m_CurAllowedActiveOvlpThreads = min(TargRMIThreads + TargNonRMIThreads,m_MaxActiveOvlpThreads);
@@ -3674,6 +3674,11 @@ int HomoIdx;
 int HomoBaseCnts[4];
 int MaxAcceptHomoCnt;
 
+tsQualTarg QualTargs[cMaxQualTargs];
+UINT32 QualCoreLen;
+int NumQualSeqs;
+
+
 if(ProbeNodeID < 1 || ProbeNodeID > m_NumPBScaffNodes)
 	return(eBSFerrParams);
 pProbeNode = &m_pPBScaffNodes[ProbeNodeID-1];
@@ -3701,50 +3706,57 @@ PrevHitIdx = 0;
 HitsThisCore = 0;
 HighHitsThisCore = 0;
 TotHitsAllCores = 0;
-MaxAcceptHomoCnt = (pPars->CoreSeqLen * cQualCoreHomopolymer) / 100; // if any core contains more than cQualCoreHomopolymer% of the same base then treat as being a near homopolymer core and slough
 LastProbeOfs = 1 + pProbeNode->SeqLen - pPars->CoreSeqLen;
 if(pPars->CoreSeqLen < cMaxPacBioSeedExtn)
 	LastProbeOfs -= 120;
 
+memset(QualTargs,0,sizeof(QualTargs));
+QualCoreLen = pPars->CoreSeqLen + 6;
+NumQualSeqs = m_pSfxArray->PreQualTargs(pProbeNode->EntryID,pProbeNode->SeqLen,	pPars->pProbeSeq, QualCoreLen,cMaxQualTargs,QualTargs);
 
-for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=pPars->DeltaCoreOfs,pCoreSeq+=pPars->DeltaCoreOfs)
+if(NumQualSeqs > 0)
 	{
-	// with PacBio reads most homopolymer runs are actual artefact inserts so don't bother processing these homopolymer runs for cores
-	if(MaxAcceptHomoCnt > 0)
+	pCoreSeq = pPars->pProbeSeq;
+	MaxAcceptHomoCnt = (pPars->CoreSeqLen * cQualCoreHomopolymer) / 100; // if any core contains more than cQualCoreHomopolymer% of the same base then treat as being a near homopolymer core and slough
+	for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=pPars->DeltaCoreOfs,pCoreSeq+=pPars->DeltaCoreOfs)
 		{
-		HomoBaseCnts[0] = HomoBaseCnts[1] = HomoBaseCnts[2] = HomoBaseCnts[3] = 0;
-		for(pHomo = pCoreSeq, HomoIdx = 0; HomoIdx < (int)pPars->CoreSeqLen; HomoIdx+=1, pHomo += 1)
-			HomoBaseCnts[*pHomo & 0x03] += 1;
-		if(HomoBaseCnts[0] > MaxAcceptHomoCnt || HomoBaseCnts[1] > MaxAcceptHomoCnt || HomoBaseCnts[2] > MaxAcceptHomoCnt || HomoBaseCnts[3] > MaxAcceptHomoCnt)
-			continue;
-		}
+		// with PacBio reads most homopolymer runs are actual artefact inserts so don't bother processing these homopolymer runs for cores
+		if(MaxAcceptHomoCnt > 0)
+			{
+			HomoBaseCnts[0] = HomoBaseCnts[1] = HomoBaseCnts[2] = HomoBaseCnts[3] = 0;
+			for(pHomo = pCoreSeq, HomoIdx = 0; HomoIdx < (int)pPars->CoreSeqLen; HomoIdx+=1, pHomo += 1)
+				HomoBaseCnts[*pHomo & 0x03] += 1;
+			if(HomoBaseCnts[0] > MaxAcceptHomoCnt || HomoBaseCnts[1] > MaxAcceptHomoCnt || HomoBaseCnts[2] > MaxAcceptHomoCnt || HomoBaseCnts[3] > MaxAcceptHomoCnt)
+				continue;
+			}
 
 
-	PrevHitIdx = 0;
-	HitsThisCore = 0;
+		PrevHitIdx = 0;
+		HitsThisCore = 0;
 
-    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pProbeNode->SeqLen - ProbeOfs,pPars->CoreSeqLen,pProbeNode->EntryID,pPars->MinPBSeqLen,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
-		{
-		PrevHitIdx = NextHitIdx;
-		pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
-		HitSeqLen = pTargNode->SeqLen; 
+		while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pProbeNode->SeqLen - ProbeOfs,pPars->CoreSeqLen,pProbeNode->EntryID,pPars->MinPBSeqLen,PrevHitIdx,&HitEntryID,&HitLoci,NumQualSeqs,QualTargs)) > 0)
+			{
+			PrevHitIdx = NextHitIdx;
+			pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
+			HitSeqLen = pTargNode->SeqLen; 
 
-		if((pPars->bSelfHits ? pTargNode->NodeID != pProbeNode->NodeID : pTargNode->NodeID == pProbeNode->NodeID) || 
-				 pTargNode->flgUnderlength == 1 ||	// not interested in selfhits or under length targets
-							HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
-			continue;
+			if((pPars->bSelfHits ? pTargNode->NodeID != pProbeNode->NodeID : pTargNode->NodeID == pProbeNode->NodeID) || 
+					 pTargNode->flgUnderlength == 1 ||	// not interested in selfhits or under length targets
+								HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
+				continue;
 
-  		AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
-		HitsThisCore += 1;
-		if(HitsThisCore > pPars->MaxAcceptHitsPerSeedCore)
-			break;
+  			AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
+			HitsThisCore += 1;
+			if(HitsThisCore > pPars->MaxAcceptHitsPerSeedCore)
+				break;
 
-		}
-	if(HitsThisCore)	// if at least one hit from this core
-		{
-		if(HitsThisCore > HighHitsThisCore)
-			HighHitsThisCore = HitsThisCore;
-		TotHitsAllCores += HitsThisCore;
+			}
+		if(HitsThisCore)	// if at least one hit from this core
+			{
+			if(HitsThisCore > HighHitsThisCore)
+				HighHitsThisCore = HitsThisCore;
+			TotHitsAllCores += HitsThisCore;
+			}
 		}
 	}
 if(pPars->bRevCpl)

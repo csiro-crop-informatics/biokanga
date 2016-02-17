@@ -31,7 +31,7 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "1.2.5";		// increment with each release
+const char *cpszProgVer = "1.4.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 
@@ -41,6 +41,7 @@ extern int ProcErrCorrect(int argc, char* argv[]);
 extern int ProcAssemb(int argc, char* argv[]);
 extern int ProcECContigs(int argc, char* argv[]);
 extern int ProcSWService(int argc, char* argv[]);
+extern int ProcKMerDist(int argc, char* argv[]);
 
 // inplace text cleaning; any leading/trailing or internal quote characters are removed; excessive whitespace is reduced to single
 char *
@@ -79,7 +80,7 @@ tsSubProcess SubProcesses[] = {
 	{"contigs","Assemb Contigs","Assemble error corrected PacBio reads into contigs",ProcAssemb},
 	{"eccontigs","Error Correct Contigs","Error correct assembled PacBio contigs",ProcECContigs},
 	{"swservice","SW Service","Distributed computing SW service provider",ProcSWService},
-
+	{"kmerdist","MAF K-mers","Generate exact matching K-mer distributions from MAF",ProcKMerDist}
 	};
 const int cNumSubProcesses = (sizeof(SubProcesses) / sizeof(tsSubProcess));
 

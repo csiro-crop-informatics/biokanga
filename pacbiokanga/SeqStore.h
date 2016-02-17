@@ -31,6 +31,16 @@ class CSeqStore
 	size_t m_UsedDescrSeqsMem;		// concatenated descriptors plus sequences currently require this much memory 
 	size_t m_AllocdDescrSeqsSize;	// currently this much memory has been allocated to hold concatenated descriptors plus sequences
 	UINT8 *m_pDescrSeqs;			// allocated to hold concatenated descriptors plus sequences
+
+	UINT32 m_NumSeqDescrIdxd;		// currently this many sequence descriptors have been indexed
+	size_t m_AllocdSeqDescrIdxSize;	// currently this much memory allocated to hold m_NumSeqDescrIdxd
+	UINT32 *m_pSeqDescrIdx;         // allocated to hold index used to quickly retrieve sequence identifiers for given descriptor
+
+	CMTqsort m_MTqsort;					// multi-threaded qsort
+	static int SortSeqDescr(const void *arg1, const void *arg2);
+
+	tSeqID								// sequence identifier of sequence matching on same descriptor
+		LocateSeqID(char *pszDescr);	// must match on this descriptor
 	
 public:
 	CSeqStore();
@@ -42,6 +52,8 @@ public:
 			   char *pszDescr,			// sequence descriptor
 			   UINT32 SeqLen,			// sequence is this length
 			   etSeqBase *pSeq);		// sequence to add
+
+	int GenSeqDescrIdx(void);			// generate index over all sequence descriptors, index used when retrieving sequence identifier for given descriptor by GetSeqID()
 
 
 	tSeqID								// sequence identifier of sequence matching on same descriptor

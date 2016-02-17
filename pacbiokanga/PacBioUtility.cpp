@@ -35,6 +35,7 @@
 CPacBioUtility::CPacBioUtility()
 {
 m_pQuerySeqs = NULL;
+
 m_bMutexesCreated = false;
 Reset();
 }
@@ -42,6 +43,7 @@ Reset();
 
 CPacBioUtility::~CPacBioUtility()
 {
+Reset();
 }
 
 void 
@@ -52,6 +54,7 @@ if(m_pQuerySeqs != NULL)
 	delete m_pQuerySeqs;
 	m_pQuerySeqs = NULL;
 	}
+
 m_TotSeqIDs = 0;
 m_NumQuerySeqs = 0;
 m_NxtQuerySeqIdx = 0;
@@ -63,6 +66,7 @@ m_NumInputFiles = 0;
 m_ppszInputFiles = NULL;
 m_szAsyncReadsFile[0]= '\0';
 m_bAsyncLoading = false;
+
 if(m_bMutexesCreated == true)
 	{
 	DeleteMutexes();
@@ -673,4 +677,5 @@ while(NumSMRTBells < MaxSMRTBells && (NxtLocSMRTBell = DetectSMRTBell(NxtLocSMRT
 	}
 return(NumSMRTBells);
 }
+
 

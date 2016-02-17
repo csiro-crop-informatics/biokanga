@@ -3067,7 +3067,9 @@ CSfxArrayV3::IterateExacts(etSeqBase *pProbeSeq,// probe
  						 UINT32 ProbeLen,		// probe length
 						 INT64 PrevHitIdx,		// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  						 UINT32 *pTargEntryID,	// if match then where to return suffix entry (chromosome) matched on
-						 UINT32 *pHitLoci)		// if match then where to return loci
+						 UINT32 *pHitLoci,		// if match then where to return loci
+						 UINT32 *pTargSeqLen,	// optionally update with the matched target sequence length
+						 etSeqBase **ppTargSeq) // optionally update with ptr to start of the target sequence, exact match will have started at &ppTargSeq[*pHitLoci]
 {
 int Cmp;
 INT64 TargPsn;
@@ -3082,6 +3084,11 @@ INT64 SfxLen;				// number of suffixs in pSfxArray
 
 *pHitLoci = 0;
 *pTargEntryID = 0;
+
+if(pTargSeqLen != NULL)
+	*pTargSeqLen = 0;
+if(ppTargSeq != NULL)
+	*ppTargSeq = NULL;
 
 // ensure suffix loaded for iteration and prev hit was not the last!
 if(m_pSfxBlock == NULL || (UINT64)PrevHitIdx >= m_pSfxBlock->ConcatSeqLen)
@@ -3100,6 +3107,12 @@ if(!PrevHitIdx)
 	pEntry = MapChunkHit2Entry(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,TargPsn));
 	*pTargEntryID = pEntry->EntryID;
 	*pHitLoci = (UINT32)(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,TargPsn) - pEntry->StartOfs);
+	
+	if(pTargSeqLen != NULL)
+		*pTargSeqLen = pEntry->SeqLen;
+	if(ppTargSeq != NULL)
+		*ppTargSeq = &pTarg[pEntry->StartOfs];
+
 	return(TargPsn + 1);
 	}
 
@@ -3116,11 +3129,120 @@ if(!Cmp)
 	pEntry = MapChunkHit2Entry(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,PrevHitIdx));
 	*pTargEntryID = pEntry->EntryID;
 	*pHitLoci = (UINT32)(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,PrevHitIdx) - pEntry->StartOfs);
+
+	if(pTargSeqLen != NULL)
+		*pTargSeqLen = pEntry->SeqLen;
+	if(ppTargSeq != NULL)
+		*ppTargSeq = &pTarg[pEntry->StartOfs];
+
 	return(PrevHitIdx+1);
 	}
 
 return(0);		// no more hits
 }
+
+int											// number of target sequences which were prequalified
+CSfxArrayV3::PreQualTargs(UINT32 ProbeEntryID,	// probe sequence entry identifier used to determine if a self hit to be sloughed
+			int ProbeSeqLen,				// probe sequence length
+			etSeqBase *pProbeSeq,			// prequalify with cores from this probe sequence
+			int QualCoreLen,				// prequalifying core lengths
+			int MaxPreQuals,				// max number of target sequences to pre-qualify
+			tsQualTarg *pQualTargs)			// into this prequalified list
+{
+etSeqBase *pHomo;
+int HomoIdx;
+int HomoBaseCnts[4];
+int MaxAcceptHomoCnt;
+int NumQualSeqs;
+int QualSeqIdx;
+int ProbeOfs;
+int LastProbeOfs;
+etSeqBase *pCoreSeq;
+etSeqBase *pTargSeq;
+UINT32 TargSeqLen;
+INT64 PrevHitIdx;
+INT64 NxtHitIdx;
+UINT32 TargEntryID;
+UINT32 HitLoci;
+tsQualTarg *pQualTarg;
+tsQualTarg *pFiltCntQualHits;
+
+int TargScoreLen;
+int QuickScore;
+
+memset(pQualTargs,0,MaxPreQuals * sizeof(tsQualTarg));
+NumQualSeqs = 0;
+PrevHitIdx = 0;
+LastProbeOfs = ProbeSeqLen - QualCoreLen - 100;
+pCoreSeq = pProbeSeq;
+MaxAcceptHomoCnt = (QualCoreLen * 80) / 100; // if any core contains more than 80% of the same base then treat as being a near homopolymer core and slough
+for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=1, pCoreSeq+=1)
+	{
+	// with PacBio reads most homopolymer runs are actual artefact inserts so don't bother processing these homopolymer runs for cores
+	if(MaxAcceptHomoCnt > 0)
+		{
+		HomoBaseCnts[0] = HomoBaseCnts[1] = HomoBaseCnts[2] = HomoBaseCnts[3] = 0;
+		for(pHomo = pCoreSeq, HomoIdx = 0; HomoIdx < QualCoreLen; HomoIdx+=1, pHomo += 1)
+			HomoBaseCnts[*pHomo & 0x03] += 1;
+		if(HomoBaseCnts[0] > MaxAcceptHomoCnt || HomoBaseCnts[1] > MaxAcceptHomoCnt || HomoBaseCnts[2] > MaxAcceptHomoCnt || HomoBaseCnts[3] > MaxAcceptHomoCnt)
+			continue;
+		}
+
+	PrevHitIdx = 0;
+	while((NxtHitIdx = IterateExacts(pCoreSeq,QualCoreLen,PrevHitIdx,&TargEntryID,&HitLoci,&TargSeqLen,&pTargSeq))!=0)
+		{
+		PrevHitIdx = NxtHitIdx;
+		if(ProbeEntryID == TargEntryID)
+			continue;
+
+	   TargScoreLen = min(100, TargSeqLen - HitLoci);
+	   if(TargScoreLen < 16)
+			continue;
+
+	   pTargSeq = &pTargSeq[HitLoci];
+	   QuickScore = QuickScoreOverlap(TargScoreLen,&pCoreSeq[QualCoreLen], &pTargSeq[QualCoreLen]);
+	   if(QuickScore < (cPacBioMinKmersExtn + 10))
+			continue;
+
+		pQualTarg = pQualTargs;
+		if(NumQualSeqs > 0)
+			{
+			for(QualSeqIdx = 0; QualSeqIdx < NumQualSeqs; QualSeqIdx++, pQualTarg++)
+				{
+				if(pQualTarg->TargEntryID == TargEntryID)
+					{
+					if(pQualTarg->Hits < 0x0ff)
+						pQualTarg->Hits += 1;
+					break;
+					}
+				}
+			if(QualSeqIdx < NumQualSeqs || QualSeqIdx == MaxPreQuals)
+				continue;
+			}
+		pQualTarg->Hits = 1;
+		pQualTarg->TargEntryID = TargEntryID;
+		NumQualSeqs += 1;
+		}
+	}
+if(NumQualSeqs < 50)
+	return(NumQualSeqs);
+
+int NumFiltCntQualSeqs;
+pQualTarg = pQualTargs;
+pFiltCntQualHits = pQualTarg;
+
+for(NumFiltCntQualSeqs = QualSeqIdx = 0; QualSeqIdx < NumQualSeqs; QualSeqIdx++, pQualTarg++)
+	{
+	if(pQualTarg->Hits <= 2)
+		continue;
+	if(NumFiltCntQualSeqs != QualSeqIdx)
+		*pFiltCntQualHits = *pQualTarg;
+	pFiltCntQualHits += 1;
+	NumFiltCntQualSeqs += 1;
+	}
+return(NumFiltCntQualSeqs);
+}
+
 
 int
 CSfxArrayV3::QuickScoreOverlap(int SeqLen,				// both probe and target are of this minimum length (must be at least 16bp)
@@ -3186,6 +3308,8 @@ CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
 									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
 									 UINT32 *pHitLoci,			// if match then where to return loci
+									  int NumPreQuals,			// number of pre-qualified sequences in pQualTargs
+									tsQualTarg *pQualTargs,		// holds prequalified target sequence identifiers
 									 int PacBioMinKmersExtn)	// accepting as putative overlap if extension matches at least this many cPacBiokExtnKMerLen (currently 4bp)
 {
 int Cmp;
@@ -3199,6 +3323,8 @@ INT64 SfxLen;				// number of suffixs in pSfxArray
 INT64 TargLoci;
 int TargKMerLen;
 
+int PreQualIdx;
+tsQualTarg *pQualTarg;
 
 etSeqBase *pQAnchor;
 etSeqBase *pTAnchor;
@@ -3229,6 +3355,22 @@ if(SeedCoreLen >= cMaxPacBioSeedExtn)	// no seed extension required?
 			PrevHitIdx = NxtHitIdx;
 			continue;
 			}
+
+		if(NumPreQuals != 0 && pQualTargs != NULL)
+			{
+			pQualTarg = pQualTargs;
+			for(PreQualIdx = 0; PreQualIdx < NumPreQuals; PreQualIdx+=1, pQualTarg+=1)
+				{
+				if(pQualTarg->TargEntryID == *pTargEntryID)
+					break;
+				}
+			if(PreQualIdx == NumPreQuals)
+				{
+				PrevHitIdx = NxtHitIdx;
+				continue;
+				}
+			}
+
 		return(NxtHitIdx);
 		}	
 	*pTargEntryID = 0;
@@ -3236,7 +3378,7 @@ if(SeedCoreLen >= cMaxPacBioSeedExtn)	// no seed extension required?
 	return(0);
 	}
 
-// will be seed extending so ensure sufficent sequence to seed extend
+// will be seed extending so ensure sufficient sequence to seed extend
 if(ProbeLen < (SeedCoreLen + cPacBioSeedCoreExtn))
 	return(0);
 
@@ -3287,6 +3429,22 @@ while(1)
 			PrevHitIdx+=1;
 			continue;
 			}
+
+		if(NumPreQuals != 0 && pQualTargs != NULL)
+			{
+			pQualTarg = pQualTargs;
+			for(PreQualIdx = 0; PreQualIdx < NumPreQuals; PreQualIdx+=1, pQualTarg+=1)
+				{
+				if(pQualTarg->TargEntryID == pEntry->EntryID)
+					break;
+				}
+			if(PreQualIdx == NumPreQuals)
+				{
+				PrevHitIdx+=1;
+				continue;
+				}
+			}
+
 		HitLoci = (UINT32)(TargLoci - pEntry->StartOfs);
 		}
 

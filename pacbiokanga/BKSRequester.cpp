@@ -134,11 +134,6 @@ InterlockedExchange(&m_CreatedMutexes,1);
 #else
 __sync_val_compare_and_swap(&m_CreatedMutexes,0,1);
 #endif
-#ifdef _ChkLockDepth_
-m_LockDepth = 0;
-m_CASSerialiseDepth = 0;
-#endif
-
 return(eBSFSuccess);
 }
 
@@ -146,11 +141,6 @@ return(eBSFSuccess);
 int	
 CBKSRequester::DeleteMutexes(void)				// delete locks/mutexes used in access serialisations
 {
-#ifdef _ChkLockDepth_
-m_LockDepth = 0;
-m_CASSerialiseDepth = 0;
-#endif
-
 #ifdef WIN32
 if(InterlockedCompareExchange(&m_CreatedMutexes,0,0)==0)
 #else
@@ -168,11 +158,6 @@ __sync_val_compare_and_swap(&m_CreatedMutexes,1,0);
 #endif
 return(eBSFSuccess);
 }
-
-#ifdef _ChkLockDepth_
-static INT64 gNoProbs = 0;
-static INT64 gProbs = 0;
-#endif
 
 // acquire lock used for serialised access by multiple concurrent reader threads (bExclusive == false), or serialised access by a single thread (bExclusive == true)
 bool			// returns true if lock obtained
@@ -197,28 +182,6 @@ else
 	pthread_rwlock_rdlock(&m_hRWLock);
 #endif
 
-#ifdef _ChkLockDepth_
-// I suspect that on Linux there may be occasional instances where multiple concurrent exclusive locks are being granted
-// so checking and reporting if this does actually occur
-if(bExclusive)
-	{
-	UINT32 LockDepth;
-	UINT32 Prev_M_LockDepth = m_LockDepth;
-#ifdef WIN32
-	if((LockDepth = InterlockedCompareExchange(&m_LockDepth,0,0))!=0)
-#else
-	if((LockDepth = __sync_val_compare_and_swap(&m_LockDepth,0,0))!=0)
-#endif
-		gDiagnostics.DiagOut(eDLWarn, gszProcName, "AcquireLock problem, depth = %d, gNoProbs = %d",LockDepth,gNoProbs);
-	else
-		gNoProbs += 1;
-	}
-#ifdef WIN32
-	InterlockedIncrement(&m_LockDepth);		
-#else
-	__sync_fetch_and_add(&m_LockDepth,1);
-#endif
-#endif
 return(true);
 }
 
@@ -232,22 +195,6 @@ if(InterlockedCompareExchange(&m_CreatedMutexes,1,1)!=1)
 if(__sync_val_compare_and_swap(&m_CreatedMutexes,1,1)!=1)
 #endif
 	return(false);
-
-#ifdef _ChkLockDepth_
-	UINT32 LockDepth;
-#ifdef WIN32
-	if((LockDepth = InterlockedCompareExchange(&m_LockDepth,0,0))==0)
-#else
-	if((LockDepth = __sync_val_compare_and_swap(&m_LockDepth,0,0))==0)
-#endif
-		gDiagnostics.DiagOut(eDLWarn, gszProcName, "ReleaseLock problem, depth = %d",LockDepth);
-	else
-#ifdef WIN32
-		InterlockedDecrement(&m_LockDepth);		
-#else
-		__sync_fetch_and_sub(&m_LockDepth,1);
-#endif
-#endif
 
 #ifdef _WIN32
 if (bExclusive)
@@ -298,22 +245,6 @@ while(__sync_val_compare_and_swap(&m_CASSerialise,0,1)!=0)
 	}
 #endif
 
-#ifdef _ChkLockDepth_
-// I suspect that on Linux there may be occasional instances where multiple concurrent CAS locks are being granted
-// so checking and reporting if this does actually occur
-UINT32 CASSerialiseDepth;
-#ifdef WIN32
-if((CASSerialiseDepth = InterlockedCompareExchange(&m_CASSerialiseDepth,0,0))!=0)
-#else
-if((CASSerialiseDepth = __sync_val_compare_and_swap(&m_CASSerialiseDepth,0,0))!=0)
-#endif
-	gDiagnostics.DiagOut(eDLWarn, gszProcName, "AcquireCASSerialise problem, depth = %d",CASSerialiseDepth);
-#ifdef WIN32
-InterlockedIncrement(&m_CASSerialiseDepth);		
-#else
-__sync_fetch_and_add(&m_CASSerialiseDepth,1);
-#endif
-#endif
 }
 
 void
@@ -324,24 +255,6 @@ InterlockedCompareExchange(&m_CASSerialise,0,1);
 #else
 __sync_val_compare_and_swap(&m_CASSerialise,1,0);
 #endif
-
-
-#ifdef _ChkLockDepth_
-	UINT32 CASSerialiseDepth;
-#ifdef WIN32
-	if((CASSerialiseDepth = InterlockedCompareExchange(&m_CASSerialiseDepth,0,0))==0)
-#else
-	if((CASSerialiseDepth = __sync_val_compare_and_swap(&m_CASSerialiseDepth,0,0))==0)
-#endif
-		gDiagnostics.DiagOut(eDLWarn, gszProcName, "ReleaseLock problem, depth = %d",CASSerialiseDepth);
-	else
-#ifdef WIN32
-		InterlockedDecrement(&m_CASSerialiseDepth);		
-#else
-		__sync_fetch_and_sub(&m_CASSerialiseDepth,1);
-#endif
-#endif
-
 }
 
 

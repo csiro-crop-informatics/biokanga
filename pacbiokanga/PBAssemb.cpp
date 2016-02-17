@@ -1413,6 +1413,13 @@ if(NumTargSeqs < 1)
 	return(eBSFerrNoEntries);
 	}
 
+if((Rslt=m_pSeqStore->GenSeqDescrIdx())!=eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to generate index over sequence descriptors in file(s)");
+	Reset(false);
+	return(Rslt);
+	}
+
 if((m_pPBScaffNodes = new tsPBAScaffNode [NumTargSeqs + 1]) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d scaffold nodes",NumTargSeqs);

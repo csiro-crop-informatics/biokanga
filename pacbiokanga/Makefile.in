@@ -95,8 +95,8 @@ am_pacbiokanga_OBJECTS = SQLiteSummaries.$(OBJEXT) SSW.$(OBJEXT) \
 	SeqStore.$(OBJEXT) PBFilter.$(OBJEXT) PacBioUtility.$(OBJEXT) \
 	pacbiokanga.$(OBJEXT) PBSim.$(OBJEXT) PBErrCorrect.$(OBJEXT) \
 	MAConsensus.$(OBJEXT) AssembGraph.$(OBJEXT) \
-	PBSWService.$(OBJEXT) BKSProvider.$(OBJEXT) \
-	BKSRequester.$(OBJEXT)
+	MAFKMerDist.$(OBJEXT) PBSWService.$(OBJEXT) \
+	BKSProvider.$(OBJEXT) BKSRequester.$(OBJEXT)
 pacbiokanga_OBJECTS = $(am_pacbiokanga_OBJECTS)
 pacbiokanga_LDADD = $(LDADD)
 pacbiokanga_DEPENDENCIES = ../libbiokanga/libbiokanga.a \
@@ -261,7 +261,7 @@ top_srcdir = @top_srcdir@
 pacbiokanga_SOURCES = SQLiteSummaries.cpp SQLiteSummaries.h SSW.cpp SSW.h SWAlign.cpp SWAlign.h PBAssemb.cpp PBAssemb.h PBECContigs.cpp PBECContigs.h \
                      SeqStore.cpp SeqStore.h PBFilter.cpp PBFilter.h pacbiocommon.h PacBioUtility.cpp PacBioUtility.h pacbiokanga.cpp pacbiokanga.h \
                      PBSim.cpp PBSim.h PBErrCorrect.cpp PBErrCorrect.h MAConsensus.cpp MAConsensus.h AssembGraph.cpp AssembGraph.h \
-                     PBSWService.cpp PBSWService.h BKSProvider.cpp BKSProvider.h BKSRequester.cpp BKSRequester.h BKScommon.h 
+                     MAFKMerDist.cpp MAFKMerDist.h PBSWService.cpp PBSWService.h BKSProvider.cpp BKSProvider.h BKSRequester.cpp BKSRequester.h BKScommon.h 
 
 
 # set the include path found by configure
@@ -360,6 +360,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/BKSProvider.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/BKSRequester.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/MAConsensus.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/MAFKMerDist.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBAssemb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBECContigs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/PBErrCorrect.Po@am__quote@

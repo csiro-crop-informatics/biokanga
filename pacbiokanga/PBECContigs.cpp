@@ -1086,7 +1086,10 @@ for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 		return(Rslt);
 		}
 	}
-return(eBSFSuccess);
+if(bSeqStore)
+	Rslt = m_pSeqStore->GenSeqDescrIdx();
+
+return(Rslt);
 
 }
 

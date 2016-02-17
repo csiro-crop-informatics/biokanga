@@ -44,6 +44,8 @@ typedef struct TAG_sLoadQuerySeqsThreadPars {
 	int *pRslt;						// write intermediate result codes to this location
 	int Rslt;						// returned result code
 } tsLoadQuerySeqsThreadPars;
+
+
 #pragma pack()
 
 class CPacBioUtility
@@ -133,5 +135,6 @@ public:
 						   etSeqBase *pInSeq,		// sequence which may contain homopolymers
 						   etSeqBase *pOutSeq,		// homopolymer reduced sequence copied into this sequence buffer
 						   int TruncLen);			// homopolymers longer than this length (min 1) to be truncated at this length
+
 };
 

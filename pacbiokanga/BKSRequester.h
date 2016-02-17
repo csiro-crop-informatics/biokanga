@@ -2,8 +2,6 @@
 
 #include "BKScommon.h"
 
-#define _ChkLockDepth_ 1            // checking if serialisation locks are actually working!
-
 const int cListenBacklog = 5;					// maximum length of the queue of pending connections
 
 const int cMaxConcurrentRequests = min(4095,cMaxServiceInsts * cMaxNumSessions);	// can process at most this many concurrent service requests over all session instances independent of service type

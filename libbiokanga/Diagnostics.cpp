@@ -204,11 +204,7 @@ if(m_hFile != -1 && DiagLevel <= m_FileDiagLevel)
 	}
 if(DiagLevel <= m_ScreenDiagLevel)
 	{
-#ifdef _WIN32
-	puts(szLine);
-#else
 	printf("%s",szLine);
-#endif
 	fflush(stdout);
 	}
 return(true);
@@ -251,11 +247,7 @@ if(m_hFile != -1 && DiagLevel <= m_FileDiagLevel)
 	}
 if(DiagLevel <= m_ScreenDiagLevel)
 	{
-#ifdef _WIN32
-	puts(szLine);
-#else
 	printf("%s",szLine);
-#endif
 	fflush(stdout);
 	}
 return(true);

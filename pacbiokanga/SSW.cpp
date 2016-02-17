@@ -1890,7 +1890,7 @@ bool bCpltdReadMAF;
 UINT32 NumParsedBlocks;
 int ConsSeqLen;
 
-m_AllocMAFAlignBuffSize = cMaxMAFBlockLen * 5;
+m_AllocMAFAlignBuffSize = min(0x7ff00000,cMaxMAFBlockLen * 5);
 if(m_pszMAFAlignBuff == NULL)
 	{
 	if((m_pszMAFAlignBuff = new char [m_AllocMAFAlignBuffSize])==NULL)

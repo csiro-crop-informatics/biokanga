@@ -14,19 +14,19 @@
 //   to submit modifications to this source
 
 
-const int cMinSeedCoreLen = 10;							// user can specify seed cores down to this minimum length
-const int cDfltSeedCoreLen = 12;						// default seed cores of this length
+const int cMinSeedCoreLen = 12;							// user can specify seed cores down to this minimum length
+const int cDfltSeedCoreLen = 15;						// default seed cores of this length
 const int cMaxSeedCoreLen = 50;							// user can specify seed cores up to to this maximum length
 const int cDfltScaffSeedCoreLen = 35;					// default seed cores of this length when generating overlap detail for scaffolding
 
-const int cDfltDeltaCoreOfs = 2;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
-const int cDfltMaxSeedCoreDepth = 10000;                // only extend a seed core if there are no more than this number of matching cores in all targeted sequences
+const int cDfltDeltaCoreOfs = 1;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
+const int cDfltMaxSeedCoreDepth = 15000;                // only extend a seed core if there are no more than this number of matching cores in all targeted sequences
 const int cDfltMaxAcceptHitsPerSeedCore = 10000;		// only accept up to this many extended cores at any probe offset 
 const int cMinNumSeedCores = 1;							// user can specify requiring at least this many seed cores between overlapping scaffold sequences
 const int cDfltNumSeedCores = 10;						// default is to require at least this many seed cores between overlapping scaffold sequences
 const int cMaxNumSeedCores = 50;						// user can specify requiring up to many seed cores between overlapping scaffold sequences
 const int cAnchorLen = 8;								// require 5' and 3' end anchors of at least this length for overlap merging
-const int cQualCoreKMerLen = 3;							// using trimers when checking for core downstream shared kmers between probe and target. Note currently a max of 4 would be supported as any more would violate cQualCoreDelta constraint 
+const int cQualCoreKMerLen = 3;							// using tri-mers when checking for core downstream shared kmers between probe and target. Note currently a max of 4 would be supported as any more would violate cQualCoreDelta constraint 
 const int cQualCoreDelta = (cQualCoreKMerLen * 2) + 1;	 // looking for matching trimers starting within +/- 7bp of the probe trimer. NOTE must be <= cMinSeedCoreLen
 const int cQualCoreThres = 25;							 // require at least this many kmers to be shared between probe and target before accepting core
 const int cQualCoreHomopolymer = 80;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough

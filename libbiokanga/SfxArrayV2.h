@@ -47,6 +47,7 @@ const int cPacBioSeedCoreExtn = 100;							// looking for matches over this leng
 const int cPacBiokExtnKMerLen = 4;								// matches in seed core extension must be of at least this length
 const int cPacBioMinKmersExtn = 15;							    // require at least this many cPacBiokExtnKMerLen-mer matches over cPacBioSeedCoreExtn core extension
 
+const int cMaxQualTargs = 10000;				// can process at most this many qualified targets
 
 typedef enum etALStrand {
 	eALSboth,							// align to both the watson and crick strand
@@ -133,6 +134,11 @@ typedef struct TAG_sQueryAlignNodes {
 	INT32 HiScore;										// highest cumulative score for nodes along highest scoring path starting with this node (includes this node's score)
 	UINT32 HiScorePathNextIdx;							// if > 0 then idex-1 of next node on currently highest scoring path; 0 if no other nodes on path
 } tsQueryAlignNodes;
+
+typedef struct TAG_sQualTarg {
+	UINT32 TargEntryID;		// identifies sequence
+	UINT8  Hits;			// against which there are this many hits (clamped to be at most 255)
+	} tsQualTarg;
 
 #pragma pack()
 
@@ -601,8 +607,9 @@ public:
  						 UINT32 ProbeLen,			// probe length
 						 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  						 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
-						 UINT32 *pHitLoci);			// if match then where to return loci
-
+						 UINT32 *pHitLoci,			// if match then where to return loci
+						 UINT32 *pTargSeqLen = NULL, // optionally update with the matched target sequence length				
+						 etSeqBase **ppTargSeq = NULL);	 // optionally update with ptr to start of the target sequence, exact match will have started at &ppTargSeq[*pHitLoci]  
 
 			 INT64 IterateExacts(etSeqBase *pProbeSeq,// probe
  						 UINT32 ProbeLen,			// probe length
@@ -611,6 +618,14 @@ public:
 						 UINT32 *pHitLoci,			// if match then where to return loci
 						 UINT32 MaxExtdLen,			// attempt to extend exact match of ProbeLen out to MaxExtdLen and report extended match length in *pHitExtdLen
 						int *pHitExtdLen);			// was able to extend core out to this length
+
+			int											// number of target sequences which were prequalified
+				PreQualTargs(UINT32 ProbeEntryID,		// probe sequence entry identifier used to detect self hit which are sloughed
+						int ProbeSeqLen,				// probe sequence length
+						etSeqBase *pProbeSeq,			// prequalify with cores from this probe sequence
+						int QualCoreLen,				// prequalifying core length
+						int MaxPreQuals,				// max number of target sequences to pre-qualify
+						tsQualTarg *pQualTargs);		// into this prequalified list
 
 			INT64						// returned hit idex (1..n) or 0 if no hits
 				IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
@@ -621,6 +636,8 @@ public:
 									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
 									 UINT32 *pHitLoci,			// if match then where to return loci
+									  int NumPreQuals = 0,			// number of pre-qualified sequences in pQualTargs
+									tsQualTarg *pQualTargs = NULL,	// holds prequalified target sequence identifiers
 									 int PacBioMinKmersExtn = cPacBioMinKmersExtn);		// accepting as putative overlap if extension matches at least this many cPacBiokExtnKMerLen (currently 4bp)	
 
 			int

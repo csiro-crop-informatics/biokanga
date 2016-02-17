@@ -34,6 +34,7 @@ CSeqStore::CSeqStore()
 {
 m_pDescrSeqs = NULL;
 m_pSeqHdrs = NULL;
+m_pSeqDescrIdx = NULL;
 Reset();
 }
 
@@ -59,6 +60,17 @@ if(m_pDescrSeqs)
 		munmap(m_pDescrSeqs,m_AllocdDescrSeqsSize);
 #endif
 	}
+
+if(m_pSeqDescrIdx)
+	{
+#ifdef _WIN32
+	free(m_pSeqDescrIdx);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
+#else
+	if(m_pSeqDescrIdx != MAP_FAILED)
+		munmap(m_pSeqDescrIdx,m_AllocdSeqDescrIdxSize);
+#endif
+	}
+
 }
 
 int
@@ -72,6 +84,7 @@ if(m_pSeqHdrs != NULL)
 	if(m_pSeqHdrs != MAP_FAILED)
 		munmap(m_pSeqHdrs,m_AllocdSeqHdrSize);
 #endif
+	m_pSeqHdrs = NULL;
 	}
 
 if(m_pDescrSeqs)
@@ -82,10 +95,28 @@ if(m_pDescrSeqs)
 	if(m_pDescrSeqs != MAP_FAILED)
 		munmap(m_pDescrSeqs,m_AllocdDescrSeqsSize);
 #endif
+	m_pDescrSeqs = NULL;
 	}
 
+
+if(m_pSeqDescrIdx)
+	{
+#ifdef _WIN32
+	free(m_pSeqDescrIdx);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
+#else
+	if(m_pSeqDescrIdx != MAP_FAILED)
+		munmap(m_pSeqDescrIdx,m_AllocdSeqDescrIdxSize);
+#endif
+	m_pSeqDescrIdx = NULL;
+	}
+
+m_AllocdSeqHdrSize = 0;
+m_AllocdDescrSeqsSize = 0;
+m_AllocdSeqDescrIdxSize = 0;
+m_NumSeqDescrIdxd = 0;
 m_NumStoredSeqs = 0;
 m_TotStoredSeqsLen = 0;
+
 m_MinSeqLen = 0;
 m_MaxSeqLen = 0;
 m_UsedSeqHdrMem = 0; 
@@ -112,6 +143,21 @@ char szDescr[cMaxDescrIDLen+1];
 
 if(pSeq == NULL || SeqLen < cMinSeqStoreLen || SeqLen > cMaxSeqStoreLen || m_NumStoredSeqs == cMaxStoredSeqs)
 	return(0);
+
+
+if(m_pSeqDescrIdx)						// force index to be regenerated as adding any new sequences will invalidate index!
+	{
+#ifdef _WIN32
+	free(m_pSeqDescrIdx);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
+#else
+	if(m_pSeqDescrIdx != MAP_FAILED)
+		munmap(m_pSeqDescrIdx,m_AllocdSeqDescrIdxSize);
+#endif
+	m_pSeqDescrIdx = NULL;
+	m_AllocdSeqDescrIdxSize = 0;
+	m_NumSeqDescrIdxd = 0;
+	}
+
 if(pszDescr == NULL || pszDescr[0] == '\0')
 	sprintf(szDescr,"Seq%u",m_NumStoredSeqs+1);
 else
@@ -133,7 +179,7 @@ if(m_pSeqHdrs == NULL)
 	if(m_pSeqHdrs == NULL)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for sequence headers",(INT64)m_AllocdSeqHdrSize);
-		return(false);
+		return(0);
 		}
 #else
 	// gnu malloc is still in the 32bit world and seems to have issues if more than 2GB allocation
@@ -143,7 +189,7 @@ if(m_pSeqHdrs == NULL)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for sequence headers",(INT64)m_AllocdSeqHdrSize);
 		m_pSeqHdrs = NULL;
 		m_AllocdSeqHdrSize = 0;
-		return(false);
+		return(0);
 		}
 #endif
 	}
@@ -180,7 +226,7 @@ if(m_pDescrSeqs == NULL)
 	if(m_pDescrSeqs == NULL)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for sequences",(INT64)m_AllocdDescrSeqsSize);
-		return(false);
+		return(0);
 		}
 #else
 	// gnu malloc is still in the 32bit world and seems to have issues if more than 2GB allocation
@@ -190,7 +236,7 @@ if(m_pDescrSeqs == NULL)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for sequence headers",(INT64)m_AllocdDescrSeqsSize);
 		m_pDescrSeqs = NULL;
 		m_AllocdDescrSeqsSize = 0;
-		return(false);
+		return(0);
 		}
 #endif
 	}
@@ -216,6 +262,7 @@ else
 		}
 	}
 
+m_UsedSeqHdrMem += sizeof(tsSeqHdr);
 pSeqHdr = &m_pSeqHdrs[m_NumStoredSeqs++];
 pSeqHdr->SeqID = m_NumStoredSeqs;
 pSeqHdr->Flags = Flags;
@@ -237,6 +284,65 @@ if(m_MinSeqLen == 0 || m_MinSeqLen > SeqLen)
 return(m_NumStoredSeqs);	
 }
 
+static CSeqStore *pThis;        // qsort references this instance
+int
+CSeqStore::GenSeqDescrIdx(void) // generate index over all sequence descriptors, index used when retrieving sequence identifier for given descriptor by GetSeqID()
+{
+UINT32 *pSeqDescrIdx;
+UINT32 Idx;
+
+if(m_NumStoredSeqs == 0)		// can't index if no sequence descriptors!
+	return(eBSFerrFastaDescr);
+
+m_NumSeqDescrIdxd = 0;
+m_AllocdSeqDescrIdxSize = sizeof(UINT32) * (m_NumStoredSeqs + 1000);	// allocating more than actually required to reduce potential for future realloc's 
+#ifdef _WIN32
+m_pSeqDescrIdx = (UINT32 *) malloc(m_AllocdSeqDescrIdxSize);
+if(m_pSeqDescrIdx == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for sequences",(INT64)m_AllocdSeqDescrIdxSize);
+	m_AllocdSeqDescrIdxSize = 0;
+	return(eBSFerrMem);
+	}
+#else
+// gnu malloc is still in the 32bit world and seems to have issues if more than 2GB allocation
+m_pSeqDescrIdx = (UINT32 *)mmap(NULL,m_AllocdSeqDescrIdxSize, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
+if(m_pSeqDescrIdx == MAP_FAILED)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: unable to allocate %lld bytes contiguous memory for sequence headers",(INT64)m_AllocdSeqDescrIdxSize);
+	m_pSeqDescrIdx = NULL;
+	m_AllocdSeqDescrIdxSize = 0;
+	return(eBSFerrMem);
+	}
+#endif
+m_NumSeqDescrIdxd = m_NumStoredSeqs;
+pSeqDescrIdx = m_pSeqDescrIdx;
+for(Idx = 1; Idx <= m_NumSeqDescrIdxd; Idx++, pSeqDescrIdx += 1)
+	*pSeqDescrIdx = Idx;
+m_MTqsort.SetMaxThreads(cDfltSortThreads);
+pThis = this;
+m_MTqsort.qsort(m_pSeqDescrIdx,(INT64)m_NumSeqDescrIdxd,sizeof(UINT32),SortSeqDescr);
+return(eBSFSuccess);
+}
+
+int
+CSeqStore::SortSeqDescr(const void *arg1, const void *arg2)
+{
+UINT32 Idx1 = *(UINT32 *)arg1;
+UINT32 Idx2 = *(UINT32 *)arg2;
+
+tsSeqHdr *pHd1;
+tsSeqHdr *pHd2;
+
+pHd1 = &pThis->m_pSeqHdrs[Idx1-1];
+pHd2 = &pThis->m_pSeqHdrs[Idx2-1];
+
+char *pDescr1 = (char *)&pThis->m_pDescrSeqs[pHd1->DescrSeqOfs];
+char *pDescr2 = (char *)&pThis->m_pDescrSeqs[pHd2->DescrSeqOfs];
+
+return(stricmp(pDescr1,pDescr2));
+}
+
 UINT32									// previous flags
 CSeqStore::SetFlags(tSeqID SeqID,		// set flags associated with sequence identified by SeqID
 					UINT32 Flags)		// flags to be associated with this sequence
@@ -254,21 +360,43 @@ return(PrevFlags);
 tSeqID								// sequence identifier of sequence matching on same descriptor
 CSeqStore::GetSeqID(char *pszDescr)	// must match on this descriptor
 {
-UINT32 Idx;
-tsSeqHdr *pSeqHdr;
-UINT8 *pDescrSeq;
-UINT8 DescrLen = (UINT8)strlen(pszDescr);
-
 if(m_pSeqHdrs == NULL || m_pDescrSeqs == NULL || m_NumStoredSeqs == 0)
 	return(0);
-pSeqHdr = m_pSeqHdrs;
-for(Idx = 0; Idx < m_NumStoredSeqs; Idx++,pSeqHdr++)
-	{
-	if(pSeqHdr->DescrLen != DescrLen)
+
+if(m_pSeqDescrIdx == NULL || m_NumSeqDescrIdxd == 0)	// generate index if not already generated
+	if(GenSeqDescrIdx() != eBSFSuccess)
+		return(0);
+
+return(LocateSeqID(pszDescr));
+}
+
+
+tSeqID								// sequence identifier of sequence matching on same descriptor
+CSeqStore::LocateSeqID(char *pszDescr)	// must match on this descriptor
+{
+tsSeqHdr *pSeqHdr;
+char *pszSeqDescr;
+int Rslt;
+if(m_pSeqDescrIdx == NULL || m_NumSeqDescrIdxd == 0 || pszDescr == NULL || *pszDescr == '\0')
+	return(0);
+int Lo,Mid,Hi;	// search limits
+Lo = 0; Hi = m_NumSeqDescrIdxd-1;
+while(Hi >= Lo) {
+	Mid = (Hi + Lo)/2;
+	pSeqHdr = &m_pSeqHdrs[m_pSeqDescrIdx[Mid]-1];
+	pszSeqDescr = (char *)&m_pDescrSeqs[pSeqHdr->DescrSeqOfs];
+	Rslt = stricmp(pszDescr,pszSeqDescr);
+	if(Rslt < 0)	
+		{
+		Hi = Mid - 1;
 		continue;
-	pDescrSeq = &m_pDescrSeqs[pSeqHdr->DescrSeqOfs];
-	if(!stricmp((const char *)pDescrSeq,pszDescr))
-		return(pSeqHdr->SeqID);
+		}
+	if(Rslt > 0)	
+		{
+		Lo = Mid + 1;
+		continue;
+		}
+	return(pSeqHdr->SeqID);
 	}
 return(0);
 }
