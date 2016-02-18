@@ -42,8 +42,8 @@ const int cDfltRMIBufferSize = (cDfltRMIRespDataSize - 10000);	// each worker th
 
 const UINT32 cRMI_SecsTimeout = 180;				// allowing for most RMI SW requests to take at most this many seconds to complete (request plus response)
 const UINT32 cRMI_AlignSecsTimeout = 600;			// allowing for a RMI SW alignment request to take at most this many seconds to complete (request plus response)
-const UINT32 cRMIThreadsPerCore = 4;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
-                                                    // predicated on assuming that the qualifying of read pairs for SW requires around 25% of per core time, the other 75% is spent on SW
+const UINT32 cRMIThreadsPerCore = 5;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
+                                                    // predicated on assuming that the qualifying of read pairs for SW requires around 20% of per core time, the other 80% is spent on SW
 
 typedef enum TAG_ePBPMode {								// processing mode
 	ePBPMErrCorrect,									// error correct

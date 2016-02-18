@@ -3,6 +3,7 @@
 
 const UINT32 cMaxMAFBlockRowLen = 0x03fffff;    // assuming upper limit on length of any single MAF row
 const UINT32 cMaxMAFKmerDistBlockLen = (cMaxMAFBlockRowLen * 100); // expect maximally sized alignment blocks to be no m ore than this size
+const UINT32 cAllocRptBuffSize = 0x07ffff;      // output report buffer size
 
 const int cMaxKMerLenCnts = 25;                // KMer counts accumulated for up to this KMer length
 

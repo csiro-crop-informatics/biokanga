@@ -454,10 +454,10 @@ m_MAFAlignBuffIdx = 0;
 m_MAFFileOfs = 0;
 bCpltdReadMAF = false;
 
-m_AllocRptBuffSize = cMaxMAFBlockRowLen;
+m_AllocRptBuffSize = cAllocRptBuffSize;
 if(m_pszRptBuff == NULL)
 	{
-	if((m_pszRptBuff = new char [m_AllocRptBuffSize])==NULL)
+	if((m_pszRptBuff = new char [cAllocRptBuffSize])==NULL)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate memory for consensus sequence buffering");
 		Reset();
@@ -707,6 +707,11 @@ for(; m_MAFAlignBuffIdx < m_MAFAlignBuffered; m_MAFAlignBuffIdx += 1,pBuff+=1)
 			{
 			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed %d alignment blocks",m_NumParsedBlocks);
 			Then += 60;
+			if(m_OfsRptBuff > 0)	// once every 60 secs ensuring user can observe output file is growing!
+				{
+				CUtility::SafeWrite(m_hConsSeqFile, m_pszRptBuff,m_OfsRptBuff);
+				m_OfsRptBuff = 0;
+				}
 			}
 		}
 	if(!bCpltdReadMAF && State == 0 && (m_MAFAlignBuffered - m_MAFAlignBuffIdx) < (cMaxMAFKmerDistBlockLen + 100))
@@ -1173,7 +1178,7 @@ for(Idx = 0; Idx < cMaxKMerLenCnts; Idx++)
 	}
 
 
-if(m_OfsRptBuff + 10000 >= m_AllocRptBuffSize)
+if(m_OfsRptBuff + 5000 >= m_AllocRptBuffSize)
 	{
 	CUtility::SafeWrite(m_hConsSeqFile, m_pszRptBuff,m_OfsRptBuff);
 	m_OfsRptBuff = 0;
