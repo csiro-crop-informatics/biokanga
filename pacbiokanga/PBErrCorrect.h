@@ -15,7 +15,7 @@
 
 #include "./pacbiocommon.h"
 
-const int cMaxInFileSpecs = 100;			// user can specify upto this many input files
+const int cMaxInFileSpecs = 200;			// user can specify upto this many input files
 const int cMinSeqLen = 500;					// minimum sequence length accepted for processing
 const int cMaxDupEntries = 10;				// report 1st 10 duplicate entry names
 const int cMaxAllocBuffChunk = 0x00ffffff;	// buffer for fasta sequences is realloc'd in this sized chunks
@@ -24,7 +24,11 @@ const int cFlgLCSeq = 0x01;					// sequence is a low confidence read (PacBio) co
 const int cFlgHCSeq = 0x02;					// sequence a high confidence sequence with few sequence errors
 
 const int cDfltMinHCSeqLen = 1000;			// default min high confidence sequence length
-const int cDfltMinHCSeqOverlap = 1000;		// default min high confidence sequence overlap length onto PacBio sequence
+const int cDfltMinHCSeqOverlap = 500;		// default min high confidence sequence overlap length onto PacBio sequence
+const int cDfltHCRelWeighting = 3;              // default high confidence sequence overlap relative score weighting (standard overlaps have a weighting of 1)
+
+const UINT8 cLCWeightingFactor = (0x01);   // if a low confidence sequence used to generate a consensus then use this relative weighting (1x) on bases from this sequence, note bit 7 reset as this is a low confidence sequence
+const UINT8 cHCDfltWeightingFactor = (0x83);   // if a high confidence sequence used to generate a consensus then use this relative weighting (4x) on bases from this sequence, note bit 7 set as this is a high confidence sequence
 
 const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
 const int cDfltMaxArtefactDev = 50;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
@@ -90,6 +94,8 @@ typedef struct TAG_sPBECoreHitCnts {
 	UINT32	AProbeEndOfs;			// highest probe offset for any antisense hit onto target
 	UINT32 NumSHits;				// number of hits onto target sequence from sense probe
 	UINT32 NumAHits;				// number of hits onto target sequence from antisense probe
+	UINT8 flgProbeHCseq:1;          // set if probe was loaded as a high confidence (non-PacBio) sequence
+	UINT8 flgTargHCseq:1;           // set if target was loaded as a high confidence (non-PacBio) sequence
 } sPBECoreHitCnts;
 
 typedef struct TAG_sThreadPBErrCorrect {
@@ -121,7 +127,7 @@ typedef struct TAG_sThreadPBErrCorrect {
 	UINT32 MinPBSeqLen;				// only process PacBio sequences which are at least this length
 
 	UINT32 NumTargCoreHitCnts;		// current number of summary target core hit counts in TargCoreHitCnts
-	sPBECoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts]; // top targets by core hit counts
+	sPBECoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts+1]; // top targets by core hit counts
 	UINT32 NumCoreHits;				// currently this many core hits in m_pCoreHits
 	UINT32 AllocdCoreHits;				// m_pCoreHits currently allocated to hold at most this many core hits
 	size_t AllocdCoreHitsSize;		// m_pCoreHits current allocation size
@@ -208,6 +214,7 @@ class CPBErrCorrect
 	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 	UINT32 m_MinHCSeqLen;					// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 	UINT32 m_MinHCSeqOverlap;				// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
+	UINT8 m_HCRelWeighting;					// hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases  
 
 	UINT32 m_MinErrCorrectLen;				// error corrected sequences must be at least this minimum length
 	UINT32 m_MinConcScore;					// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
@@ -389,7 +396,8 @@ static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 		RMI_StartMultiAlignments(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
 					int SeqLen,						// probe sequence is this length
 					etSeqBase *pProbeSeq,			// probe sequence 
-					int Alignments);				// number of pairwise alignments to allocate for
+					int Alignments,					// number of pairwise alignments to allocate for
+					UINT8 Flags);					// bit 0 set true if probe sequence loaded as a high confidence sequence
 
 	bool RMI_SetProbe(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID, 
 					UINT32 Len,etSeqBase *pSeq);					// set probe sequence to use in subsequent alignments
@@ -431,7 +439,9 @@ int
 					  UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
 					  UINT32 TargEndOfs,			// alignment ends at this target sequence offset inclusive
 					  UINT32 TargSeqLen,			// target sequence length
-					  etSeqBase *pTargSeq);			// alignment target sequence
+					  etSeqBase *pTargSeq,			// alignment target sequence
+    					UINT8 Flags);				// bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+
 
 int
 		RMI_GenMultialignConcensus(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID);
@@ -478,7 +488,8 @@ public:
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
-		int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
+		int HCRelWeighting,             // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
+	    int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
 		int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files

@@ -141,7 +141,7 @@ tsSummStmSQL CSQLiteSummaries::m_StmSQL[7] = {
 CSQLiteSummaries::CSQLiteSummaries(void)
 {
 m_pDB = NULL;
-m_bInitialised = Init() == eBSFSuccess ? true : false;
+m_bInitialised = (Init() == eBSFSuccess) ? true : false;
 }
 
 
@@ -150,9 +150,9 @@ CSQLiteSummaries::~CSQLiteSummaries(void)
 if(m_pDB != NULL)
 	{
 	sqlite3_close_v2(m_pDB);
-	sqlite3_shutdown();
 	m_pDB = NULL;
 	}
+sqlite3_shutdown();
 #ifndef _WIN32
 if(m_bInitialised)
 	pthread_spin_destroy(&m_hSpinLock);

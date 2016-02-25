@@ -15,11 +15,11 @@
 
 
 const int cMinSeedCoreLen = 12;							// user can specify seed cores down to this minimum length
-const int cDfltSeedCoreLen = 15;						// default seed cores of this length
+const int cDfltSeedCoreLen = 14;						// default seed cores of this length
 const int cMaxSeedCoreLen = 50;							// user can specify seed cores up to to this maximum length
 const int cDfltScaffSeedCoreLen = 35;					// default seed cores of this length when generating overlap detail for scaffolding
 
-const int cDfltDeltaCoreOfs = 1;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
+const int cDfltDeltaCoreOfs = 2;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 const int cDfltMaxSeedCoreDepth = 15000;                // only extend a seed core if there are no more than this number of matching cores in all targeted sequences
 const int cDfltMaxAcceptHitsPerSeedCore = 10000;		// only accept up to this many extended cores at any probe offset 
 const int cMinNumSeedCores = 1;							// user can specify requiring at least this many seed cores between overlapping scaffold sequences

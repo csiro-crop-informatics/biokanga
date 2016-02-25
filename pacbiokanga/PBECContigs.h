@@ -118,7 +118,7 @@ typedef struct TAG_sThreadPBECContigs {
 	UINT32 MinPBSeqLen;				// only process PacBio sequences which are at least this length
 
 	UINT32 NumTargCoreHitCnts;		// current number of summary target core hit counts in TargCoreHitCnts
-	sPBECCCoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts]; // top targets by core hit counts
+	sPBECCCoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts+1]; // top targets by core hit counts
 	UINT32 NumCoreHits;				// currently this many core hits in m_pCoreHits
 	UINT32 AllocdCoreHits;				// m_pCoreHits currently allocated to hold at most this many core hits
 	size_t AllocdCoreHitsSize;		// m_pCoreHits current allocation size

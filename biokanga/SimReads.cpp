@@ -1335,9 +1335,11 @@ int NumSubs2Induce;
 etSeqBase *pSeq;
 double Thres;
 
-UINT8 Subd[2000];
+UINT8 *pSubd;
+
 if(m_SEMode == eSEPnone)
 	return(0);
+
 pSeq = pRead;
 for(Idx = 0; Idx < SeqLen; Idx++,pSeq++)
 	*pSeq = *pSeq & ~cRptMskFlg;
@@ -1392,11 +1394,14 @@ if(pProfile != NULL)
 		return(0);
 		}
 	}
+
 if(pProfile != NULL)
 	NumSubs2Induce = pProfile->NumSubs;
 else
 	NumSubs2Induce = (int)m_DynProbErr;
-memset(Subd,0,SeqLen);
+
+pSubd = new UINT8 [SeqLen+10];
+memset(pSubd,0,SeqLen);
 RandSubs = 0;
 
 int Psn;
@@ -1410,6 +1415,8 @@ while(RandSubs < NumSubs2Induce)
 		int MaxPsn;
 		int DistIdx;
 		Psn = RGseeds.IRandom(0,IlluminaSpatialDist[cNumIlluminaSpatialDist-1]);
+if(Psn < 0 || Psn > 500)
+	printf("\n Check psn");
 		for(DistIdx = 0; DistIdx < cNumIlluminaSpatialDist-1; DistIdx++)
 			{
 			if(Psn <= IlluminaSpatialDist[DistIdx])
@@ -1422,21 +1429,25 @@ while(RandSubs < NumSubs2Induce)
 			MaxPsn = (MinPsn + (SeqLen / cNumIlluminaSpatialDist)) - 1;
 
 		Psn = RGseeds.IRandom(MinPsn,MaxPsn);
+if(Psn < MinPsn || Psn > MaxPsn)
+	printf("\n Check psn A");
 		Idx=min(SeqLen-1,Psn);
 		}
-	if(Subd[Idx])
+	if(pSubd[Idx] != 0)
 		continue;
+
 	pSeq = &pRead[Idx];
 	do {
 		SubBase = RGseeds.IRandom(0,3);
 		}
 	while(SubBase == *pSeq);
 	*pSeq = SubBase | cRptMskFlg;
-	Subd[Idx] = 1;
+	pSubd[Idx] = 1;
 	m_InducedErrPsnDist[Idx] += 1;
 	RandSubs += 1;
 	}
 m_InducedErrDist[NumSubs2Induce] += 1;
+delete pSubd;
 return(NumSubs2Induce);
 }
 
@@ -2041,11 +2052,17 @@ if((m_pBioSeqFile = new CBioSeqFile) == NULL)
 if((Rslt = m_pBioSeqFile->Open(pszBioSeqFile))!=eBSFSuccess)
 	{
 	if(Rslt == eBSFerrFileAccess)
+		{
+		delete m_pBioSeqFile;
+		m_pBioSeqFile = NULL;
 		return(Rslt);
+		}
 
 	while(m_pBioSeqFile->NumErrMsgs())
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,m_pBioSeqFile->GetErrMsg());
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to open assembly sequence file '%s'",pszBioSeqFile);
+	delete m_pBioSeqFile;
+	m_pBioSeqFile = NULL;
 	Reset(false);
 	return(Rslt);
 	}
@@ -2944,8 +2961,6 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 			while(ReadLenRem)
 				{
 				pPEreads[0].NumCols = ReadLenRem > m_MaxFastaLineLen ? m_MaxFastaLineLen : ReadLenRem;
-				if(pPEreads[0].NumCols > 20000)
-					printf("CheckMe!");
 				CSeqTrans::MapSeq2UCAscii(&pReadSeq[ReadOfs],pPEreads[0].NumCols,&pPEreads[0].szLineBuff[pPEreads[0].LineLen]);
 				pPEreads[0].LineLen += pPEreads[0].NumCols;
 				pPEreads[0].LineLen += sprintf(&pPEreads[0].szLineBuff[pPEreads[0].LineLen],"\n");
@@ -3261,6 +3276,9 @@ int PrevNumGenReads;
 int MinChromLen;
 
 Init();
+
+RGseeds.RandomInit((int)time(NULL));
+
 m_PMode = PMode;
 m_FMode = FMode;
 m_SEMode = SEMode;
@@ -3663,15 +3681,6 @@ if(Region != eMEGRAny)
 		}
 	}
 
-// show distributions
-//gDiagnostics.DiagOut(eDLInfo,gszProcName,"\"ReadOfs\",\"InducedSubs\"");
-//int Idx;
-//for(Idx=0;Idx<ReadLen;Idx++)
-//	gDiagnostics.DiagOutMsgOnly(eDLInfo,"%d,%d",Idx,m_InducedErrPsnDist[Idx]);
-//gDiagnostics.DiagOut(eDLInfo,gszProcName,"\"SubDist\",\"Cnt\"");
-
-//for(Idx=0;Idx<cNumProfEls;Idx++)
-//	gDiagnostics.DiagOutMsgOnly(eDLInfo,"%d,%d",Idx,m_InducedErrDist[Idx]);
 Reset(true);
 return(eBSFSuccess);
 }
@@ -3758,6 +3767,8 @@ while(pWorkerPars->NumGenReads < pWorkerPars->NumReqReads)
 		RandCutLen = (int)RG.IRandom(pWorkerPars->CutMin,pWorkerPars->CutMax);
 		if(pWorkerPars->bPEgen)
 			PERandCutLen = (int)RG.IRandom(pWorkerPars->CutMin,pWorkerPars->CutMax);
+		else
+			PERandCutLen = RandCutLen;
 		}
 	else
 		{

@@ -237,9 +237,10 @@ class CSSW
 
 	int m_MaxTopNPeakMatches;		// can identify at most this many top peak matches for current probe vs target
 	int m_NumTopNPeakMatches;		// currently identified this many top peak matches for current probe vs target
-	tsSSWCell m_TopPeakMatches[cMaxTopNPeakMatches];  // used to hold the top peak matches
+	tsSSWCell m_TopPeakMatches[cMaxTopNPeakMatches+1];  // used to hold the top peak matches
 
-	tsPermInDels m_PermIndels[cMaxMultiAlignSeqs]; // used when determining the maximally scoring multialigned deletions relative to the probe sequence 
+	UINT8 m_MAFlags[cMaxMultiAlignSeqs+1];   // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+	tsPermInDels m_PermIndels[cMaxMultiAlignSeqs+1]; // used when determining the maximally scoring multialigned deletions relative to the probe sequence 
 
 	UINT32 m_MAProbeSeqLen;			// probe sequence length used when initialising multialignment columns
 	UINT32 m_MACols;					// actual number of multialignment columns used
@@ -393,7 +394,8 @@ public:
 	int
 		StartMultiAlignments(int SeqLen,			// probe sequence is this length
 					etSeqBase *pProbeSeq,			// probe sequence 
-					int Alignments);				// number of pairwise alignments to allocate for
+					int Alignments,					// number of pairwise alignments to allocate for
+					UINT8 Flags);					// bit 0 set true if probe sequence loaded as a high confidence sequence
 
 	int
 		AddMultiAlignment(UINT32 ProbeStartOfs,		// alignment starts at this probe sequence offset (1..n)
@@ -401,7 +403,9 @@ public:
 					  UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
 					  UINT32 TargEndOfs,			// alignment ends at this target sequence offset inclusive
 					  UINT32 TargSeqLen,			// target sequence length
-					  etSeqBase *pTargSeq);			// alignment target sequence
+					  etSeqBase *pTargSeq,			// alignment target sequence
+					  UINT8 Flags);				    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+
 
 	int
 		GenMultialignConcensus(void);

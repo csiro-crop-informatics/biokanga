@@ -83,7 +83,8 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
-		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
+		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp)
+		int HCRelWeighting,         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
 		int MinErrCorrectLen,		// error corrected sequences must be at least this minimum length
 		int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
 		int NumPacBioFiles,			// number of input pacbio file specs
@@ -131,17 +132,22 @@ int MaxPBSeqLen;			// no more than this length (defaults to 35Kbp)
 int MinPBSeqOverlap;		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 int MinHCSeqLen;			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 int MinHCSeqOverlap;		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
+int HCRelWeighting;         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
 int MinConcScore;			// error corrected sequences trimmed until mean 50bp concensus score is at least this threshold
 int MinErrCorrectLen;		// error corrected and sequence trimmed sequences must be of at least this length
 int MaxArtefactDev;			// classify overlaps as artefactual if sliding window of 1000bp over any overlap deviates by more than this percentage from the overlap mean
 
+CSimpleGlob glob(SG_GLOB_FULLSORT);
+char szTempFilePath[_MAX_PATH+1];
+char *pszInfile;
+int FileID;
 int NumPacBioFiles;						// number of input pacbio file specs
-char *pszPacBioFiles[cMaxInFileSpecs];	// input pacbio files
+char *pszPacBioFiles[cMaxInFileSpecs+1];	// input pacbio files
 int NumHiConfFiles;						// number of input hiconfidence file specs
-char *pszHiConfFiles[cMaxInFileSpecs];	// input hiconfidence files
+char *pszHiConfFiles[cMaxInFileSpecs+1];	// input hiconfidence files
 
-char szOutFile[_MAX_PATH];				// where to write (ePBPMConsensus or ePBPMErrCorrect) error corrected sequences or (ePBPMOverlapDetail) overlap detail
-char szOutMAFile[_MAX_PATH];			// where to write optional multialignments
+char szOutFile[_MAX_PATH+1];				// where to write (ePBPMConsensus or ePBPMErrCorrect) error corrected sequences or (ePBPMOverlapDetail) overlap detail
+char szOutMAFile[_MAX_PATH+1];			// where to write optional multialignments
 
 int SampleRate;				// sample input sequences at this rate
 int NumberOfProcessors;		// number of installed CPUs
@@ -170,11 +176,13 @@ struct arg_int *minpbseqovl = arg_int0("b","minpbseqovl","<int>",		"minimum PacB
 
 struct arg_int *minhcseqlen = arg_int0("p","minhcseqlen","<int>",		"minimum individual high confidence sequence length (default 1000, range 250 to 100000)");
 struct arg_int *minhcseqovl = arg_int0("P","minhcseqovl","<int>",		"minimum high confidence sequence overlap onto PacBio length required (default 500, range 250 to 100000)");
+struct arg_int *hcrelweighting = arg_int0("r","hcrelweighting","<int>",	"high confidence sequence relative weighting when consensus base calling (default 3, range 1 to 10)");
 
-struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 15, range 12 to 50)");
+
+struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 14, range 12 to 50)");
 struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",				"require at least this many accepted seed cores between overlapping sequences to use SW (default 10, range 1 to 50)");
 
-struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 1, range 1 to 10)");
+struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 2, range 1 to 10)");
 struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",				"explore cores of less than this maximum depth (default 15000, range 1000 to 20000)");
 
 struct arg_int *matchscore = arg_int0("x","matchscore","<int>",					"SW score for matching bases (default 3, range 1 to 50)");
@@ -187,8 +195,8 @@ struct arg_int *minconcscore = arg_int0("s","minconcscore","<int>",			     "erro
 struct arg_int *minerrcorrectlen = arg_int0("S","minerrcorrectlen","<int>",		 "error corrected and trimmed sequences must be at least this minimum length (default 5000, range 500 to 20000)");
 struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 1Kbp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 70)");
 
-struct arg_file *hiconffiles = arg_filen("I","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be used in error correcton of PacBio reads");
-struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be error corrected");
+struct arg_file *hiconffiles = arg_filen("I","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be used in error correcton of PacBio reads (wildcards allowed)");
+struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be error corrected (wildcards allowed)");
 struct arg_file *outfile = arg_file1("o","out","<file>",									"output error corrected PacBio reads to this file");
 struct arg_file *mafile = arg_file0("O","mafile","<file>",						"optional, output multialignments to this file, caution can grow very large");
 struct arg_file *scaffovrlapsfile = arg_file0("e","scaffovrlapsfile","<file>",	"optional, output scaffolding overlap detail to this file");
@@ -211,7 +219,7 @@ struct arg_end *end = arg_end(200);
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
-					minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,minconcscore,minerrcorrectlen,maxartefactdev,
+					minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
 					outfile,mafile,scaffovrlapsfile,samplerate,threads,
 					end};
@@ -369,8 +377,9 @@ if (!argerrors)
 	MinPBSeqLen = cDfltMinPBSeqLen;
 	MaxPBSeqLen = cDfltMaxPBSeqLen;
 	MinPBSeqOverlap = cDfltMinErrCorrectLen; 
-	MinHCSeqLen = 1000;
-	MinHCSeqOverlap = 500;
+	MinHCSeqLen = cDfltMinHCSeqLen;
+	MinHCSeqOverlap = cDfltMinHCSeqOverlap;
+	HCRelWeighting = cDfltHCRelWeighting;
 	MaxArtefactDev = cDfltMaxArtefactDev;
 	NumPacBioFiles = 0;
 	NumHiConfFiles = 0;
@@ -477,10 +486,10 @@ if (!argerrors)
 
 		MaxPBSeqLen = maxpbseqlen->count ? maxpbseqlen->ival[0] : max(MinPBSeqLen,cDfltMaxPBSeqLen);
 		if (MaxPBSeqLen < MinPBSeqLen || MaxPBSeqLen > cMaxMaxPBSeqLen)
-		{
+			{
 			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Maximum accepted PacBio length '-L%d' must be in range %d..%dbp", MaxPBSeqLen,MinPBSeqLen, cMaxMaxPBSeqLen);
 			return(1);
-		}
+			}
 
 
 		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : cDfltMinErrCorrectLen;
@@ -514,16 +523,49 @@ if (!argerrors)
 			return(1);
 			}
 
+		HCRelWeighting = hcrelweighting->count ? hcrelweighting->ival[0] : 3;
+		if(HCRelWeighting < 1 || HCRelWeighting > 10)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: High confidence relative weighting '-r%d' must be in range %d..%dbp",HCRelWeighting,1,10);
+			return(1);
+			}
+
+		// widcards are allowed and filepaths will be expanded
+		pszPacBioFiles[0] = NULL;
 		for(NumPacBioFiles=Idx=0;NumPacBioFiles < cMaxInFileSpecs && Idx < pacbiofiles->count; Idx++)
 			{
-			pszPacBioFiles[Idx] = NULL;
-			if(pszPacBioFiles[NumPacBioFiles] == NULL)
-				pszPacBioFiles[NumPacBioFiles] = new char [_MAX_PATH];
-			strncpy(pszPacBioFiles[NumPacBioFiles],pacbiofiles->filename[Idx],_MAX_PATH);
-			pszPacBioFiles[NumPacBioFiles][_MAX_PATH-1] = '\0';
-			CUtility::TrimQuotedWhitespcExtd(pszPacBioFiles[NumPacBioFiles]);
-			if(pszPacBioFiles[NumPacBioFiles][0] != '\0')
-				NumPacBioFiles++;
+			strncpy(szTempFilePath,pacbiofiles->filename[Idx],_MAX_PATH);
+			szTempFilePath[_MAX_PATH-1] = '\0';
+			CUtility::TrimQuotedWhitespcExtd(szTempFilePath);
+			if(szTempFilePath[0] == '\0')
+				continue;
+			glob.Init();
+			if(glob.Add(szTempFilePath) < SG_SUCCESS)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to glob '%s",szTempFilePath);
+				exit(1);
+				}
+			if(glob.FileCount() <= 0)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to locate any PacBio file matching '%s', checking for other files",szTempFilePath);
+				continue;
+				}
+			for (FileID = 0; Rslt >= eBSFSuccess &&  FileID < glob.FileCount(); FileID++)
+				{
+				pszInfile = glob.File(FileID);
+				if(pszPacBioFiles[NumPacBioFiles] == NULL)
+					pszPacBioFiles[NumPacBioFiles] = new char [_MAX_PATH + 1];
+				strncpy(pszPacBioFiles[NumPacBioFiles],pszInfile,_MAX_PATH);
+				pszPacBioFiles[NumPacBioFiles][_MAX_PATH-1] = '\0';
+				NumPacBioFiles += 1;
+				if(NumPacBioFiles == cMaxInFileSpecs)
+					{
+					gDiagnostics.DiagOut(eDLWarn,gszProcName,"At limit (%d) of input PacBio files accepted, ignoring any additional",cMaxInFileSpecs);
+					break;
+					}
+				else
+					pszPacBioFiles[NumPacBioFiles] = NULL;
+				}
 			}
 
 		if(!NumPacBioFiles)
@@ -532,27 +574,45 @@ if (!argerrors)
 			exit(1);
 			}
 
-		if(hiconffiles->count)
+		pszHiConfFiles[0] = NULL;
+		for(NumHiConfFiles=Idx=0;NumHiConfFiles < cMaxInFileSpecs && Idx < hiconffiles->count; Idx++)
 			{
-			for(NumHiConfFiles=Idx=0;NumHiConfFiles < cMaxInFileSpecs && Idx < hiconffiles->count; Idx++)
+			strncpy(szTempFilePath,hiconffiles->filename[Idx],_MAX_PATH);
+			szTempFilePath[_MAX_PATH-1] = '\0';
+			CUtility::TrimQuotedWhitespcExtd(szTempFilePath);
+			if(szTempFilePath[0] == '\0')
+				continue;
+			glob.Init();
+			if(glob.Add(szTempFilePath) < SG_SUCCESS)
 				{
-				pszHiConfFiles[Idx] = NULL;
-				if(pszHiConfFiles[NumHiConfFiles] == NULL)
-					pszHiConfFiles[NumHiConfFiles] = new char [_MAX_PATH];
-				strncpy(pszHiConfFiles[NumHiConfFiles],hiconffiles->filename[Idx],_MAX_PATH);
-				pszHiConfFiles[NumHiConfFiles][_MAX_PATH-1] = '\0';
-				CUtility::TrimQuotedWhitespcExtd(pszHiConfFiles[NumHiConfFiles]);
-				if(pszHiConfFiles[NumHiConfFiles][0] != '\0')
-					NumHiConfFiles++;
-				}
-
-			if(!NumHiConfFiles)
-				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input high confidence reads file(s) specified with '-I<filespec>' option)\n");
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to glob '%s",szTempFilePath);
 				exit(1);
 				}
+			if(glob.FileCount() <= 0)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to locate any high confidence file matching '%s', checking for other files",szTempFilePath);
+				continue;
+				}
+			for (FileID = 0; Rslt >= eBSFSuccess &&  FileID < glob.FileCount(); FileID++)
+				{
+				pszInfile = glob.File(FileID);
+				if(pszHiConfFiles[NumHiConfFiles] == NULL)
+					pszHiConfFiles[NumHiConfFiles] = new char [_MAX_PATH + 1];
+				strncpy(pszHiConfFiles[NumHiConfFiles],pszInfile,_MAX_PATH);
+				pszHiConfFiles[NumHiConfFiles][_MAX_PATH-1] = '\0';
+				NumHiConfFiles += 1;
+				if(NumHiConfFiles == cMaxInFileSpecs)
+					{
+					gDiagnostics.DiagOut(eDLWarn,gszProcName,"At limit (%d) of high confidence input files accepted, ignoring any additional",cMaxInFileSpecs);
+					break;
+					}
+				else
+					pszHiConfFiles[NumHiConfFiles] = NULL;
+				}
 			}
-		else
+
+
+		if(!NumHiConfFiles)
 			{
 			NumHiConfFiles = 0;
 			pszHiConfFiles[0] = NULL;
@@ -708,21 +768,48 @@ if (!argerrors)
 			return(1);
 			}
 
+
+		// widcards are allowed and filepaths will be expanded
+		pszPacBioFiles[0] = NULL;
 		for(NumPacBioFiles=Idx=0;NumPacBioFiles < cMaxInFileSpecs && Idx < pacbiofiles->count; Idx++)
 			{
-			pszPacBioFiles[Idx] = NULL;
-			if(pszPacBioFiles[NumPacBioFiles] == NULL)
-				pszPacBioFiles[NumPacBioFiles] = new char [_MAX_PATH];
-			strncpy(pszPacBioFiles[NumPacBioFiles],pacbiofiles->filename[Idx],_MAX_PATH);
-			pszPacBioFiles[NumPacBioFiles][_MAX_PATH-1] = '\0';
-			CUtility::TrimQuotedWhitespcExtd(pszPacBioFiles[NumPacBioFiles]);
-			if(pszPacBioFiles[NumPacBioFiles][0] != '\0')
-				NumPacBioFiles++;
+			strncpy(szTempFilePath,pacbiofiles->filename[Idx],_MAX_PATH);
+			szTempFilePath[_MAX_PATH-1] = '\0';
+			CUtility::TrimQuotedWhitespcExtd(szTempFilePath);
+			if(szTempFilePath[0] == '\0')
+				continue;
+			glob.Init();
+			if(glob.Add(szTempFilePath) < SG_SUCCESS)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to glob '%s",szTempFilePath);
+				exit(1);
+				}
+			if(glob.FileCount() <= 0)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to locate any PacBio file matching '%s', checking for other files",szTempFilePath);
+				continue;
+				}
+			for (FileID = 0; Rslt >= eBSFSuccess &&  FileID < glob.FileCount(); FileID++)
+				{
+				pszInfile = glob.File(FileID);
+				if(pszPacBioFiles[NumPacBioFiles] == NULL)
+					pszPacBioFiles[NumPacBioFiles] = new char [_MAX_PATH + 1];
+				strncpy(pszPacBioFiles[NumPacBioFiles],pszInfile,_MAX_PATH);
+				pszPacBioFiles[NumPacBioFiles][_MAX_PATH-1] = '\0';
+				NumPacBioFiles += 1;
+				if(NumPacBioFiles == cMaxInFileSpecs)
+					{
+					gDiagnostics.DiagOut(eDLWarn,gszProcName,"At limit (%d) of input PacBio files accepted, ignoring any additional",cMaxInFileSpecs);
+					break;
+					}
+				else
+					pszPacBioFiles[NumPacBioFiles] = NULL;
+				}
 			}
 
 		if(!NumPacBioFiles)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input error corrected file(s) specified with '-i<filespec>' option)\n");
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input error corrected PacBio file(s) specified with '-i<filespec>' option)\n");
 			exit(1);
 			}
 
@@ -888,6 +975,8 @@ if (!argerrors)
 			{
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum high confidence sequence length: %dbp",MinHCSeqLen);
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum high confidence sequence onto PacBio overlap required for error correction contribution: %d",MinHCSeqOverlap);
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"High confidence sequence relative weighting: %d",HCRelWeighting);
+
 			}
 
 		for(Idx=0; Idx < NumPacBioFiles; Idx++)
@@ -964,6 +1053,7 @@ if (!argerrors)
 			{
 			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinHCSeqLen),"minhcseqlen",&MinHCSeqLen);
 			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinHCSeqOverlap),"minhcseqovl",&MinHCSeqOverlap);
+			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(HCRelWeighting),"hcrelweighting",&HCRelWeighting);
 			}
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinConcScore),"minconcscore",&MinConcScore);
@@ -1003,7 +1093,7 @@ if (!argerrors)
 #endif
 	gStopWatch.Start();
 	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
-								MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,MinErrCorrectLen,MinConcScore,
+								MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
@@ -1050,7 +1140,8 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
-		int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
+		int HCRelWeighting,         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
+	    int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
 		int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
@@ -1070,7 +1161,7 @@ if((pPBErrCorrect = new CPBErrCorrect)==NULL)
 	}
 
 Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
-								MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,MinErrCorrectLen,MinConcScore,
+								MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,NumThreads);
 delete pPBErrCorrect;
 return(Rslt);
@@ -1175,6 +1266,7 @@ m_MinPBSeqOverlap = cDfltMinErrCorrectLen;
 m_MaxArtefactDev = cDfltMaxArtefactDev;
 m_MinHCSeqLen = cDfltMinHCSeqLen;
 m_MinHCSeqOverlap = cDfltMinHCSeqOverlap;
+m_HCRelWeighting = cDfltHCRelWeighting;
 
 m_DeltaCoreOfs = cDfltDeltaCoreOfs;
 m_MaxSeedCoreDepth = cDfltMaxSeedCoreDepth;
@@ -1838,7 +1930,8 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
-		int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
+		int HCRelWeighting,             // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
+	    int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
 		int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
@@ -1919,6 +2012,7 @@ m_MinPBSeqOverlap = MinPBSeqOverlap;
 m_MaxArtefactDev = MaxArtefactDev;
 m_MinHCSeqLen = MinHCSeqLen;
 m_MinHCSeqOverlap = MinHCSeqOverlap;
+m_HCRelWeighting = HCRelWeighting;  
 
 m_MinErrCorrectLen = MinErrCorrectLen;
 m_MinConcScore = MinConcScore;
@@ -2004,6 +2098,9 @@ if((m_pSfxArray = new CSfxArrayV3) == NULL)
 	}
 m_pSfxArray->Reset(false);
 m_pSfxArray->SetMaxQSortThreads(min(NumThreads,32));
+
+
+m_pSfxArray->SetMaxBaseCmpLen(200);     // matches are only down at relatively small K-mer cores so no point in sorting the reads out to their full length 
 
 Rslt=m_pSfxArray->Open(false,false);
 if(Rslt !=eBSFSuccess)
@@ -2837,6 +2934,8 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 
 	pThreadPar->NumTargCoreHitCnts = 0;
 	memset(pThreadPar->TargCoreHitCnts,0,sizeof(pThreadPar->TargCoreHitCnts));
+if(pThreadPar->NumCoreHits > pThreadPar->AllocdCoreHits)
+	printf("Check me 2");
 	if(pThreadPar->NumCoreHits)
 		{
 		if(pThreadPar->NumCoreHits > 1)
@@ -2985,7 +3084,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			// if just processed last core hit for the current target ...
 			if(HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargNodeID)
 				{
-				// checking here if the overlap is very likely to be artefact
+				// checking here if the overlap is very likely to be artifact
 				// requiring that at least MinPropBinned of the bins along the putative alignment length contain hits
 				// and that the first and last hit are consistent with either a completely contained or overlapped
 				if(CurSEntryIDHits > 1 && ((OverlapSLen = CurSProbeEndOfs - CurSProbeStartOfs) > m_BinClusterSize))
@@ -2997,6 +3096,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					PropABinsOverlap = (m_BinClusterSize * CurAEntryIDHits * 100)/OverlapALen;
 				else
 					PropABinsOverlap = 0;
+
 				TargLen = m_pPBScaffNodes[pCoreHit->TargNodeID-1].SeqLen;
 				if(PropSBinsOverlap >= pThreadPar->MinPropBinned) 
 					{
@@ -3048,6 +3148,8 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					pSummaryCnts->AProbeEndOfs = CurAProbeEndOfs;
 					pSummaryCnts->NumSHits = CurSEntryIDHits;
 					pSummaryCnts->NumAHits = CurAEntryIDHits;
+					pSummaryCnts->flgProbeHCseq = m_pPBScaffNodes[pCoreHit->ProbeNodeID-1].flgHCseq;
+					pSummaryCnts->flgTargHCseq = m_pPBScaffNodes[pCoreHit->TargNodeID-1].flgHCseq;
 					}
 				CurTargNodeID = 0; 
 				}
@@ -3104,13 +3206,13 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			{
 			if(!pThreadPar->bRMI)
 				{
-				iNonRMIRslt = pThreadPar->pSW->StartMultiAlignments(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts);
+				iNonRMIRslt = pThreadPar->pSW->StartMultiAlignments(pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts,pCurPBScaffNode->flgHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor);
 				if(iNonRMIRslt < 0)
 					goto RMIRestartThread;
 				}
 			else
 				{
-				iRMIRslt = RMI_StartMultiAlignments(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts);
+				iRMIRslt = RMI_StartMultiAlignments(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->SeqLen,pThreadPar->pProbeSeq,pThreadPar->NumTargCoreHitCnts,pCurPBScaffNode->flgHCseq == 1 ? (0x80 | m_HCRelWeighting)  : cLCWeightingFactor);
 				if(iRMIRslt < 0)
 					goto RMIRestartThread;
 				}
@@ -3374,14 +3476,13 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 							goto RMIRestartThread;
 						}		
 
-
 					if(!pThreadPar->bRMI)
 						pThreadPar->pSW->AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq);
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq,pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor);
 					else
 						{
 						iRMIRslt = RMI_AddMultiAlignment(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq);
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq,pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor);
 						if(iRMIRslt < 0)
 							goto RMIRestartThread;
 						}
@@ -3711,8 +3812,8 @@ if(pPars->CoreSeqLen < cMaxPacBioSeedExtn)
 	LastProbeOfs -= 120;
 
 memset(QualTargs,0,sizeof(QualTargs));
-QualCoreLen = pPars->CoreSeqLen + 6;
-NumQualSeqs = m_pSfxArray->PreQualTargs(pProbeNode->EntryID,pProbeNode->SeqLen,	pPars->pProbeSeq, QualCoreLen,cMaxQualTargs,QualTargs);
+QualCoreLen = pPars->CoreSeqLen + 5;
+NumQualSeqs = m_pSfxArray->PreQualTargs(pProbeNode->EntryID,pProbeNode->SeqLen,	pPars->pProbeSeq, QualCoreLen,(int)pPars->DeltaCoreOfs,cMaxQualTargs,QualTargs);
 
 if(NumQualSeqs > 0)
 	{
@@ -4126,7 +4227,8 @@ int
 CPBErrCorrect::RMI_StartMultiAlignments(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
 					int SeqLen,						// probe sequence is this length
 					etSeqBase *pProbeSeq,			// probe sequence 
-					int Alignments)					// number of pairwise alignments to allocate for
+					int Alignments,					// number of pairwise alignments to allocate for
+					UINT8 Flags)					// bit 0 set true if probe sequence loaded as a high confidence sequence
 {
 int Rslt;
 int RespDataOfs;
@@ -4141,6 +4243,7 @@ Then = time(NULL);
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&SeqLen,sizeof(SeqLen));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pProbeSeq,SeqLen);
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTInt32,&Alignments,sizeof(Alignments));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint8,&Flags,sizeof(Flags));
 while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMStartMultiAlignments,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
 	{
 	Now = time(NULL);
@@ -4440,7 +4543,8 @@ CPBErrCorrect::RMI_AddMultiAlignment(tsThreadPBErrCorrect *pThreadPar, UINT32 Ti
 				UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
 				UINT32 TargEndOfs,				// alignment ends at this target sequence offset inclusive
 				UINT32 TargSeqLen,				// target sequence length
-				etSeqBase *pTargSeq)			// alignment target sequence
+				etSeqBase *pTargSeq,			// alignment target sequence
+				UINT8 Flags)                    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
 {
 int Rslt;
 int RespDataOfs;
@@ -4457,6 +4561,7 @@ RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&Ta
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargEndOfs,sizeof(TargEndOfs));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&TargEndOfs,sizeof(TargSeqLen));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pTargSeq,TargSeqLen);
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint8,&Flags,sizeof(Flags));
 while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMAddMultiAlignment,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
 	{
 	Now = time(NULL);

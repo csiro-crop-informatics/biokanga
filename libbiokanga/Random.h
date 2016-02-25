@@ -80,7 +80,7 @@
 * GNU General Public License www.gnu.org/copyleft/gpl.html
 *******************************************************************************/
 
-#include <math.h>          // default math function linrary
+#include <math.h>          // default math function library
 
 #include <assert.h>
 #include <stdio.h>
@@ -113,8 +113,6 @@ class TRandomMersenne {                // encapsulate random number generator
   private:
   uint32 mt[MERS_N];                   // state vector
   int mti;                             // index into mt
-  enum TArch {LITTLE_ENDIAN1, BIG_ENDIAN1, NONIEEE};
-  TArch Architecture;                  // conversion to float depends on computer architecture
   };    
 
 class TRanrotBGenerator {              // encapsulate random number generator
@@ -129,8 +127,6 @@ class TRanrotBGenerator {              // encapsulate random number generator
   int p1, p2;                          // indexes into buffer
   uint32 randbuffer[KK];               // history buffer
   uint32 randbufcopy[KK*2];            // used for self-test
-  enum TArch {LITTLE_ENDIAN1, BIG_ENDIAN1, NONIEEE};
-  TArch Architecture;                  // conversion to float depends on computer architecture
 };
 
 
@@ -150,8 +146,6 @@ class TRanrotWGenerator {              // encapsulate random number generator
     uint32 randbits[3];};  
   uint32 randbuffer[KK][2];            // history buffer
   uint32 randbufcopy[KK*2][2];         // used for self-test
-  enum TArch {LITTLE_ENDIAN1, BIG_ENDIAN1, NONIEEE, EXTENDEDPRECISIONLITTLEENDIAN};
-  TArch Architecture;                  // conversion to float depends on computer architecture
 };
 
 class TRandomMotherOfAll {             // encapsulate random number generator
@@ -191,7 +185,9 @@ class TRandomCombined : private RG1, private RG2 {
     RG2::RandomInit(seed+1);}
 
   double Random() {
-    long double r = RG1::Random() + RG2::Random();
+    long double r1 = RG1::Random();
+	long double r2 = RG2::Random();
+	long double r = r1 + r2;
     if (r >= 1.0) r -= 1.0;
     return r;}
     

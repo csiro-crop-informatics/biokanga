@@ -2220,7 +2220,8 @@ return(BuffOfs);
 int     // eBSFSuccess if no errors otherwise either eBSFerrParams or eBSFerrMem
 CSSW::StartMultiAlignments(int SeqLen,		// probe sequence is this length
 					etSeqBase *pProbeSeq,	// probe sequence 
-					int Alignments)			// number of pairwise alignments to allocate for
+					int Alignments,			// number of pairwise alignments to allocate for
+					UINT8 Flags)            // bit 0 set if probe loaded as a high confidence sequence
 {
 int Idx;
 UINT8 *pBase;
@@ -2290,6 +2291,9 @@ for(Idx = 1; Idx <= SeqLen; Idx++, pBase++)
 	pCol->Bases[0] = *pBase;
 	pCol = (tsMAlignCol *) ((UINT8 *)pCol + m_MAColSize);
 	}
+
+memset(m_MAFlags,0,sizeof(m_MAFlags));
+m_MAFlags[0] = Flags;
 m_MACoverage = 1;
 m_bStartedMultiAlignments = true;
 return(eBSFSuccess);
@@ -2582,8 +2586,9 @@ CSSW::AddMultiAlignment(UINT32 ProbeStartOfs,		// alignment starts at this probe
 					  UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset inclusive
 					  UINT32 TargStartOfs,			// alignment starts at this target sequence offset (1..n)
 					  UINT32 TargEndOfs,			// alignment ends at this target sequence offset inclusive
-						UINT32 TargSeqLen,			// target sequence length
-					  etSeqBase *pTargSeq)			// alignment target sequence
+					  UINT32 TargSeqLen,			// target sequence length
+					  etSeqBase *pTargSeq,			// alignment target sequence
+					  UINT8 Flags)				    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
 {
 tMAOp Op;
 tMAOp *pAlignOps;
@@ -2600,7 +2605,7 @@ if(m_MACoverage == m_MADepth)
 pAlignOps = m_pMAAlignOps;
 NumAlignOps = m_MAAlignOps;
 
-// iterate over probe columns, seting column base as unaligned, until the ProbeStartOfs column at which alignment starts
+// iterate over probe columns, setting column base as unaligned, until the ProbeStartOfs column at which alignment starts
 pCol = (tsMAlignCol *)m_pMACols;
 while(pCol->Ofs != 0 && pCol->Ofs < ProbeStartOfs)
 	{
@@ -2668,11 +2673,13 @@ while(pCol != NULL)
 		break;
 	pCol = (tsMAlignCol *)&m_pMACols[(pCol->NxtColIdx - 1) * (size_t)m_MAColSize];
 	}
-m_MACoverage += 1;
+m_MAFlags[m_MACoverage++] = Flags;
 return(1);
 }
 
 // generate multiple alignment consensus from multialignment columns at m_pMACols
+// when accumulating bases then bases are weighted according to if a given sequence base was from a high confidence sequence or if that base was from
+// a lower confidence sequence. Weighting to use is in m_MAFlags for each sequence
 // writes consensus base and score back into m_pMACols
 // score = TotalBases * (MostAbundant - NextAbundant) / (MostAbundant + NextAbundant)
 int
@@ -2688,6 +2695,7 @@ int TotBaseCnts;
 UINT8 Base;
 UINT8 *pBase;
 int BaseIdx;
+int BaseWeight;
 tsMAlignCol *pCol;
 tsMAlignCol *pInDelStartCol;
 tsMAlignCol *pInDelEndCol;
@@ -2739,8 +2747,9 @@ do
 		{
 		if((Base = (*pBase & eBaseEOS)) != eBaseUndef) // don't bother counting the undefined
 			{
-			BaseCnts[*pBase & eBaseEOS] += 1;
-			TotBaseCnts += 1;
+			BaseWeight = (int)(m_MAFlags[BaseIdx] & 0x0f);    // weighting is in bits 0..3
+			BaseCnts[*pBase & eBaseEOS] += BaseWeight;
+			TotBaseCnts += BaseWeight;
 			}
 		}
 

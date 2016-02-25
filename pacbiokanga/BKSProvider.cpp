@@ -2996,10 +2996,13 @@ while(JobRslt >= 0)
 					int SeqLen;						// probe sequence is this length
 					etSeqBase *pProbeSeq;			// probe sequence 
 					int Alignments;					// number of pairwise alignments to allocate for
+					UINT8 Flags;					// flags
 					ReqDataOfs = UnmarshalReq(sizeof(INT32),&pThreadPar->pReqData[0],&SeqLen);
 					ReqDataOfs += UnmarshalReq(SeqLen,&pThreadPar->pReqData[ReqDataOfs],&pProbeSeq);
 					ReqDataOfs += UnmarshalReq(sizeof(INT32),&pThreadPar->pReqData[ReqDataOfs],&Alignments);
-					iRslt = pClassInstance->pClass->StartMultiAlignments(SeqLen,pProbeSeq,Alignments);
+					ReqDataOfs += UnmarshalReq(sizeof(UINT8),&pThreadPar->pReqData[ReqDataOfs],&Flags);
+
+					iRslt = pClassInstance->pClass->StartMultiAlignments(SeqLen,pProbeSeq,Alignments,Flags);
 					}
 				else
 					iRslt = -1;
@@ -3149,6 +3152,7 @@ while(JobRslt >= 0)
 					  UINT32 TargEndOfs;			// alignment ends at this target sequence offset inclusive
 					  UINT32 TargSeqLen;			// target sequence length
 					  etSeqBase *pTargSeq;			// alignment target sequence
+					  UINT8 Flags;					// bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
 
 					ReqDataOfs = UnmarshalReq(sizeof(UINT32),pThreadPar->pReqData,&ProbeStartOfs);
 					ReqDataOfs += UnmarshalReq(sizeof(UINT32),&pThreadPar->pReqData[ReqDataOfs],&ProbeEndOfs);
@@ -3156,7 +3160,8 @@ while(JobRslt >= 0)
 					ReqDataOfs += UnmarshalReq(sizeof(UINT32),&pThreadPar->pReqData[ReqDataOfs],&TargEndOfs);
 					ReqDataOfs += UnmarshalReq(sizeof(UINT32),&pThreadPar->pReqData[ReqDataOfs],&TargSeqLen);
 					ReqDataOfs += UnmarshalReq(sizeof(etSeqBase **),&pThreadPar->pReqData[ReqDataOfs],&pTargSeq);
-					iRslt = pClassInstance->pClass->AddMultiAlignment(ProbeStartOfs,ProbeEndOfs,TargStartOfs,TargEndOfs,TargSeqLen,pTargSeq);
+					ReqDataOfs += UnmarshalReq(sizeof(UINT8),&pThreadPar->pReqData[ReqDataOfs],&Flags);
+					iRslt = pClassInstance->pClass->AddMultiAlignment(ProbeStartOfs,ProbeEndOfs,TargStartOfs,TargEndOfs,TargSeqLen,pTargSeq,Flags);
 					}
 				else
 					iRslt = -1;

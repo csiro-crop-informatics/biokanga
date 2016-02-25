@@ -1,6 +1,6 @@
 #pragma once
 
-// following group are limits are reasonably arbitary - could be increased with little risk but memory requirements could be an issue
+// following group are limits are reasonably arbitrary - could be increased with little risk but memory requirements could be an issue
 const UINT32 cMaxNumRefSeqs = 0x0ffffff;		// can process up to this many reference sequences (16M)
 const UINT64 cMaxTotRefSeqLens = 0x07ffffffff;	// which total in length to no more than this many bases (28Gbp)
 const UINT32 cMinRefSeqLen = 100;				// only accepting individual reference sequences of at least this length (100bp)

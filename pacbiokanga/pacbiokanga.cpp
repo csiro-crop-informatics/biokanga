@@ -31,7 +31,7 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "1.4.1";		// increment with each release
+const char *cpszProgVer = "1.5.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 

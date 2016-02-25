@@ -204,7 +204,7 @@ if(m_hFile != -1 && DiagLevel <= m_FileDiagLevel)
 	}
 if(DiagLevel <= m_ScreenDiagLevel)
 	{
-	printf("%s",szLine);
+	fprintf(stdout,szLine);
 	fflush(stdout);
 	}
 return(true);

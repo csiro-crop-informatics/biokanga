@@ -624,6 +624,7 @@ public:
 						int ProbeSeqLen,				// probe sequence length
 						etSeqBase *pProbeSeq,			// prequalify with cores from this probe sequence
 						int QualCoreLen,				// prequalifying core length
+						int DeltaCoreOfs,				// offset core windows of QualCoreLen along the probe sequence when checking for overlaps
 						int MaxPreQuals,				// max number of target sequences to pre-qualify
 						tsQualTarg *pQualTargs);		// into this prequalified list
 
@@ -640,10 +641,20 @@ public:
 									tsQualTarg *pQualTargs = NULL,	// holds prequalified target sequence identifiers
 									 int PacBioMinKmersExtn = cPacBioMinKmersExtn);		// accepting as putative overlap if extension matches at least this many cPacBiokExtnKMerLen (currently 4bp)	
 
-			int
-				QuickScoreOverlap(int SeqLen,				// both probe and target are of this minimum length (must be at least 16bp)
-											   etSeqBase *pProbe,		// scoring overlap of probe sequence onto
-											   etSeqBase *pTarg);		// this target sequence
+			int                  // estimated identity (0..100) of overlap between pProbe and pTarg derived by dividing final score by the MatchScore and then normalising by length
+				QuickScoreOverlap(int SeedCoreLen,          // initial seed core exact matching length between probe and target was this many bp 
+									int SeqLen,				// quick score over this many remaining bases in pProbe and pTarg following the exactly matching SeedCoreLen
+									etSeqBase *pProbe,		// probe sequence scoring onto
+									etSeqBase *pTarg,		// this target sequence
+								    int MatchScore = 3,     // exact match score  ((in any Pacbio sequence then expecting ~85% of all base calls to be correct), note that between any 2 sequences then the relative error rate doubles!
+									int InDelPenalty = 2,  // insertions and deletions much more likely than substitutions (in any Pacbio sequence then expecting ~14% of all error events to be insertions)
+							        int SubstitutePenalty = 7); // base call subs are relatively rare (in any Pacbio sequence then expecting ~1% of all error events to be substitutions)
+
+			int												// much quicker, but far less accurate, than the QuickScoreOverlap SW banded function (above) as scoring only based on the number of 4-mers matching within a 16bp window along the two overlaping sequences
+				QuickScoreOverlap(int SeqLen,				// both probe and target are of this minimum length (must be at least 16bp, will be clamped to be no more than 100bp)
+							  etSeqBase *pProbe,			// scoring overlap of probe sequence onto
+							  etSeqBase *pTarg);		    // this target sequence
+
 
 			 int									// < 0 if errors, 0 if no matches to any other chroms other than ProbeChromID allowing up to MaxTotMM, 1 if matches to any other chrom
 				MatchesOtherChroms( int ProbeChromID,	// probe is from this chrom
@@ -899,6 +910,8 @@ public:
 						void *pArray);		// allocated to hold suffix elements
 	void SetMaxQSortThreads(int MaxThreads);			// sets maximum number of threads to use in multithreaded qsorts
 
+	int						// returns the previously utilised MaxBaseCmpLen
+		SetMaxBaseCmpLen(int MaxBaseCmpLen);		// sets maximum number of bases which need to be compared for equality in multithreaded qsorts, will be clamped to be in range 10..(5*cMaxReadLen)
 
 	UINT32			// number of exactly matching KMers up to specified MaxToMatch inclusive, or 0 if no match, MaxToMatch+1 if more than MaxToMatch Kmers
 		NumExactKMers(UINT32 MaxToMatch,		// if 0 then no limit on matches, otherwise match up to this number of instances and if more then return MaxToMatch+1 

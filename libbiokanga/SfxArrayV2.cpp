@@ -26,6 +26,7 @@
 
 #include "./SfxArrayV2.h"
 
+static int gMaxBaseCmpLen = (5 * cMaxReadLen);   // used to limit the number of bases being compared for length in QSortSeqCmp32() and QSortSeqCmp40()
 static int QSortSeqCmp32(const void *p1,const void *p2);
 static int QSortSeqCmp40(const void *p1,const void *p2);
 static int QSortEntryNames(const void *p1,const void *p2);
@@ -70,6 +71,7 @@ m_MaxQSortThreads = cDfltSortThreads;
 m_MTqsort.SetMaxThreads(m_MaxQSortThreads);
 m_MaxSfxBlockEls = cMaxAllowConcatSeqLen;
 m_CASSeqFlags = 0;
+gMaxBaseCmpLen = (5 * cMaxReadLen);
 
 #ifdef _WIN32
 m_threadID = 0;
@@ -260,6 +262,19 @@ void
 CSfxArrayV3::SetMaxQSortThreads(int MaxThreads)			// sets maximum number of threads to use in multithreaded qsorts
 {
 m_MTqsort.SetMaxThreads(MaxThreads);
+}
+
+int						// returns the previously utilised MaxBaseCmpLen
+CSfxArrayV3::SetMaxBaseCmpLen(int MaxBaseCmpLen)		// sets maximum number of bases which need to be compared for equality in multithreaded qsorts, will be clamped to be in range 10..(5*cMaxReadLen)
+{
+int PrevMaxBaseCmpLen = gMaxBaseCmpLen;    
+if(MaxBaseCmpLen > (5 * cMaxReadLen))
+	MaxBaseCmpLen = (5 * cMaxReadLen);
+else
+	if(MaxBaseCmpLen < 10)
+		MaxBaseCmpLen = 10;
+gMaxBaseCmpLen = MaxBaseCmpLen;
+return(PrevMaxBaseCmpLen);
 }
 
 void
@@ -3146,6 +3161,7 @@ CSfxArrayV3::PreQualTargs(UINT32 ProbeEntryID,	// probe sequence entry identifie
 			int ProbeSeqLen,				// probe sequence length
 			etSeqBase *pProbeSeq,			// prequalify with cores from this probe sequence
 			int QualCoreLen,				// prequalifying core lengths
+			 int DeltaCoreOfs,				// offset core windows of QualCoreLen along the probe sequence when checking for overlaps
 			int MaxPreQuals,				// max number of target sequences to pre-qualify
 			tsQualTarg *pQualTargs)			// into this prequalified list
 {
@@ -3173,10 +3189,10 @@ int QuickScore;
 memset(pQualTargs,0,MaxPreQuals * sizeof(tsQualTarg));
 NumQualSeqs = 0;
 PrevHitIdx = 0;
-LastProbeOfs = ProbeSeqLen - QualCoreLen - 100;
+LastProbeOfs = ProbeSeqLen - (QualCoreLen + 100);
 pCoreSeq = pProbeSeq;
 MaxAcceptHomoCnt = (QualCoreLen * 80) / 100; // if any core contains more than 80% of the same base then treat as being a near homopolymer core and slough
-for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=1, pCoreSeq+=1)
+for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=DeltaCoreOfs, pCoreSeq+=DeltaCoreOfs)
 	{
 	// with PacBio reads most homopolymer runs are actual artefact inserts so don't bother processing these homopolymer runs for cores
 	if(MaxAcceptHomoCnt > 0)
@@ -3195,13 +3211,37 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=1, pCoreSeq+=1)
 		if(ProbeEntryID == TargEntryID)
 			continue;
 
-	   TargScoreLen = min(100, TargSeqLen - HitLoci);
-	   if(TargScoreLen < 16)
+	   TargScoreLen = min(150, TargSeqLen - HitLoci); // attempting to quick SW score over up to 200bp with a minimum of 100bp, this range including the QualCoreLen exactly matching core
+	   if(TargScoreLen < 100)
 			continue;
 
-	   pTargSeq = &pTargSeq[HitLoci];
-	   QuickScore = QuickScoreOverlap(TargScoreLen,&pCoreSeq[QualCoreLen], &pTargSeq[QualCoreLen]);
-	   if(QuickScore < (cPacBioMinKmersExtn + 10))
+		// see if exactly matching core can be extended, if extension is out to at least 60% of targeted scoring length then will accept as not needing the cost of a SW
+		int QAnchorIdx;
+		int MatchBaseLen;
+		int OverlapIdentity;
+		etSeqBase *pQAnchor;
+		etSeqBase *pTAnchor;
+		pTargSeq = &pTargSeq[HitLoci];
+		QAnchorIdx = QualCoreLen;
+		pQAnchor = &pCoreSeq[QAnchorIdx];
+		pTAnchor = &pTargSeq[QAnchorIdx];
+		for(MatchBaseLen = QualCoreLen; QAnchorIdx < TargScoreLen; QAnchorIdx++,pQAnchor++,pTAnchor++,MatchBaseLen++)
+			{
+			if((*pQAnchor & 0x07) != (*pTAnchor & 0x07))
+				break;
+			}
+		OverlapIdentity = (MatchBaseLen * 100) / TargScoreLen;  
+		if(OverlapIdentity < 60) // if able to get at least 60% of the TargScoreLen exactly matching then not worth the overhead of quickscore processing - just accept!
+			{
+			QuickScore = QuickScoreOverlap(TargScoreLen - MatchBaseLen,pQAnchor,pTAnchor);
+
+//			QuickScore = QuickScoreOverlap(min(10,MatchBaseLen),TargScoreLen - MatchBaseLen,pQAnchor,pTAnchor);
+			OverlapIdentity = ((MatchBaseLen + ((TargScoreLen - MatchBaseLen) * QuickScore)/100)*100)/TargScoreLen;
+			}
+		else
+			QuickScore = 0;
+
+	   if(OverlapIdentity < 60) 
 			continue;
 
 		pQualTarg = pQualTargs;
@@ -3244,10 +3284,117 @@ return(NumFiltCntQualSeqs);
 }
 
 
-int
-CSfxArrayV3::QuickScoreOverlap(int SeqLen,				// both probe and target are of this minimum length (must be at least 16bp)
+const int cMinQuickScoreSeedCoreLen = 8;					// expecting QuickScoreOverlap SeedCoreLen to be at least this many bp and
+const int cMaxQuickScoreSeedCoreLen = 100;					// no longer than this length
+const int cMinQuickScoreOverlapLen = 16;					// QuickScoreOverlap sequence lengths must be at least this many bp and
+const int cMaxQuickScoreOverlapLen = 1000;                   // no longer than this maximal bp length
+
+int															// estimated identity (0..100) of overlap between pProbe and pTarg derived by dividing final score by the MatchScore and then normalising by length
+CSfxArrayV3::QuickScoreOverlap(int SeedCoreLen,				// initial seed core exact matching length between probe and target was this many bp 
+									int SeqLen,				// quick score over this many remaining bases in pProbe and pTarg following the exactly matching SeedCoreLen, must be in the range cMaxQuickScoreOverlapLen..cMaxQuickScoreOverlapLen  
+									etSeqBase *pProbe,		// probe sequence scoring onto
+									etSeqBase *pTarg,		// this target sequence
+								    int MatchScore,			// exact match score  ((in any Pacbio sequence then expecting ~85% of all base calls to be correct), note that between any 2 sequences then the relative error rate doubles!
+									int InDelPenalty,		// insertions and deletions much more likely than substitutions (in any Pacbio sequence then expecting ~14% of all error events to be insertions)
+							        int SubstitutePenalty)  // base call subs are relatively rare (in any Pacbio sequence then expecting ~1% of all error events to be substitutions)
+{
+bool bNoScores;
+etSeqBase *pP1;
+etSeqBase *pT1;
+etSeqBase PBase;
+etSeqBase TBase;
+int HiScore;
+int BandScores[cMaxQuickScoreOverlapLen + 1];
+int *pCurScore;
+int DiagScore; 
+int PutativeMatchScore;
+int PutativeInsertScore;
+int PutativeDeleteScore;
+
+int IdxP1;
+int IdxT1;
+int NxtHiIdxT1;
+int HiIdxT1;
+int LoIdxT1;
+
+if(SeedCoreLen < cMinQuickScoreSeedCoreLen ||  SeedCoreLen > cMaxQuickScoreSeedCoreLen ||
+	SeqLen < cMinQuickScoreOverlapLen ||  SeqLen > cMaxQuickScoreOverlapLen ||
+	pProbe == NULL || pTarg == NULL)
+	return(0);
+
+DiagScore = SeedCoreLen * MatchScore;
+pCurScore = BandScores;
+for(IdxP1 = 0; IdxP1 < min(SeedCoreLen,SeqLen); IdxP1++,pCurScore++)
+	{
+	*pCurScore = DiagScore;
+	DiagScore -= InDelPenalty;
+	}
+if(IdxP1 < SeqLen+1)
+	memset(&BandScores[IdxP1],0,(SeqLen+1 - IdxP1) * sizeof(BandScores[0]));
+
+LoIdxT1 = 0;
+pP1 = pProbe;
+NxtHiIdxT1 = min(SeedCoreLen+1, SeqLen);
+for(IdxP1 = 0; IdxP1 < SeqLen; IdxP1 += 1, pP1 += 1)
+	{
+	pCurScore = &BandScores[LoIdxT1+1];
+	DiagScore = BandScores[LoIdxT1];
+	if(BandScores[LoIdxT1] > InDelPenalty)
+		BandScores[LoIdxT1] -= InDelPenalty;
+	else
+		BandScores[LoIdxT1] = 0;
+	PBase = *pP1 & 0x07;
+	bNoScores = true;
+	HiIdxT1 = NxtHiIdxT1;
+	pT1 = &pTarg[LoIdxT1+1];
+	for(IdxT1 = LoIdxT1; IdxT1 < HiIdxT1; IdxT1 += 1, pT1 += 1, pCurScore++)
+		{
+		if(*pCurScore == 0 && DiagScore == 0 && pCurScore[-1] == 0)
+			{
+			if(LoIdxT1 == IdxT1)
+				LoIdxT1 += 1;
+			continue;
+			}
+		NxtHiIdxT1 = min(IdxT1+2,SeqLen);
+		bNoScores = false;
+		TBase = *pT1 & 0x07;
+		if(PBase == TBase)			// exactly matches
+			PutativeMatchScore = DiagScore + MatchScore;
+		else                       // either mismatch or InDel
+			PutativeMatchScore = DiagScore - SubstitutePenalty; // assume it was a mismatch
+		PutativeInsertScore = *pCurScore - InDelPenalty;			// score as if it was an insertion
+		PutativeDeleteScore = pCurScore[-1] - InDelPenalty;		// score as if it was a deletion
+		DiagScore = *pCurScore;		
+		if(PutativeMatchScore > 0 && PutativeMatchScore >= PutativeInsertScore && PutativeMatchScore >= PutativeDeleteScore)
+			*pCurScore = PutativeMatchScore;
+		else
+			if(PutativeInsertScore > 0 && PutativeInsertScore >= PutativeMatchScore && PutativeInsertScore >= PutativeDeleteScore)
+				*pCurScore = PutativeInsertScore;
+			else
+				if(PutativeDeleteScore > 0 && PutativeDeleteScore >= PutativeMatchScore && PutativeDeleteScore >= PutativeInsertScore)
+					*pCurScore = PutativeDeleteScore;
+				else
+					*pCurScore = 0;
+		}
+	if(bNoScores)
+		return(0);
+	}
+
+HiScore = 0;
+pCurScore = &BandScores[1];
+for(IdxP1 = 0; IdxP1 < SeqLen; IdxP1 += 1, pCurScore++)
+	if(*pCurScore > HiScore)
+		HiScore = *pCurScore;
+if(HiScore > 0)
+	HiScore = (int)(((double)(HiScore + MatchScore-1) / (double)MatchScore) * (100.0 / (double)(SeqLen + SeedCoreLen)));
+return(HiScore);
+}
+
+// QuickScoreOverlap expected to return a count of less than 20 for random sequence overlaps, and >= 40 for real overlapping sequences even with the PacBio error profiles  
+int                                         //  estimated identity (0..100) of overlap between pProbe and pTarg, much quicker but far less accurate, than the SW banded function as scoring only based on the number of 4-mers matching within a 16bp window along the two overlapping sequences
+CSfxArrayV3::QuickScoreOverlap(int SeqLen,	// both probe and target are of this minimum length (must be at least 16bp), will be clamped to 200bp max
 				  etSeqBase *pProbe,		// scoring overlap of probe sequence onto
-				  etSeqBase *pTarg)		// this target sequence
+				  etSeqBase *pTarg)		    // this target sequence
 {
 	int Matches;
 	int Ofs;
@@ -3259,45 +3406,55 @@ CSfxArrayV3::QuickScoreOverlap(int SeqLen,				// both probe and target are of th
 
 	if (SeqLen < 16 || pProbe == NULL || pTarg == NULL)
 		return(0);
+	if(SeqLen > 200)
+		SeqLen = 200;
 
 	Matches = 0;
 	Targ16Bases = 0;
 	Probe4Bases = 0;
 
-	for (Ofs = 0; Ofs < 4; Ofs++)
-	{
+	for (Idx = 0; Idx < 4; Idx++)  // probe sliding window is 4bp packed into 8bits
+		{
 		Probe4Bases <<= 2;
 		Probe4Bases |= *pProbe++ & 0x03;
-	}
+		}
 
-	for (Ofs = 0; Ofs < 8; Ofs++)
-	{
+	for (Idx = 0; Idx < 10; Idx++)  // target window initially starts out as 10bp but will be increased out to a max of 16bp packed into 32bits
+		{
 		Targ16Bases <<= 2;
 		Targ16Bases |= *pTarg++ & 0x03;
-	}
+		}
 
-	for (Ofs = 0; Ofs < SeqLen; Ofs++)
-	{
-		Targ4Bases = Targ16Bases;
-		MaxBases2Cmp = min(Ofs + 8, 16);
-		for (Idx = 0; Idx < MaxBases2Cmp; Idx++)
+
+	for (Ofs = 0; Ofs < SeqLen; Ofs+=4) // iterating, sliding windows by 4bp, over full sequence length
 		{
-			if (Probe4Bases == (Targ4Bases & 0x0ff))
+		Targ4Bases = Targ16Bases;
+		MaxBases2Cmp = min(Ofs + 6, 12);
+		for (Idx = 0; Idx < MaxBases2Cmp; Idx++)
 			{
+			if (Probe4Bases == (Targ4Bases & 0x0ff))
+				{
 				Matches += 1;
 				break;
-			}
+				}
 			Targ4Bases >>= 2;
-		}
-		Targ16Bases <<= 2;
-		Targ16Bases |= *pTarg++ & 0x03;
-		Probe4Bases <<= 2;
-		Probe4Bases |= *pProbe++ & 0x03;
-		Probe4Bases &= 0x0ff;
-	}
+			}
 
-return(Matches);
+		for (Idx = Ofs; Idx < (Ofs + 4) && Idx < SeqLen; Idx++)  // slide target and probe windows to right by at most 4bp
+			{
+			Targ16Bases <<= 2;
+			Targ16Bases |= *pTarg++ & 0x03;
+			Probe4Bases <<= 2;
+			Probe4Bases |= *pProbe++ & 0x03;
+			}
+		Probe4Bases &= 0x0ff;           // probe window is 4bp only!
+		}
+Matches *= 4;       // 4 bases per match
+if(Matches > SeqLen)
+	Matches = SeqLen;
+return((Matches * 100) / SeqLen);
 }
+
 
 INT64						// returned hit idex (1..n) or 0 if no hits
 CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
@@ -3329,7 +3486,9 @@ tsQualTarg *pQualTarg;
 etSeqBase *pQAnchor;
 etSeqBase *pTAnchor;
 int MatchBaseLen;
+int OverlapIdentity;
 int QAnchorIdx;
+int QuickScore;
 
 etSeqBase *pEl2;
 
@@ -3379,7 +3538,7 @@ if(SeedCoreLen >= cMaxPacBioSeedExtn)	// no seed extension required?
 	}
 
 // will be seed extending so ensure sufficient sequence to seed extend
-if(ProbeLen < (SeedCoreLen + cPacBioSeedCoreExtn))
+if(ProbeLen < cPacBioSeedCoreExtn)
 	return(0);
 
 pTarg = (etSeqBase *)&m_pSfxBlock->SeqSuffix[0];
@@ -3448,7 +3607,7 @@ while(1)
 		HitLoci = (UINT32)(TargLoci - pEntry->StartOfs);
 		}
 
-	if(pEntry->SeqLen < (HitLoci + SeedCoreLen + TargKMerLen + cPacBioSeedCoreExtn + 20))
+	if(pEntry->SeqLen < (HitLoci + cPacBioSeedCoreExtn + 10))
 		{
 		if(!bFirst)
 			PrevHitIdx += 1;
@@ -3461,15 +3620,23 @@ while(1)
 	QAnchorIdx = SeedCoreLen;
 	pQAnchor = &pProbeSeq[QAnchorIdx];
 	pTAnchor = &pEl2[QAnchorIdx];
-	for(MatchBaseLen = SeedCoreLen; QAnchorIdx <= cPacBioSeedCoreExtn; QAnchorIdx++,pQAnchor++,pTAnchor++,MatchBaseLen++)
+	for(MatchBaseLen = SeedCoreLen; QAnchorIdx < cPacBioSeedCoreExtn; QAnchorIdx++,pQAnchor++,pTAnchor++,MatchBaseLen++)
 		{
 		if((*pQAnchor & 0x07) != (*pTAnchor & 0x07))
 			break;
 		}
-	if(MatchBaseLen < (PacBioMinKmersExtn * 2))
-		MatchBaseLen = QuickScoreOverlap(cPacBioSeedCoreExtn - QAnchorIdx, pQAnchor, pTAnchor);
+	OverlapIdentity = (MatchBaseLen * 100) / cPacBioSeedCoreExtn;  
 
-	if(MatchBaseLen < PacBioMinKmersExtn)
+	if(MatchBaseLen < 60)
+		{
+		QuickScore = QuickScoreOverlap(cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);
+//		QuickScore = QuickScoreOverlap(min(10,MatchBaseLen),cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);
+		OverlapIdentity = ((MatchBaseLen + ((cPacBioSeedCoreExtn - MatchBaseLen) * QuickScore)/100)*100)/cPacBioSeedCoreExtn;
+		}
+	else
+		QuickScore = OverlapIdentity;
+
+	if(OverlapIdentity < 60)  
 		{
 		if(!bFirst)
 			PrevHitIdx += 1;
@@ -8826,8 +8993,8 @@ int MaxCmpLen;
 pSeq1 = &gpSeq[*(UINT32 *)p1];
 pSeq2 = &gpSeq[*(UINT32 *)p2];
 
-// compare seqs for at most (5 * cMaxReadLen) bases
-MaxCmpLen = 5 * cMaxReadLen;
+// compare seqs for at most gMaxBaseCmpLen bases, defaulted to (5 * cMaxReadLen) 
+MaxCmpLen = gMaxBaseCmpLen;
 while(MaxCmpLen--)
 	{
 	if((b1 = (*pSeq1++ & 0x0f)) != (b2 = (*pSeq2++ & 0x0f)))
@@ -8858,8 +9025,8 @@ Ofs2 |= ((INT64)pP[4] << 32);
 pSeq1 = &gpSeq[Ofs1];
 pSeq2 = &gpSeq[Ofs2];
 
-// compare seqs for at most (5 * cMaxReadLen) bases
-MaxCmpLen = 5 * cMaxReadLen;
+// compare seqs for at most gMaxBaseCmpLen bases, defaulted to (5 * cMaxReadLen) 
+MaxCmpLen = gMaxBaseCmpLen;
 while(MaxCmpLen--)
 	{
 	if((b1 = (*pSeq1++ & 0x0f)) != (b2 = (*pSeq2++ & 0x0f)))

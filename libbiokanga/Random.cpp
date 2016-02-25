@@ -27,20 +27,72 @@
 *  GNU General Public License www.gnu.org/copyleft/gpl.html                  *
 *****************************************************************************/
 
+typedef enum  TArch {LITTLE_ENDIAN1, BIG_ENDIAN1, NONIEEE, EXTENDEDPRECISIONLITTLEENDIAN, ENDIANUNKNOWN} eTarch;
+static eTarch GetEndian(void)
+{
+eTarch Architecture;                  // conversion to float depends on computer architecture
+
+  // detect computer architecture
+union {double f; uint32 i[3];} convert;
+
+convert.i[2] = 0;
+convert.f = 1.0;
+if (convert.i[2] == 0x3FFF)				// must be 80bit long double 
+	Architecture = EXTENDEDPRECISIONLITTLEENDIAN;
+else
+	if (convert.i[1] == 0x3FF00000)			// must be a 64bit double using little endian
+		Architecture = LITTLE_ENDIAN1;
+	else 
+		if (convert.i[0] == 0x3FF00000)		// must be a 64bit double using big endian		
+			Architecture = BIG_ENDIAN1;
+		else 
+			Architecture = NONIEEE;		// haven't a clue :-)
+return(Architecture);
+}
+
+static double ToDouble(uint32 x)
+{
+   // The fastest way to convert random bits to floating point is as follows:
+  // Set the binary exponent of a floating point number to 1+bias and set
+  // the mantissa to random bits. This will give a random number in the 
+  // interval [1,2). Then subtract 1.0 to get a random number in the interval
+  // [0,1). This procedure requires that we know how floating point numbers
+  // are stored. The storing method is tested in function RandomInit and saved 
+  // in the variable Architecture. The following switch statement can be
+  // omitted if the architecture is known. (generally an Intel  PC running Windows or Linux uses
+  // LITTLE_ENDIAN1 architecture):
+union {double f; uint32 i[3];} convert;
+  convert.f = 1.0;
+  switch (GetEndian()) {
+	  case EXTENDEDPRECISIONLITTLEENDIAN:		// 80bit
+		convert.i[1] = 0x80000000 | (x >> 1);
+		convert.i[0] =  x << 31;
+		return convert.f - 1.0;
+
+	  case LITTLE_ENDIAN1:						// 64bit little endian
+		convert.i[0] =  x << 20;
+		convert.i[1] = (x >> 12) | convert.i[1];
+		return convert.f - 1.0;
+
+	  case BIG_ENDIAN1:
+		convert.i[0] = (x >> 12) | convert.i[1];	// 64bit big endian
+		convert.i[1] =  x << 20;
+		return convert.f - 1.0;
+
+		case NONIEEE: default:
+			break;
+	} 
+  // This somewhat slower method works for all architectures, including 
+  // non-IEEE floating point representation:
+  return (double)x * (1.0/((double)(uint32)(-1L)+1.0));
+}
+
 void TRandomMersenne::RandomInit(uint32 seed) {
   // re-seed generator
   mt[0]= seed;
   for (mti=1; mti < MERS_N; mti++) {
     mt[mti] = (1812433253UL * (mt[mti-1] ^ (mt[mti-1] >> 30)) + mti);}
-
-  // detect computer architecture
-  union {double f; uint32 i[2];} convert;
-  convert.f = 1.0;
-  // Note: Old versions of the Gnu g++ compiler may make an error here,
-  // compile with the option  -fenum-int-equiv  to fix the problem
-  if (convert.i[1] == 0x3FF00000) Architecture = LITTLE_ENDIAN1;
-  else if (convert.i[0] == 0x3FF00000) Architecture = BIG_ENDIAN1;
-  else Architecture = NONIEEE;}
+}
 
   
 void TRandomMersenne::RandomInitByArray(uint32 seeds[], int length) {
@@ -96,31 +148,9 @@ uint32 TRandomMersenne::BRandom() {
   
 double TRandomMersenne::Random() {
   // output random float number in the interval 0 <= x < 1
-  union {double f; uint32 i[2];} convert;
   uint32 r = BRandom(); // get 32 random bits
-  // The fastest way to convert random bits to floating point is as follows:
-  // Set the binary exponent of a floating point number to 1+bias and set
-  // the mantissa to random bits. This will give a random number in the 
-  // interval [1,2). Then subtract 1.0 to get a random number in the interval
-  // [0,1). This procedure requires that we know how floating point numbers
-  // are stored. The storing method is tested in function RandomInit and saved 
-  // in the variable Architecture. The following switch statement can be
-  // omitted if the architecture is known. (A PC running Windows or Linux uses
-  // LITTLE_ENDIAN1 architecture):
-  switch (Architecture) {
-  case LITTLE_ENDIAN1:
-    convert.i[0] =  r << 20;
-    convert.i[1] = (r >> 12) | 0x3FF00000;
-    return convert.f - 1.0;
-  case BIG_ENDIAN1:
-    convert.i[1] =  r << 20;
-    convert.i[0] = (r >> 12) | 0x3FF00000;
-    return convert.f - 1.0;
-  case NONIEEE: default:
-  ;} 
-  // This somewhat slower method works for all architectures, including 
-  // non-IEEE floating point representation:
-  return (double)r * (1./((double)(uint32)(-1L)+1.));}
+  return(ToDouble(r));
+}
 
   
 int TRandomMersenne::IRandom(int min, int max) {
@@ -177,7 +207,7 @@ double TRandomMotherOfAll::Random() {
 #endif
 
   x[0] = c - x[4];
-  x[4] = x[4] * (1./(65536.*65536.));
+  x[4] = x[4] * (1./(65536.0 *65536.0));
   return x[0];}
 
 
@@ -197,7 +227,7 @@ void TRandomMotherOfAll::RandomInit (uint32 seed) {
   // make random numbers and put them into the buffer
   for (i=0; i<5; i++) {
     s = s * 29943829 - 1;
-    x[i] = s * (1./(65536.*65536.));}
+    x[i] = s * (1./(65536.0 *65536.0));}
   // randomize some more
   for (i=0; i<19; i++) Random();}
 
@@ -233,12 +263,7 @@ uint32 _lrotl (uint32 x, int r) {
 // constructor:
 TRanrotBGenerator::TRanrotBGenerator(uint32 seed) {
   RandomInit(seed);
-  // detect computer architecture
-  union {double f; uint32 i[2];} convert;
-  convert.f = 1.0;
-  if (convert.i[1] == 0x3FF00000) Architecture = LITTLE_ENDIAN1;
-  else if (convert.i[0] == 0x3FF00000) Architecture = BIG_ENDIAN1;
-  else Architecture = NONIEEE;}
+}
 
 
 // returns a random number between 0 and 1:
@@ -260,23 +285,8 @@ double TRanrotBGenerator::Random() {
       else {
         printf("Random number generator returned to initial state");}
       exit(1);}
-  // conversion to float:
-  union {double f; uint32 i[2];} convert;
-  switch (Architecture) {
-  case LITTLE_ENDIAN1:
-    convert.i[0] =  x << 20;
-    convert.i[1] = (x >> 12) | 0x3FF00000;
-    return convert.f - 1.0;
-  case BIG_ENDIAN1:
-    convert.i[1] =  x << 20;
-    convert.i[0] = (x >> 12) | 0x3FF00000;
-    return convert.f - 1.0;
-  case NONIEEE: default:
-  ;} 
-  // This somewhat slower method works for all architectures, including 
-  // non-IEEE floating point representation:
-  return (double)x * (1./((double)(uint32)(-1L)+1.));}
-
+  return(ToDouble(x));
+}
 
 // returns integer random number in desired interval:
 int TRanrotBGenerator::IRandom(int min, int max) {
@@ -347,12 +357,7 @@ void TRanrotBGenerator::RandomInit (uint32 seed) {
 // constructor:
 TRanrotWGenerator::TRanrotWGenerator(uint32 seed) {
   RandomInit(seed);
-  // detect computer architecture
-  randbits[2] = 0; randp1 = 1.0;
-  if (randbits[2] == 0x3FFF) Architecture = EXTENDEDPRECISIONLITTLEENDIAN;
-  else if (randbits[1] == 0x3FF00000) Architecture = LITTLE_ENDIAN1;
-  else if (randbits[0] == 0x3FF00000) Architecture = BIG_ENDIAN1;
-  else Architecture = NONIEEE;}
+ }
 
 
 uint32 TRanrotWGenerator::BRandom() {
@@ -381,23 +386,32 @@ uint32 TRanrotWGenerator::BRandom() {
   return y;}
 
 
-long double TRanrotWGenerator::Random() {
-  // returns a random number between 0 and 1.
-  uint32 z = BRandom();  // generate 64 random bits
-  switch (Architecture) {
-  case EXTENDEDPRECISIONLITTLEENDIAN:
-    // 80 bits floats = 63 bits resolution
-    randbits[1] = z | 0x80000000;  break;
-  case LITTLE_ENDIAN1:
-    // 64 bits floats = 52 bits resolution
-    randbits[1] = (z & 0x000FFFFF) | 0x3FF00000;  break;
-  case BIG_ENDIAN1:
-    // 64 bits floats = 52 bits resolution
-    randbits[0] = (randbits[0] & 0x000FFFFF) | 0x3FF00000;  break;
-  case NONIEEE: default:
-    // not a recognized floating point format. 32 bits resolution
-    return (double)z * (1./((double)(uint32)(-1L)+1.));}
-  return randp1 - 1.0;}
+long double 
+TRanrotWGenerator::Random() {
+   // returns a random number between 0 and 1.
+  uint32 z = BRandom();  // generate 32 random bits
+  randp1 = 1.0;
+  switch (GetEndian()) {
+	  case EXTENDEDPRECISIONLITTLEENDIAN:
+		// 80 bits floats = 63 bits resolution
+		randbits[1] = z >> 1 | 0x80000000;
+		randbits[0] = z << 31;  
+		break;
+	  case LITTLE_ENDIAN1:
+		// 64 bits floats = 52 bits resolution
+		randbits[1] = ((z >> 10) & 0x000FFFFF) | 0x3FF00000;
+		randbits[0] = z << 22;  
+        break;
+	  case BIG_ENDIAN1:
+		// 64 bits floats = 52 bits resolution
+		randbits[1] = z << 22;
+		randbits[0] = ((z >> 10) & 0x000FFFFF) | 0x3FF00000;
+		break;
+	case NONIEEE: default:
+		// not a recognized floating point format. 32 bits resolution
+		return (double)z * (1./((double)(uint32)(-1L)+1.));}
+  return randp1 - 1.0;
+}
 
 
 int TRanrotWGenerator::IRandom(int min, int max) {
@@ -419,7 +433,7 @@ void TRanrotWGenerator::RandomInit (uint32 seed) {
       seed = seed * 2891336453UL + 1;
       randbuffer[i][j] = seed;}}
   // set exponent of randp1
-  randbits[2] = 0; randp1 = 1.0;
+  randp1 = 1.0; 
   // initialize pointers to circular buffer
   p1 = 0;  p2 = JJ;
   // store state for self-test
