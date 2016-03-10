@@ -791,6 +791,12 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&m_pSeqBuff[m_SeqBuffLen],(int)min(Ava
 		AvailBuffSize = m_AllocdSeqBuffMem - m_SeqBuffLen;
 		}
 	}
+if(Rslt < eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Encountered parse errors");
+	while(Fasta.NumErrMsgs())
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,Fasta.GetErrMsg());
+	}
 if(bExtract && m_SeqBuffLen)					// was previous sequence to be extracted?
 	WriteSeqFile(XSense,szInDescription,(int)m_SeqBuffLen,m_pSeqBuff);
 

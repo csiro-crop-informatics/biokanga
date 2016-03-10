@@ -31,10 +31,6 @@ const int cQualCoreDelta = (cQualCoreKMerLen * 2) + 1;	 // looking for matching 
 const int cQualCoreThres = 25;							 // require at least this many kmers to be shared between probe and target before accepting core
 const int cQualCoreHomopolymer = 80;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough
 
-const int cDfltBinClusterSize = 100;					// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
-const int cDfltMinPropBinned = 60;						// must be at least this proportion of bins with at least one core hit over putative overlap length 
-const int cDfltScaffMinPropBinned = 80;					// when scaffolding then must be at least this proportion of bins with at least one core hit over putative overlap length 
-
 const int cMinPBSeqLen = 500;						 // allowing for minimum PacBio sequences to be specified down to this length (could be targeting RNA transcriptome)
 const int cDfltMinPBSeqLen = 10000;					 // default is to allow for PacBio sequences down to this minimum length
 const int cDfltMaxPBSeqLen = 35000;					 // default is to allow for PacBio sequences up to to this maximum length

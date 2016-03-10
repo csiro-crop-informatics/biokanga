@@ -36,17 +36,17 @@ const int cDfltScaffMaxArtefactDev = 15;		// but when scaffolding with error cor
 const int cMaxMaxArtefactDev = 70;			// user can specify up to this maximum 
 
 
-const int cMaxPacBioErrCorLen = 250000;					// allowing for error corrected read sequences of up to this length
-const int cMaxPacBioMAFLen = (cMaxPacBioErrCorLen * 100);	// allowing for multialignment format buffering of up to this length
+const int cMaxPacBioErrCorLen = cMaxSWQuerySeqLen;			// allowing for error corrected read sequences of up to this length
+const int cMaxPacBioMAFLen    = cMaxSWMAFBuffSize;			// allowing for multialignment format buffering of up to this length
 
-const int cDfltRMIReqDataSize = (cMaxPacBioErrCorLen * 5);		// RMI: each worker thread default allocates to process up to this much request data
-const int cDfltRMIReqParamSize = 5000;					// RMI: each worker thread default allocates to process up to this much parameterisation data
-const int cDfltRMIRespDataSize = (cMaxPacBioErrCorLen * 5);		// RMI: each worker thread default allocates to return up to this much response data
-const int cDfltRMIBufferSize = (cDfltRMIRespDataSize - 10000);	// each worker thread default allocates to hold at most this sized MAlignCols2fasta/MAlignCols2MFA alignments
+const int cDfltRMIReqDataSize = cMaxSWReqPayloadSize;		// RMI: each worker thread default allocates to process up to this much request data
+const int cDfltRMIReqParamSize = cMaxSWParamLen;			// RMI: each worker thread default allocates to process up to this much parameterisation data
+const int cDfltRMIRespDataSize = cMaxSWRespPayloadSize;		// RMI: each worker thread default allocates to return up to this much response data
+const int cDfltRMIBufferSize =   cMaxSWMAFBuffSize;			// each worker thread default allocates to hold at most this sized MAlignCols2fasta/MAlignCols2MFA alignments
 
 const UINT32 cRMI_SecsTimeout = 180;				// allowing for most RMI SW requests to take at most this many seconds to complete (request plus response)
 const UINT32 cRMI_AlignSecsTimeout = 600;			// allowing for a RMI SW alignment request to take at most this many seconds to complete (request plus response)
-const UINT32 cRMIThreadsPerCore = 5;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
+const UINT32 cRMIThreadsPerCore = 4;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
                                                     // predicated on assuming that the qualifying of read pairs for SW requires around 20% of per core time, the other 80% is spent on SW
 
 typedef enum TAG_ePBPMode {								// processing mode
@@ -65,8 +65,10 @@ typedef struct TAG_sPBECoreHit {
 	UINT32 ProbeOfs;                // hit was from this probe offset
 	UINT32 TargOfs;					// onto this target offset
 	UINT32 HitLen;					// hit was of this length
+	UINT32 WinHits;					// number of core hits onto target relative to this core which are within a window of probelen
 	UINT8 flgRevCpl:1;				// 1 if core sequence was revcpl'd before matching
 	UINT8 flgMulti:1;				// 1 if core sequence was target multiloci and this instance to not be further processed
+	UINT8 flgClustered:1;			// 1 if core hit identified as part of a cluster of hits
 	} tsPBECoreHit;
 
 typedef struct TAG_sPBEScaffNode {
@@ -122,7 +124,6 @@ typedef struct TAG_sThreadPBErrCorrect {
 	UINT32 DeltaCoreOfs;			// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
 	UINT32 CoreSeqLen;				// putative overlaps are explored if there are cores of at least this length in any putative overlap
 	UINT32 MinNumCores;				// and if the putative overlap contains at least this many cores
-	UINT32 MinPropBinned;			// and if the putative overlap contains at least this proportion (1..100) of 100bp bins binned cores
 	UINT32 MaxAcceptHitsPerSeedCore; // limit accepted hits per seed core to no more this many
 	UINT32 MinPBSeqLen;				// only process PacBio sequences which are at least this length
 
@@ -186,9 +187,6 @@ class CPBErrCorrect
 
 	UINT32 m_MinSeedCoreLen;				// use seed cores of this length when identifying putative overlapping scaffold sequences
 	UINT32 m_MinNumSeedCores;				// require at least this many seed cores between overlapping scaffold sequences
-	UINT32 m_BinClusterSize;				// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
-	UINT32 m_MinPropBinned;					// require that the putative overlap contains at least this proportion (1..100) of m_BinClusterSize clustered binned cores
-
 
 	int m_SWMatchScore;						// SW score for matching bases (0..100)
 	int m_SWMismatchPenalty;				// SW mismatch penalty (-100..0)

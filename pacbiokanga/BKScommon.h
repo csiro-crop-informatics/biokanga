@@ -28,7 +28,7 @@ const UINT32 cMaxNumSessions = cMaxConcurrentSessions;	// support a maximum of t
 const UINT32 cDfltNumSessions = 25;				// the default is support for at most this many concurrent sessions  a given service type (note that a single session can support multiple service instances of the same type)
 const UINT32 cDfltMinSessions = 1;				// must be support for at least this many concurrent sessions for a given service type 
 
-const UINT32 cMaxServiceInsts = 200;			// can only support at most this maximum number of service instances by single service provider (must fit within 9bits)
+const UINT32 cMaxServiceInsts = 100;			// can only support at most this maximum number of service instances by single service provider (must fit within 9bits)
 const UINT32 cMaxClassInsts = cMaxServiceInsts;	// any service provider can support up to this many class instances in a session
 
 const UINT32 cDfltServiceInsts = 64;			// the default is support for at most this maximum number of service instances for any single service provider
@@ -49,12 +49,15 @@ const UINT32 cAbsMaxProcSecs = 36000;				// service providers expected to take l
 
 
 // following maximal sizes are for the eBKSPTSmithWaterman service providers
-const UINT32 cMaxSWReqPayloadSize = 0x03ffff;	// request payloads to the service provider, including framing, can be up to this size (UINT8s) 
-const UINT32 cMaxSWRespPayloadSize = 0x0fffff;	// response payloads from the service provider, including framing, can be up to this size (UINT8s) 
-const UINT32 cMaxSWQuerySeqLen = 200000;        // maximum length of any query sequence
-const UINT32 cMaxSWTargSeqLen  = 200000;		// maximum length of any target sequence
-const UINT32 cMaxSWParamLen = 10000;             // maximum length of any SW parameterisation set
-const UINT32 cMaxSWProcSecs = 600;				// service providers expected to take less than this number of seconds to process and return response for any individual request
+const UINT32 cMaxSWQuerySeqLen = 0x03ffff;        // maximum length of any query sequence
+const UINT32 cMaxSWTargSeqLen  = 0x03ffff;		  // maximum length of any target sequence
+const UINT32 cTypicalSWSeqLen  = 0x04fff;         // expecting the mean length of the PacBio reads to be typically around 20Kbp
+const UINT32 cMaxSWParamLen = 0x03fff;            // maximum length of any SW parameterisation set
+const UINT32 cMaxSWReqPayloadSize = (cMaxSWQuerySeqLen + cMaxSWTargSeqLen + cMaxSWParamLen + 0x0fff);	// request payloads to the service provider, including framing, can be up to this size (UINT8s) 
+const UINT32 cMaxSWMAFBuffSize = (cTypicalSWSeqLen * 200 * 10); // allowing for MAFs to be returned with up to 200x coverage, 10x to allow for InDels, over typically sized reads 
+const UINT32 cMaxSWRespPayloadSize = (cMaxSWMAFBuffSize + 0x0fff);	// maximal length response payloads from the service provider, including framing
+
+const UINT32 cMaxSWProcSecs = 600;				  // service providers expected to take less than this number of seconds to process and return response for any individual request
 
 
 // Endpoint service providers are classified as providing one of the following exclusive service types

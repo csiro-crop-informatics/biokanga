@@ -414,7 +414,7 @@ for(FileIdx = 0; FileIdx < m_NumInputFiles; FileIdx++)
 		m_LoadQuerySeqsRslt = eBSFerrFileAccess;
 		m_bAsyncLoading = false;
 		ReleaseLock(true);
-		return(Rslt);
+		return(eBSFerrOpnFile);
 		}
 	Rslt = eBSFSuccess;
 	for (int FileID = 0; Rslt >= eBSFSuccess &&  FileID < glob.FileCount(); ++FileID)
@@ -534,6 +534,11 @@ for(FileIdx = 0; FileIdx < m_NumInputFiles; FileIdx++)
 				AllocdBuffSize = NewSize;
 				AvailBuffSize = AllocdBuffSize - BuffOfs;
 				}
+			}
+		if(Rslt < eBSFSuccess && Rslt != eBSErrSession)
+			{
+			while(Fasta.NumErrMsgs())
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,Fasta.GetErrMsg());
 			}
 		Fasta.Close();
 		if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// last entry

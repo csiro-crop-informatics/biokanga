@@ -108,7 +108,7 @@ struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads 
 struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 5000, range 1000 to 20000)");
 
 struct arg_file *contamfile = arg_file0("I","contam","<file>",		"file containing contaminate sequences");
-struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences minimum accuracy rate (default 85, range 85 to 99");
+struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences minimum accuracy rate (default 80, range 70 to 99");
 struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",		"Minimum contaminate overlap length (default 500, range 500 to 5000");
 
 struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file(s) containing PacBio long reads to be filtered");
@@ -314,10 +314,10 @@ if (!argerrors)
 
 	if(PMode == ePBPMContam)
 		{
-		ContamARate = contamarate->count ? contamarate->ival[0] : 85;
-		if(ContamARate < 85 || ContamARate > 100)
+		ContamARate = contamarate->count ? contamarate->ival[0] : 80;
+		if(ContamARate < 70 || ContamARate > 100)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: PacBio sequences accuracy rate '-c%d' must be in range 85..99",ContamARate);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: PacBio sequences accuracy rate '-c%d' must be in range 70..99",ContamARate);
 			return(1);
 			}
 		if(ContamARate == 100)	// whilst accepting user input of 100% accuracy internally allowing the odd error event!
@@ -758,10 +758,9 @@ else
 		return(eBSFerrInternal);
 		}
 
-	UINT32 DeltaCoreOfs;				// ranges between 1 and 8
-	UINT32 CoreSeqLen;                  // ranges between 10 and 15
-	UINT32 MinNumCores;                 // ranges between 5 and 10 
-	UINT32 MinPropBinned;               // ranges between 50 and 78
+	UINT32 DeltaCoreOfs;				// ranges between 1 and 4
+	UINT32 CoreSeqLen;                  // ranges between 10 and 25
+	UINT32 MinNumCores;                 // ranges between 5 and 50 
 	int MaxInitiatePathOfs;	// require SW paths to have started within this many bp (0 to disable) on either the probe or target - effectively anchoring the SW 
 	int OverlapFloat;		// with this overlap float
 
@@ -769,36 +768,69 @@ else
 	int MismatchPenalty = -7;    
 	int GapOpenPenalty = -4;     
 	int GapExtnPenalty = -1;     
-	int DlyGapExtn = 2;          
+	int DlyGapExtn = 2;   
 
-	if(ContamARate > 97)
+	if(ContamARate <= 80)		// 70..80
 		{
-		MatchScore = 1;
-		MismatchPenalty = -2;
-		GapOpenPenalty = -3;
-		GapExtnPenalty = -1;
-		DlyGapExtn = 1;
+		DeltaCoreOfs = 1;
+		CoreSeqLen = 10;
+		MinNumCores = 5;
+		MaxInitiatePathOfs = 1000;
+		OverlapFloat = 600;
 		}
-	else 	
-		if (ContamARate > 92)
+	else
+		{
+		if(ContamARate <= 85)    // 81..85 
 			{
-			MatchScore = 2;
-			MismatchPenalty = -4;
-			GapOpenPenalty = -3;
-			GapExtnPenalty = -1;
-			DlyGapExtn = 1;
+			DeltaCoreOfs = 2;
+			CoreSeqLen = 10;
+			MinNumCores = 5 + ContamARate - 81;
+			MaxInitiatePathOfs = 800;
+			OverlapFloat = 500;
 			}
+		else
+			{
+			if(ContamARate < 90) // 86..90
+				{
+				DeltaCoreOfs = 2;
+				CoreSeqLen = 11;
+				MinNumCores = 10 + 2 * (ContamARate - 86);
+				MaxInitiatePathOfs = 600;
+				OverlapFloat = 400;
+				}
+			else
+				{
+				if(ContamARate <= 95) // 91..95
+					{
+					MatchScore = 2;
+					MismatchPenalty = -4;
+					GapOpenPenalty = -3;
+					GapExtnPenalty = -1;
+					DlyGapExtn = 1;
+					DeltaCoreOfs = 3;
+					CoreSeqLen = 12 + (ContamARate - 91);
+					MinNumCores = 20 + 2 * (ContamARate - 91);
+					MaxInitiatePathOfs = 400;
+					OverlapFloat = 300;
+					}
+				else                 // 96..100
+					{
+					MatchScore = 1;
+					MismatchPenalty = -2;
+					GapOpenPenalty = -3;
+					GapExtnPenalty = -1;
+					DlyGapExtn = 1;
+					DeltaCoreOfs = 4;
+					CoreSeqLen = 15 + (ContamARate - 96);
+					MinNumCores = 36 + 4 * (ContamARate - 96);
+					MaxInitiatePathOfs = 200;
+					OverlapFloat = 150;
+					}
+				}
+			}
+		}      
 
-
-	DeltaCoreOfs = 1 + (ContamARate - 85)/2;
-	CoreSeqLen = 10 + (1 + ContamARate - 85)/3;
-	MinNumCores = 5  + (1 + ContamARate - 85)/3;
-	MinPropBinned = 50 + (2 * (ContamARate - 85));
-
-	MaxInitiatePathOfs = cDfltSSWDInitiatePathOfs + (2 * (990 - (ContamARate * 10)));
-	OverlapFloat = (MaxInitiatePathOfs+1) / 2;
-
-	if((m_pSWAlign->Initialise(NumThreads,m_ContamOvlpLen,cMaxSeedCoreDepth,DeltaCoreOfs,CoreSeqLen,MinNumCores,MinPropBinned,cMaxAcceptHitsPerSeedCore,cDfltMaxProbeSeqLen)) != eBSFSuccess)
+	if((m_pSWAlign->Initialise(NumThreads,m_ContamOvlpLen,cMaxSeedCoreDepth,DeltaCoreOfs,CoreSeqLen,MinNumCores,cMaxAcceptHitsPerSeedCore,cDfltMaxProbeSeqLen)) != eBSFSuccess)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to initialise m_pSWAlign");
 		Reset();
@@ -1006,7 +1038,7 @@ int Trim3AtOfs;
 if(pThreadPar->pSW == NULL)
 	{
 	pThreadPar->pSW = new CSSW;
-	pThreadPar->pSW->SetScores(2,-7,-5,-2,3,6,3);		// these scores are for pacbio vs pacbio so effectively doubling the expected PacBio error rates
+	pThreadPar->pSW->SetScores(3,-7,-4,-1,2,6,3);		// these scores are for pacbio vs pacbio so effectively doubling the expected PacBio error rates
 	pThreadPar->pSW->PreAllocMaxTargLen(100000);		// will be realloc'd as and when may be needed ...
 	}
 
@@ -1023,12 +1055,12 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		ReleaseLock(true);
 		continue;
 		}
-	else   // of sufficient length to process further checking for retained PacBio SMRTBell adaptors
+	else   // of sufficient length to process further checking for retained PacBio SMRTBell adapters
 		{
 		Trim5AtOfs = m_Trim5;
 		Trim3AtOfs = QuerySeqLen - (m_Trim3 + 1);
-		// check for at most 20 putatively retained SMRTBell adaptors in any read sequence
-		pThreadPar->pSW->SetScores(1,-5,-4,-2,3,6,3);		// these scores are for ref sequence vs pacbio so use expected PacBio error rates
+		// check for at most 20 putatively retained SMRTBell adapters in any read sequence
+		pThreadPar->pSW->SetScores(3,-7,-4,-1,2,6,3);		// these scores are for ref sequence vs pacbio so use expected PacBio error rates
 		pThreadPar->pSW->SetMaxInitiatePathOfs(0);
 		pThreadPar->pSW->SetMinNumExactMatches(m_MinSMRTBellExacts);
 		pThreadPar->pSW->SetTopNPeakMatches(20);
@@ -1081,7 +1113,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 				memcpy(RevCpl3Seq,p3Seq,m_SMRTBellFlankSeqLen);
 				CSeqTrans::ReverseComplement(m_SMRTBellFlankSeqLen,RevCpl3Seq);
 				// look for alignment
-				pThreadPar->pSW->SetScores(2,-7,-5,-2,3,6,3);		// these scores are for pacbio vs pacbio so effectively doubling the expected PacBio error rates
+				pThreadPar->pSW->SetScores(3,-7,-4,-1,2,6,3);		// these scores are for pacbio vs pacbio so effectively doubling the expected PacBio error rates
 				pThreadPar->pSW->SetMaxInitiatePathOfs(100);
 				pThreadPar->pSW->SetMinNumExactMatches(m_MinRevCplExacts);
 				pThreadPar->pSW->SetTopNPeakMatches(0);

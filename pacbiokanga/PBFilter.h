@@ -35,7 +35,7 @@ const int cDeltaCoreOfs = 10;						// offset core windows of coreSeqLen along th
 const int cCoreSeqLen = 15;							// putative overlaps are explored if there are cores of at least this length in any putative overlap
 const int cMinNumCores = 20;						// and if the putative overlap contains at least this many cores
 const int cMinPropBinned = 90;						// and if the putative overlap contains at least this proportion (1..100) of 250bp bins binned cores
-const int cMaxAcceptHitsPerSeedCore = 30;			// limit accepted hits per seed core to no more this many
+const int cMaxAcceptHitsPerSeedCore = 500;			// limit accepted hits per seed core to no more this many
 const int cDfltMaxProbeSeqLen = cDfltMaxPacBioSeqLen;	// initially allocate for this length probe sequence to be aligned, will be realloc'd as may be required
 
 

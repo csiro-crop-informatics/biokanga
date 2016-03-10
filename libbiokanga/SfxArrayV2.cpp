@@ -3490,6 +3490,8 @@ int OverlapIdentity;
 int QAnchorIdx;
 int QuickScore;
 
+UINT32 AcceptExactExtdCoreLen = ((cMaxPacBioSeedCoreLen+1)/2); // if core can be simply extended out to AcceptExactExtdCoreLen with exact matching then immediately accept; will be 50bp as cMaxPacBioSeedCoreLen is currently 100bp
+
 etSeqBase *pEl2;
 
 
@@ -3504,7 +3506,7 @@ etSeqBase *pEl2;
 if(SeedCoreLen < cMinPacBioSeedCoreLen || SeedCoreLen > cMaxPacBioSeedCoreLen || ProbeLen < SeedCoreLen || m_pSfxBlock == NULL || (UINT64)PrevHitIdx >= m_pSfxBlock->ConcatSeqLen)
 	return(0);
 
-if(SeedCoreLen >= cMaxPacBioSeedExtn)	// no seed extension required?
+if(SeedCoreLen >= AcceptExactExtdCoreLen)	// if looking with seed cores of at least 50bp (cMaxPacBioSeedCoreLen currently is 100bp)  then will not bother to seed extend. Alignments should be reasonably high confidence.
 	{
 	INT64 NxtHitIdx;
 	while((NxtHitIdx = IterateExacts(pProbeSeq, SeedCoreLen, PrevHitIdx, pTargEntryID,	pHitLoci)) > 0)
@@ -3537,7 +3539,7 @@ if(SeedCoreLen >= cMaxPacBioSeedExtn)	// no seed extension required?
 	return(0);
 	}
 
-// will be seed extending so ensure sufficient sequence to seed extend
+// will be maximally seed extending potentially out to cPacBioSeedCoreExtn (currently 100bp) so ensure sufficient sequence remaing in prob e sequence to seed extend
 if(ProbeLen < cPacBioSeedCoreExtn)
 	return(0);
 
@@ -3570,7 +3572,7 @@ if(!PrevHitIdx)	// if locate first exact match using SeedCoreLen
 		bFirst = false;
 	}
 
-TargKMerLen = cPacBiokExtnKMerLen;
+TargKMerLen = cPacBiokExtnKMerLen;  // when extending then using number of matching cPacBiokExtnKMerLen (currently 4bp) within extension whereby each matching 4-mer is at most 8 bp displaced due to assumed InDels
 while(1)
 	{
 	if(!bFirst)
@@ -3616,33 +3618,29 @@ while(1)
 		continue;
 		}
 
-	// see if the target sequence, using the initial matching core can be extended
+	// see if the target sequence, using the initial matching core can be simply extended whilst still matching
 	QAnchorIdx = SeedCoreLen;
 	pQAnchor = &pProbeSeq[QAnchorIdx];
 	pTAnchor = &pEl2[QAnchorIdx];
-	for(MatchBaseLen = SeedCoreLen; QAnchorIdx < cPacBioSeedCoreExtn; QAnchorIdx++,pQAnchor++,pTAnchor++,MatchBaseLen++)
+	for(MatchBaseLen = (int)SeedCoreLen; QAnchorIdx < (int)AcceptExactExtdCoreLen; QAnchorIdx++,pQAnchor++,pTAnchor++,MatchBaseLen++)
 		{
 		if((*pQAnchor & 0x07) != (*pTAnchor & 0x07))
 			break;
 		}
-	OverlapIdentity = (MatchBaseLen * 100) / cPacBioSeedCoreExtn;  
-
-	if(MatchBaseLen < 60)
+	if((UINT32)MatchBaseLen < AcceptExactExtdCoreLen)			// no need to try extending if exactly matching extended core is at least cMaxPacBioSeedExtn (currently 50bp)
 		{
-		QuickScore = QuickScoreOverlap(cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);
-//		QuickScore = QuickScoreOverlap(min(10,MatchBaseLen),cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);
-		OverlapIdentity = ((MatchBaseLen + ((cPacBioSeedCoreExtn - MatchBaseLen) * QuickScore)/100)*100)/cPacBioSeedCoreExtn;
-		}
-	else
-		QuickScore = OverlapIdentity;
+		QuickScore = QuickScoreOverlap(cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);  // QuickScore is a count of the number of bases covered by exactly matching, non-overlapping, 4-mers between probe and target in the extension 
+	//		QuickScore = QuickScoreOverlap(min(10,MatchBaseLen),cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);
+		OverlapIdentity = ((MatchBaseLen + ((cPacBioSeedCoreExtn - MatchBaseLen) * QuickScore)/100)*100)/cPacBioSeedCoreExtn; // OverlapIdentity is accounting for the exactly matching prefix extended core
 
-	if(OverlapIdentity < 60)  
-		{
-		if(!bFirst)
-			PrevHitIdx += 1;
-		else
-			bFirst = false;
-		continue;
+		if(OverlapIdentity < (int)AcceptExactExtdCoreLen)  
+			{
+			if(!bFirst)
+				PrevHitIdx += 1;
+			else
+				bFirst = false;
+			continue;
+			}
 		}
 
 	*pTargEntryID = pEntry->EntryID;
@@ -5830,9 +5828,9 @@ ReleaseBaseFlags();
 return(eBSFSuccess);
 }
 
-int												// 0: no instances, 1: number occurances <= m_MaxKMerOccs, 2: number occurances > m_MaxKMerOccs
+int												// 0: no instances, 1: number occurances <= m_MaxKMerOccs, 2: number occurrences > m_MaxKMerOccs
 CSfxArrayV3::OverOccKMerClas(int KMerLen,		// KMer length, checked and must be equal to m_OccKMerLen
-				etSeqBase *pSeq)				// return over occurance classification for this sequence
+				etSeqBase *pSeq)				// return over occurrence classification for this sequence
 {
 etSeqBase *pBase;
 size_t PackedSeqIdx;
@@ -5863,7 +5861,7 @@ else
 		OccKMerClas = 3;	
 
 // NOTE: no serialisation of access to m_pOccKMerClas required as access is at the byte level with overwriting 2 bits only
-// If onother thread accesses the same byte then there may be a conflict but this may very occasionally result in two threads
+// If another thread accesses the same byte then there may be a conflict but this may very occasionally result in two threads
 // independently regenerating the same classification if that Kmer not previously classified
 UINT8 Tmp = m_pOccKMerClas[PackedSeqIdx] & ~(0x03 << ClasShf);
 Tmp |= (OccKMerClas << ClasShf); 

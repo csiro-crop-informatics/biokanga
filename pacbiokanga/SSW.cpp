@@ -376,11 +376,11 @@ CSSW::SetProbe(UINT32 Len,etSeqBase *pSeq)
 if(Len < cSSWMinProbeOrTargLen || Len > cSSWMaxProbeOrTargLen || pSeq == NULL || *pSeq > eBaseN) 	// can't be bothered with very short or very long probes!
 	return(false);
 
-if(m_pProbe == NULL || m_ProbeAllocd < Len)
+if(m_pProbe == NULL || m_ProbeAllocd < Len + 100)
 	{
 	if(m_pProbe != NULL)
 		delete m_pProbe;
-	m_ProbeAllocd = Len + 100;
+	m_ProbeAllocd = max(250000,Len + 100);		// always alloc for at least 250Kbp, reduces the potential for any subsequent reallocs
 	m_pProbe = new etSeqBase [m_ProbeAllocd];
 	if(m_pProbe == NULL)
 		return(false);
@@ -397,11 +397,11 @@ CSSW::SetTarg( UINT32 Len,etSeqBase *pSeq)
 {
 if(Len < cSSWMinProbeOrTargLen || Len > cSSWMaxProbeOrTargLen || pSeq == NULL || *pSeq > eBaseN)	// can't be bothered with very short or very long targets!
 	return(false);
-if(m_pTarg == NULL || m_TargAllocd < Len)
+if(m_pTarg == NULL || m_TargAllocd < Len + 100)
 	{
 	if(m_pTarg != NULL)
 		delete m_pTarg;
-	m_TargAllocd = Len + 100;
+	m_TargAllocd = max(250000,Len + 100);   // always alloc for at least 250Kbp, reduces the potential for any subsequent reallocs
 	m_pTarg = new etSeqBase [m_TargAllocd];
 	if(m_pTarg == NULL)
 		return(false);
@@ -430,7 +430,7 @@ if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 5)))  // allowing a 
 		m_AllocdCells = 0;
 		m_AllocdCellSize = 0;
 		}
-	m_AllocdCells = (UINT32)( ((UINT64)MaxTargLen * 11) / 10);		// a little extra safety margin and saves on potential for reallocations required
+	m_AllocdCells = min(250000,(UINT32)( ((UINT64)MaxTargLen * 3) / 2));		// always allocate for at least 250Kbp, saves on potential for any subsequent reallocation required
 	m_AllocdCellSize = sizeof(tsSSWCell) * m_AllocdCells;
 #ifdef _WIN32
 	m_pAllocdCells = (tsSSWCell *) malloc(m_AllocdCellSize);
@@ -461,9 +461,9 @@ if(m_pAllocdCells == NULL || (m_AllocdCells < (MaxTargLen + 5)))  // allowing a 
 
 if(MaxOverlapLen > 0)
 	{
-    MaxAllocdTracebacks = min(MaxOverlapLen * (UINT64)7000, (UINT64)(0x7fff0000 / 8));
+    MaxAllocdTracebacks = min(MaxOverlapLen * (UINT64)10000, (UINT64)(0x7fff0000 / 8));
 
-	if(m_pAllocdTracebacks != NULL && (MaxAllocdTracebacks + 5) >  m_AllocdTracebacks)
+	if(m_pAllocdTracebacks != NULL && (MaxAllocdTracebacks + 100) >  m_AllocdTracebacks)
 		{
 #ifdef _WIN32
 		free(m_pAllocdTracebacks);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
@@ -504,7 +504,7 @@ if(MaxOverlapLen > 0)
 		}
 
 	// and lastly prealloc for the multialignment operators
-	if(m_pMAAlignOps != NULL && m_AllocdMAAlignOpsSize < ((MaxOverlapLen * 2) + 10))
+	if(m_pMAAlignOps != NULL && m_AllocdMAAlignOpsSize < ((MaxOverlapLen * 3) + 10))
 		{
 #ifdef _WIN32
 		free(m_pMAAlignOps);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
@@ -518,7 +518,7 @@ if(MaxOverlapLen > 0)
 
 	if(m_pMAAlignOps == NULL)
 		{
-		m_AllocdMAAlignOpsSize = (MaxOverlapLen * 2) + 100;
+		m_AllocdMAAlignOpsSize = (MaxOverlapLen * 3) + 100;
 #ifdef _WIN32
 		m_pMAAlignOps = (UINT8 *) malloc(m_AllocdMAAlignOpsSize);
 		if(m_pMAAlignOps == NULL)
@@ -2236,7 +2236,7 @@ if(Alignments < 2 || Alignments > 200 || SeqLen < 50 || pProbeSeq == NULL)
 
 m_MAProbeSeqLen = SeqLen;
 m_MAColSize = (sizeof(tsMAlignCol) + Alignments + 1);
-memreq = (size_t)m_MAColSize * SeqLen * 3; // allocate to hold at least SeqLen columns with Depth bases and a 3x overallocation to reduce chances of a reallocation later on as sequence insertions are discovered
+memreq = (size_t)m_MAColSize * SeqLen * 4; // allocate to hold at least SeqLen columns with Depth bases and a 4x overallocation to reduce chances of a reallocation later on as sequence insertions are discovered
 if(m_pMACols == NULL || (memreq + 10000) > m_AllocMAColsSize)
 	{
 	if(m_pMACols != NULL)

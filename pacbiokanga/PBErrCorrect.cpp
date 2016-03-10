@@ -206,7 +206,7 @@ struct arg_int *samplerate = arg_int0("R","samplerate","<int>",					"sample inpu
 struct arg_int *threads = arg_int0("T","threads","<int>",						"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_int *maxnonrmi = arg_int0("N","maxnonrmi","<int>",					"if RMI SW processing then limit non-RMI to this maximum number of SW threads (defaults to threads, range 0 ... threads)");
-struct arg_int *maxrmi = arg_int0("n","maxrmi","<int>",							"maximum number of RMI SW instances supported 0, Number of threads to 2000 (defaults to 0 which sets max RMI instances to 10 x number of threads)");
+struct arg_int *maxrmi = arg_int0("n","maxrmi","<int>",							"maximum number of RMI SW instances supported (defaults to 0 which sets max RMI instances to 4 x number of threads, range 16 to 500)");
 struct arg_str  *rmihost = arg_str0("u", "rmihost", "<string>",					"listening on this host name or IPv4/IPv5 address for connections by SW service providers (default 127.0.0.1)");
 struct arg_str  *rmiservice = arg_str0("U", "rmiservice", "<string>",			"Listen on this service name or port for connections by SW service providers (default 43123)");
 
@@ -898,12 +898,12 @@ if (!argerrors)
 
 	if(szHostName[0] != '\0')
 		{
-		MaxRMI = maxrmi->count ? maxrmi->ival[0] : (NumThreads * 10);
+		MaxRMI = maxrmi->count ? maxrmi->ival[0] : (NumThreads * cRMIThreadsPerCore);
 		if(MaxRMI == 0)
-			MaxRMI = (NumThreads * 10);
-		if(MaxRMI < NumThreads || MaxRMI > 2000)
+			MaxRMI = (NumThreads * cRMIThreadsPerCore);
+		if(MaxRMI < 16 || MaxRMI > 500)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range %d..2000",MaxRMI,NumThreads);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range 16..500",MaxRMI,NumThreads);
 			return(1);
 			}
 		MaxNonRMI = maxnonrmi->count ? maxnonrmi->ival[0] : NumThreads;
@@ -1278,9 +1278,6 @@ m_SWMismatchPenalty = cDfltSWMismatchPenalty;
 m_SWGapOpenPenalty = cDfltSWGapOpenPenalty;
 m_SWGapExtnPenalty = cDfltSWGapExtnPenalty;
 m_SWProgExtnPenaltyLen = cDfltSWProgExtnLen;	
-
-m_BinClusterSize = cDfltBinClusterSize;
-m_MinPropBinned = cDfltMinPropBinned;
 
 memset(m_ExactKmerDists,0,sizeof(m_ExactKmerDists));
 m_TotAlignSeqLen = 0;
@@ -1739,6 +1736,12 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 		AvailBuffSize = AllocdBuffSize - BuffOfs;
 		}
 	}
+if(Rslt < eBSFSuccess && Rslt != eBSErrSession)
+	{
+	while(Fasta.NumErrMsgs())
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,Fasta.GetErrMsg());
+	}
+
 
 if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// close entry
 	{
@@ -2021,7 +2024,6 @@ m_SampleRate = SampleRate;
 
 switch(PMode) {
 	case ePBPMOverlapDetail:
-		m_MinPropBinned = cDfltScaffMinPropBinned;
 		m_OverlapFloat = cDfltScaffMaxOverlapFloat;
 		break;
 
@@ -2031,7 +2033,6 @@ switch(PMode) {
 		return(Rslt);
 
 	default:
-		m_MinPropBinned = cDfltMinPropBinned;
 		m_OverlapFloat = cDfltMaxOverlapFloat;
 		break;
 	}
@@ -2504,7 +2505,6 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 	pThreadPar->DeltaCoreOfs = m_DeltaCoreOfs;
 	pThreadPar->CoreSeqLen = m_MinSeedCoreLen;
 	pThreadPar->MinNumCores = m_MinNumSeedCores;
-	pThreadPar->MinPropBinned = m_MinPropBinned;
 	pThreadPar->MaxAcceptHitsPerSeedCore = cDfltMaxAcceptHitsPerSeedCore;
 	pThreadPar->MinPBSeqLen = m_MinPBSeqLen;
 	pThreadPar->MinOverlapLen = m_MinPBSeqOverlap;
@@ -2719,17 +2719,13 @@ return(0);
 int
 CPBErrCorrect::ThreadPBErrCorrect(tsThreadPBErrCorrect *pThreadPar)
 {
-UINT32  OverlapSLen;
-UINT32  OverlapALen;
-UINT32  PropSBinsOverlap;
-UINT32  PropABinsOverlap;
 UINT32 AdjOverlapFloat;
-UINT32 TargLen;
 UINT32 CurTargCoreHitCnts;
 tsPBEScaffNode *pTargNode;
 UINT32 ProbeAlignLength;
 UINT32 TargAlignLength;
 UINT32 TargSeqLen;
+UINT32 ProbeSeqLen;
 UINT32 LongSAligns;
 UINT32 LongAAligns;
 tsSSWCell *pPeakMatchesCell;
@@ -2738,19 +2734,13 @@ tsSSWCell PeakMatchesCell;
 tsSSWCell PeakScoreCell;
 #endif
 bool bTargSense;
-bool bFirstHitNewTargSeq;
 UINT32 Idx;
 UINT32 CurSummaryHitCnts;
 UINT32 LowestSummaryHitCnts;
 sPBECoreHitCnts *pLowestSummaryHitCnts;
 UINT32 HitIdx;
-int NumHitsFlgMulti;
 tsPBECoreHit *pCoreHit;
 tsPBECoreHit *pNxtCoreHit;
-UINT32 CurTargNodeID;
-UINT32 CurProbeNodeID;
-UINT32 CurProbeOfs;
-UINT32 CurTargOfs;
 UINT32 CurTargHitOfs;
 UINT32 CurProbeHitOfs;
 UINT32 CurSEntryIDHits;
@@ -2769,7 +2759,6 @@ UINT32 ProvContained;
 UINT32 ProvArtefact;
 UINT32 ProvSWchecked;
 UINT32 MinOverlapLen;
-tsPBEScaffNode *pHitScaffNode;
 sPBECoreHitCnts *pSummaryCnts;
 UINT32 CurNodeID;
 UINT32 LowestCpltdProcNodeID;
@@ -2934,228 +2923,261 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 
 	pThreadPar->NumTargCoreHitCnts = 0;
 	memset(pThreadPar->TargCoreHitCnts,0,sizeof(pThreadPar->TargCoreHitCnts));
-if(pThreadPar->NumCoreHits > pThreadPar->AllocdCoreHits)
-	printf("Check me 2");
-	if(pThreadPar->NumCoreHits)
-		{
-		if(pThreadPar->NumCoreHits > 1)
-			{
-			// sort core hits by ProbeNodeID.ProbeOfs.TargNodeID.TargOfs ascending so multiple hits onto a target from single probe offset can be detected
-			pThreadPar->pmtqsort->qsort(pThreadPar->pCoreHits,pThreadPar->NumCoreHits,sizeof(tsPBECoreHit),SortCoreHitsByProbeTargOfs);
-			CurProbeNodeID = 0;
-			CurProbeOfs = 0;
-			CurTargNodeID = 0;
-			CurTargOfs = 0;
-			NumHitsFlgMulti = 0;
-			pCoreHit = pThreadPar->pCoreHits;
-			for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
-				{
-				if(pCoreHit->ProbeNodeID == CurProbeNodeID && 
-					CurTargNodeID == pCoreHit->TargNodeID && 
-					(pCoreHit->ProbeOfs >= CurProbeOfs && (pCoreHit->ProbeOfs <= (CurProbeOfs + m_BinClusterSize)))) 
-					{
-					NumHitsFlgMulti += 1;
-					pCoreHit->flgMulti = 1;
-					}				
-				else
-					{
-					CurProbeNodeID = pCoreHit->ProbeNodeID;
-					CurProbeOfs = pCoreHit->ProbeOfs;
-					CurTargNodeID = pCoreHit->TargNodeID;
-					CurTargOfs = pCoreHit->TargOfs;
-					pCoreHit->flgMulti = 0;
-					}    
-				}
 
+	if(pThreadPar->NumCoreHits >= pThreadPar->MinNumCores)
+		{
 			// resort core hits by TargNodeID.TargOfs.ProbeNodeID.ProbeOfs ascending
-			pThreadPar->pmtqsort->qsort(pThreadPar->pCoreHits,pThreadPar->NumCoreHits,sizeof(tsPBECoreHit),SortCoreHitsByTargProbeOfs);
-			CurTargNodeID = 0;
-			CurTargOfs = 0;
-			pCoreHit = pThreadPar->pCoreHits;
-			for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
-				{
-				if(pCoreHit->flgMulti)
-					continue;
-				if(pCoreHit->ProbeNodeID == CurProbeNodeID && 
-					CurTargNodeID == pCoreHit->TargNodeID && 
-					(pCoreHit->TargOfs >= CurTargOfs && (pCoreHit->TargOfs <= (CurTargOfs + m_BinClusterSize)))) 
-					{
-					NumHitsFlgMulti += 1;
-					pCoreHit->flgMulti = 1;
-					}				
-				else
-					{
-					CurProbeNodeID = pCoreHit->ProbeNodeID;
-					CurProbeOfs = pCoreHit->ProbeOfs;
-					CurTargNodeID = pCoreHit->TargNodeID;
-					CurTargOfs = pCoreHit->TargOfs;
-					}    
-				}
-			}
-
-		// reduce, remove core hits marked as being multiloci and thus not to be further processed
-		UINT32 NumCoreHits;
+		pThreadPar->pmtqsort->qsort(pThreadPar->pCoreHits,pThreadPar->NumCoreHits,sizeof(tsPBECoreHit),SortCoreHitsByTargProbeOfs);
 		pCoreHit = pThreadPar->pCoreHits;
-		pNxtCoreHit = pCoreHit;
-		NumCoreHits = 0;
-		for (HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++, pCoreHit++)
+		for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++, pCoreHit++)
+			pCoreHit->flgMulti = 0;
+
+	// with large target sequences then can have many artifactual core hits
+	// process and mark these probable artifact hits by identifying the most spatially related cluster of hits; hits outside of
+	// the most spatially related cluster are marked as being artefactual 
+
+	UINT32 CurTargSeqID;
+	UINT32 MaxWinSize;
+	UINT32 RelWinSize;
+	bool bFirstHitNewTargSeq;
+	UINT32 PrevAcceptedProbeOfs;
+	UINT32 PrevAcceptedTargOfs;
+	UINT32 MaxNoHitGapLen;
+	UINT32 NumNoHitGaps;
+	UINT32 SumNoHitGapLens;
+	tsPBECoreHit *pFirstCoreHit;
+	tsPBECoreHit *pMaxCoreHit;
+
+	MaxNoHitGapLen = 1000;                 // expecting cores to be distributed such that there shouldn't be many separated by more than this intercore bp gap
+	CurTargSeqID = 0;
+	pFirstCoreHit = NULL;
+	ProbeSeqLen = pCurPBScaffNode->SeqLen;
+	MaxWinSize = (ProbeSeqLen * 115) / 100;
+	pCoreHit = pThreadPar->pCoreHits;
+	pMaxCoreHit = NULL;
+	for (HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++, pCoreHit++)
 		{
-			if (pCoreHit->flgMulti)
-				continue;
-			if (pNxtCoreHit != pCoreHit)
-				*pNxtCoreHit = *pCoreHit;
-			pNxtCoreHit += 1;
-			NumCoreHits += 1;
-		}
-		pThreadPar->NumCoreHits = NumCoreHits;
-
-
-		// iterate and count hits for each TargNodeID whilst recording the loci of the first and last hit so can determine if overlap is a likely artefact
-		CurSEntryIDHits = 0;
-		CurAEntryIDHits = 0;
-		CurTargNodeID = 0;
-		CurTargHitOfs = 0;
-		CurProbeHitOfs = 0;
-		CurSTargStartOfs = 0;
-		CurSTargEndOfs = 0;
-		CurATargStartOfs = 0;
-		CurATargEndOfs = 0;
-		CurSProbeStartOfs = 0;
-		CurSProbeEndOfs = 0;
-		CurAProbeStartOfs = 0;
-		CurAProbeEndOfs = 0;
-		bFirstHitNewTargSeq = false;
-		pCoreHit = pThreadPar->pCoreHits;
-		for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
+		if (CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
 			{
-			pHitScaffNode = &m_pPBScaffNodes[pCoreHit->ProbeNodeID-1];
-			if(CurTargNodeID == 0)    // 0 if 1st hit about to be processed for a new target sequence
+			pMaxCoreHit = NULL;
+			pFirstCoreHit = pCoreHit;
+			CurTargSeqID = pCoreHit->TargNodeID;
+			TargSeqLen = m_pPBScaffNodes[CurTargSeqID-1].SeqLen;
+			}
+
+		// if just checked last core hit for the current target ...
+		if (HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargSeqID)
+			{
+			while (pFirstCoreHit <= pCoreHit)
 				{
-				CurTargNodeID = pCoreHit->TargNodeID;
-				bFirstHitNewTargSeq = true;
-				CurSEntryIDHits = 0;
-				CurAEntryIDHits = 0;
-				CurSTargStartOfs = 0;
-				CurSTargEndOfs = 0;
-				CurATargStartOfs = 0;
-				CurATargEndOfs = 0;
-				CurSProbeStartOfs = 0;
-				CurSProbeEndOfs = 0;
-				CurAProbeStartOfs = 0;
-				CurAProbeEndOfs = 0;
-				}
+				pFirstCoreHit->WinHits = 0;
+				pFirstCoreHit->flgClustered = 0;
+				pNxtCoreHit = pFirstCoreHit;
+				RelWinSize = 0;
+				PrevAcceptedProbeOfs = 0;
+				PrevAcceptedTargOfs = 0;
+				SumNoHitGapLens = 0;
+				NumNoHitGaps = 0;
 
-			if(pCoreHit->TargNodeID == CurTargNodeID) // same target sequence so check for starting/ending offsets and accumulate hit counts 
-				{
-				CurTargHitOfs = pCoreHit->TargOfs;
-				CurProbeHitOfs = pCoreHit->ProbeOfs;
-				if(pCoreHit->flgRevCpl == 0)
+				if(pFirstCoreHit->ProbeOfs > MaxNoHitGapLen && pFirstCoreHit->TargOfs > MaxNoHitGapLen)
 					{
-					if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurSTargStartOfs)
-						CurSTargStartOfs = CurTargHitOfs;
-					if(CurTargHitOfs > CurSTargEndOfs)
-						CurSTargEndOfs = CurTargHitOfs;	
-					if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurSProbeStartOfs)
-						CurSProbeStartOfs = CurProbeHitOfs;
-					if(CurProbeHitOfs > CurSProbeEndOfs)
-						CurSProbeEndOfs = CurProbeHitOfs;
+					pFirstCoreHit += 1;
+					continue;
 					}
-				else
+					
+				while (pNxtCoreHit <= pCoreHit)
 					{
-					if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurATargStartOfs)
-						CurATargStartOfs = CurTargHitOfs;
-					if(CurTargHitOfs > CurATargEndOfs)
-						CurATargEndOfs = CurTargHitOfs;	
-					if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurAProbeStartOfs)
-						CurAProbeStartOfs = CurProbeHitOfs;
-					if(CurProbeHitOfs > CurAProbeEndOfs)
-						CurAProbeEndOfs = CurProbeHitOfs;
-					}
-				bFirstHitNewTargSeq = false;
-				if(pCoreHit->flgMulti != 1)
-					{
-					if(pCoreHit->flgRevCpl == 0)
-						CurSEntryIDHits += 1;
-					else
-						CurAEntryIDHits += 1;
-					}
-				}
-
-			// if just processed last core hit for the current target ...
-			if(HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargNodeID)
-				{
-				// checking here if the overlap is very likely to be artifact
-				// requiring that at least MinPropBinned of the bins along the putative alignment length contain hits
-				// and that the first and last hit are consistent with either a completely contained or overlapped
-				if(CurSEntryIDHits > 1 && ((OverlapSLen = CurSProbeEndOfs - CurSProbeStartOfs) > m_BinClusterSize))
-					PropSBinsOverlap = (m_BinClusterSize * CurSEntryIDHits * 100)/OverlapSLen;
-				else
-					PropSBinsOverlap = 0;
-
-				if(CurAEntryIDHits > 1 && ((OverlapALen = CurAProbeEndOfs - CurAProbeStartOfs) > m_BinClusterSize))
-					PropABinsOverlap = (m_BinClusterSize * CurAEntryIDHits * 100)/OverlapALen;
-				else
-					PropABinsOverlap = 0;
-
-				TargLen = m_pPBScaffNodes[pCoreHit->TargNodeID-1].SeqLen;
-				if(PropSBinsOverlap >= pThreadPar->MinPropBinned) 
-					{
-					if((CurSProbeStartOfs >= m_OverlapFloat &&  CurSTargStartOfs >= m_OverlapFloat) ||
-						((TargLen - CurSTargEndOfs) >= AdjOverlapFloat && (pCurPBScaffNode->SeqLen - CurSProbeEndOfs) >= AdjOverlapFloat))
-						PropSBinsOverlap = 0;
-					}
-				if(PropABinsOverlap >= pThreadPar->MinPropBinned)
-					{
-					if((CurAProbeStartOfs >= m_OverlapFloat && CurATargStartOfs >= m_OverlapFloat) ||
-						((TargLen - CurATargEndOfs) >= AdjOverlapFloat && (pCurPBScaffNode->SeqLen - CurAProbeEndOfs) >= AdjOverlapFloat))
-						PropABinsOverlap = 0;
-					}
-
-				if((PropSBinsOverlap >= pThreadPar->MinPropBinned && CurSEntryIDHits >= pThreadPar->MinNumCores) || (PropABinsOverlap >= pThreadPar->MinPropBinned && CurAEntryIDHits >= pThreadPar->MinNumCores))
-					{
-					if(pThreadPar->NumTargCoreHitCnts == cSummaryTargCoreHitCnts)
+					RelWinSize = pNxtCoreHit->TargOfs - pFirstCoreHit->TargOfs;
+					if (RelWinSize > MaxWinSize)
+						break;
+					if (pNxtCoreHit->flgRevCpl == pFirstCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
 						{
-						LowestSummaryHitCnts = 0;
-						pLowestSummaryHitCnts = NULL;
-						pSummaryCnts = pThreadPar->TargCoreHitCnts; 
-						for(Idx = 0; Idx < cSummaryTargCoreHitCnts; Idx++, pSummaryCnts++)
+						if(PrevAcceptedProbeOfs == 0 || pNxtCoreHit->ProbeOfs >= PrevAcceptedProbeOfs + pThreadPar->CoreSeqLen) // a single matched seed core extension may have resulted in multiple hits, reduce counts by requiring a differential of at least m_SeedCoreLen
 							{
-							CurSummaryHitCnts = pSummaryCnts->NumSHits + pSummaryCnts->NumAHits;
-							if(LowestSummaryHitCnts == 0 || CurSummaryHitCnts < LowestSummaryHitCnts)
+							if((pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs) >= MaxNoHitGapLen)
 								{
-								LowestSummaryHitCnts = CurSummaryHitCnts;
-								pLowestSummaryHitCnts = pSummaryCnts;
+								NumNoHitGaps += 1;
+								SumNoHitGapLens += pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs;
 								}
+							PrevAcceptedProbeOfs = pNxtCoreHit->ProbeOfs;
+							PrevAcceptedTargOfs = pNxtCoreHit->TargOfs;
+							pFirstCoreHit->WinHits += 1;
 							}
-
-						if((CurSEntryIDHits + CurAEntryIDHits) <= LowestSummaryHitCnts)
-							{
-							CurTargNodeID = 0; 
-							continue;
-							}
-						pSummaryCnts = pLowestSummaryHitCnts;
 						}
-					else
-						pSummaryCnts = &pThreadPar->TargCoreHitCnts[pThreadPar->NumTargCoreHitCnts++];
-					pSummaryCnts->TargNodeID = CurTargNodeID;
-					pSummaryCnts->STargStartOfs = CurSTargStartOfs;
-					pSummaryCnts->STargEndOfs = CurSTargEndOfs;
-					pSummaryCnts->ATargStartOfs = CurATargStartOfs;
-					pSummaryCnts->ATargEndOfs = CurATargEndOfs;
-					pSummaryCnts->SProbeStartOfs = CurSProbeStartOfs;
-					pSummaryCnts->SProbeEndOfs = CurSProbeEndOfs;
-					pSummaryCnts->AProbeStartOfs = CurAProbeStartOfs;
-					pSummaryCnts->AProbeEndOfs = CurAProbeEndOfs;
-					pSummaryCnts->NumSHits = CurSEntryIDHits;
-					pSummaryCnts->NumAHits = CurAEntryIDHits;
-					pSummaryCnts->flgProbeHCseq = m_pPBScaffNodes[pCoreHit->ProbeNodeID-1].flgHCseq;
-					pSummaryCnts->flgTargHCseq = m_pPBScaffNodes[pCoreHit->TargNodeID-1].flgHCseq;
+					pNxtCoreHit += 1;
 					}
-				CurTargNodeID = 0; 
+
+				if(pFirstCoreHit->WinHits >= pThreadPar->MinNumCores && ((PrevAcceptedProbeOfs + MaxNoHitGapLen) > ProbeSeqLen || (PrevAcceptedTargOfs + MaxNoHitGapLen) > TargSeqLen))
+					{
+					UINT32 PutativeOverlapLen = PrevAcceptedProbeOfs - pFirstCoreHit->ProbeOfs;
+					if(((SumNoHitGapLens * 100) / PutativeOverlapLen) <= 20)		// only accepting if no more than 20% of alignment sums to gaps > MaxNoHitGapLen
+						{
+						if (pMaxCoreHit == NULL || pFirstCoreHit->WinHits > pMaxCoreHit->WinHits)
+							pMaxCoreHit = pFirstCoreHit;
+						}
+					}
+				pFirstCoreHit += 1;
+				}
+
+			if (pMaxCoreHit != NULL)
+			{
+				RelWinSize = 0;
+				pNxtCoreHit = pMaxCoreHit;
+				while (pNxtCoreHit <= pCoreHit)
+				{
+					RelWinSize = pNxtCoreHit->TargOfs - pMaxCoreHit->TargOfs;
+					if (RelWinSize > MaxWinSize)
+						break;
+					if (pNxtCoreHit->flgRevCpl == pMaxCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
+						pNxtCoreHit->flgClustered = 1;
+					pNxtCoreHit->flgMulti = 0;
+					pNxtCoreHit += 1;
 				}
 			}
+			CurTargSeqID = 0;  // looking for cores on a new target
 		}
- 
+	}
+
+	// iterate and count hits for each TargNodeID whilst recording the loci of the first and last hit so can determine if overlap is a likely artefact
+	CurSEntryIDHits = 0;
+	CurAEntryIDHits = 0;
+	CurTargSeqID = 0;
+	CurTargHitOfs = 0;
+	CurProbeHitOfs = 0;
+	CurSTargStartOfs = 0;
+	CurSTargEndOfs = 0;
+	CurATargStartOfs = 0;
+	CurATargEndOfs = 0;
+	CurSProbeStartOfs = 0;
+	CurSProbeEndOfs = 0;
+	CurAProbeStartOfs = 0;
+	CurAProbeEndOfs = 0;
+
+	bFirstHitNewTargSeq = false;
+	pCoreHit = pThreadPar->pCoreHits;
+	for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
+		{
+		if(CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
+			{
+			bFirstHitNewTargSeq = true;
+			CurTargSeqID = pCoreHit->TargNodeID;
+			CurSEntryIDHits = 0;
+			CurAEntryIDHits = 0;
+			CurSTargStartOfs = 0;
+			CurSTargEndOfs = 0;
+			CurATargStartOfs = 0;
+			CurATargEndOfs = 0;
+			CurSProbeStartOfs = 0;
+			CurSProbeEndOfs = 0;
+			CurAProbeStartOfs = 0;
+			CurAProbeEndOfs = 0;
+			}
+
+		if(pCoreHit->flgClustered && pCoreHit->TargNodeID == CurTargSeqID) // same target sequence so check for starting/ending offsets and accumulate hit counts 
+			{
+			CurTargHitOfs = pCoreHit->TargOfs;
+			CurProbeHitOfs = pCoreHit->ProbeOfs;
+			if(pCoreHit->flgRevCpl == 0)
+				{
+				if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurSTargStartOfs)
+					CurSTargStartOfs = CurTargHitOfs;
+				if(CurTargHitOfs > CurSTargEndOfs)
+					CurSTargEndOfs = CurTargHitOfs;	
+				if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurSProbeStartOfs)
+					CurSProbeStartOfs = CurProbeHitOfs;
+				if(CurProbeHitOfs > CurSProbeEndOfs)
+					CurSProbeEndOfs = CurProbeHitOfs;
+				}
+			else
+				{
+				if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurATargStartOfs)
+					CurATargStartOfs = CurTargHitOfs;
+				if(CurTargHitOfs > CurATargEndOfs)
+					CurATargEndOfs = CurTargHitOfs;	
+				if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurAProbeStartOfs)
+					CurAProbeStartOfs = CurProbeHitOfs;
+				if(CurProbeHitOfs > CurAProbeEndOfs)
+					CurAProbeEndOfs = CurProbeHitOfs;
+				}
+			bFirstHitNewTargSeq = false;
+			if(pCoreHit->flgMulti != 1)
+				{
+				if(pCoreHit->flgRevCpl == 0)
+					CurSEntryIDHits += 1;
+				else
+					CurAEntryIDHits += 1;
+				}
+			}
+
+		// if just processed last core hit for the current target ...
+		if(HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargSeqID)
+			{
+			// checking here that the first and last hit are consistent with either a completely contained or overlapped
+			TargSeqLen = m_pPBScaffNodes[pCoreHit->TargNodeID-1].SeqLen;
+			if(CurSEntryIDHits >= pThreadPar->MinNumCores) 
+				{
+				if((CurSProbeStartOfs >= m_OverlapFloat &&  CurSTargStartOfs >= m_OverlapFloat) ||
+						((TargSeqLen - CurSTargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurSProbeEndOfs) >= AdjOverlapFloat))
+					CurSEntryIDHits = 0;
+				}
+			else
+				CurSEntryIDHits = 0;
+
+			if(CurAEntryIDHits >= pThreadPar->MinNumCores)
+				{
+				if((CurAProbeStartOfs >= m_OverlapFloat && CurATargStartOfs >= m_OverlapFloat) ||
+					((TargSeqLen - CurATargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurAProbeEndOfs) >= AdjOverlapFloat))
+					CurAEntryIDHits = 0;
+				}
+			else
+				CurAEntryIDHits = 0;
+
+			if(CurSEntryIDHits >= pThreadPar->MinNumCores || CurAEntryIDHits >= pThreadPar->MinNumCores)
+				{
+				if(pThreadPar->NumTargCoreHitCnts == cSummaryTargCoreHitCnts)
+					{
+					LowestSummaryHitCnts = 0;
+					pLowestSummaryHitCnts = NULL;
+					pSummaryCnts = pThreadPar->TargCoreHitCnts; 
+					for(Idx = 0; Idx < cSummaryTargCoreHitCnts; Idx++, pSummaryCnts++)
+						{
+						CurSummaryHitCnts = pSummaryCnts->NumSHits + pSummaryCnts->NumAHits;
+						if(LowestSummaryHitCnts == 0 || CurSummaryHitCnts < LowestSummaryHitCnts)
+							{
+							LowestSummaryHitCnts = CurSummaryHitCnts;
+							pLowestSummaryHitCnts = pSummaryCnts;
+							}
+						}
+
+					if((CurSEntryIDHits + CurAEntryIDHits) <= LowestSummaryHitCnts)
+						{
+						CurTargSeqID = 0; 
+						continue;
+						}
+					pSummaryCnts = pLowestSummaryHitCnts;
+					}
+				else
+					pSummaryCnts = &pThreadPar->TargCoreHitCnts[pThreadPar->NumTargCoreHitCnts++];
+				pSummaryCnts->TargNodeID = CurTargSeqID;
+				pSummaryCnts->STargStartOfs = CurSTargStartOfs;
+				pSummaryCnts->STargEndOfs = CurSTargEndOfs;
+				pSummaryCnts->ATargStartOfs = CurATargStartOfs;
+				pSummaryCnts->ATargEndOfs = CurATargEndOfs;
+				pSummaryCnts->SProbeStartOfs = CurSProbeStartOfs;
+				pSummaryCnts->SProbeEndOfs = CurSProbeEndOfs;
+				pSummaryCnts->AProbeStartOfs = CurAProbeStartOfs;
+				pSummaryCnts->AProbeEndOfs = CurAProbeEndOfs;
+				pSummaryCnts->NumSHits = CurSEntryIDHits;
+				pSummaryCnts->NumAHits = CurAEntryIDHits;
+				pSummaryCnts->flgProbeHCseq = m_pPBScaffNodes[pCoreHit->ProbeNodeID-1].flgHCseq;
+				pSummaryCnts->flgTargHCseq = m_pPBScaffNodes[pCoreHit->TargNodeID-1].flgHCseq;
+				}
+			CurTargSeqID = 0; 
+			}
+		}
+	}
+
+
 	// can't process, SW over all would be too resource intensive, all targets which meet the minimum number of core hits requested so choose the top cMaxProbeSWs as ranked by the number of core hits
 	if(pThreadPar->NumTargCoreHitCnts > 1)
 		{

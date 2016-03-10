@@ -6,9 +6,9 @@
     <LocalDebuggerCommandArguments>ngsqc @testreads.txt</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>scaffold -a reads\pe1.fasta -A reads\pe2.fasta -c contigs\contigs.fasta -oscaffolded.fasta -L25</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>fasta2nxx -iECreads\A.thalianaEC1reads.fasta</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerWorkingDirectory>c:\Experiments\Scaffolds</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerWorkingDirectory>c:\Experiments\Arabidopsis</LocalDebuggerWorkingDirectory>
     <LocalDebuggerAttach>false</LocalDebuggerAttach>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

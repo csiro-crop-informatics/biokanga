@@ -20,11 +20,11 @@ const int cAllocTargetSeqSize = 100000;				// allocation buffer size to hold tar
 const int cAllocTProbetSeqSize = 100000;			// allocation buffer size to hold probe sequences of at least this length
 const int cDfltMinTargetSeqLen    = 1000;			// minimum target sequence length accepted  
 const int cDfltMinTargetOvlpLen   = 500;			// requiring target sequences to end overlap by at least this many bp or else be fully contained or containing  
-const int cDfltMaxArtefactDev = 20;					// default percentage deviation from the mean allowed when classing overlaps as being artefactual
+const int cDfltMaxArtefactDev = 75;					// default percentage deviation from the mean over a 1Kbp alignment window allowed when classing overlaps as being artefactual
 const int cDfltSSWDInitiatePathOfs = 250;			// default is to require SW paths to have started within this many bp on either the probe or target - effectively anchoring the SW
 const int cDfltSSWDOvlpFloat = 100;					// allowed float in bp on SW overlaps
 
-const int cMaxProbePBSSWs = 30;						// explore with SW at most this many probe alignments against target sequences
+const int cMaxProbePBSSWs = 100;						// explore with SW at most this many probe alignments against target sequences
 const int cPBSSWSummaryTargCoreHitCnts = 100;		// summary core hit counts on at most this many targets
 
 #pragma pack(1)
@@ -111,8 +111,6 @@ class CSWAlign
 	UINT32 m_MinNumCores;					// and if the putative overlap contains at least this many cores
 	UINT32 m_MaxAcceptHitsPerSeedCore;		// limit accepted hits per seed core to no more this many
 	UINT32 m_MinNumSeedCores;				// require at least this many seed cores between overlapping scaffold sequences
-	UINT32 m_BinClusterSize;				// clustering seed cores into this sized bins when determing if too few bins with at least 1 core; these few bins likely to result in SW artefacts 
-	UINT32 m_MinPropBinned;					// require that the putative overlap contains at least this proportion (1..100) of m_BinClusterSize clustered binned cores
 	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
 	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences must be of at least this length
 	UINT32 m_MinPBSeqOverlap;				// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
@@ -136,6 +134,10 @@ class CSWAlign
 			   UINT32 TargSeqID,               // probe core matched onto this target sequence
 			   UINT32 TargOfs,                  // probe core matched starting at this target loci
 			   UINT32 HitLen);					// hit was of this length
+
+	int									// returns index 1..N of core hits remaining or -1 if errors
+	RemoveAddedCoreHits(tsPBSSWInstance *pInstance,		// using this instance
+				int NumToRemove);                   // removing the last NumToRemove AddCoreHit() added
 
 	int
 	IdentifyCoreHits(tsPBSSWInstance *pInstance,// using this instance
@@ -172,7 +174,6 @@ public:
 			UINT32 DeltaCoreOfs,			// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
 			UINT32 CoreSeqLen,				// putative overlaps are explored if there are cores of at least this length in any putative overlap
 			UINT32 MinNumCores,				// and if the putative overlap contains at least this many cores
-			UINT32 MinPropBinned,			// and if the putative overlap contains at least this proportion (1..100) of 250bp bins binned cores
 			UINT32 MaxAcceptHitsPerSeedCore, // limit accepted hits per seed core to no more this many
 			UINT32 DfltMaxProbeSeqLen);		// initially allocate for this length probe sequence to be aligned, will be realloc'd as may be required
 

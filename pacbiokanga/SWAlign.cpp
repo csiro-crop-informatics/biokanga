@@ -99,7 +99,6 @@ m_MinOverlapLen=0;
 m_MaxSeedCoreDepth=0;		
 m_DeltaCoreOfs=0;			 
 m_MinNumCores=0;			
-m_MinPropBinned=0;			
 m_MaxAcceptHitsPerSeedCore=0; 
 
 m_DfltMaxProbeSeqLen=0;	
@@ -133,9 +132,6 @@ m_DeltaCoreOfs = cDfltDeltaCoreOfs;
 m_MaxSeedCoreDepth = cDfltMaxSeedCoreDepth;
 m_SeedCoreLen = cDfltSeedCoreLen;
 m_MinNumSeedCores = cDfltNumSeedCores;
-
-m_BinClusterSize = cDfltBinClusterSize;
-m_MinPropBinned = cDfltMinPropBinned;
 }
 
 int
@@ -205,7 +201,6 @@ CSWAlign::Initialise(UINT32 MaxSWAInstances,	// initialise for this many instanc
 			UINT32 DeltaCoreOfs,				// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
 			UINT32 CoreSeqLen,					// putative overlaps are explored if there are cores of at least this length in any putative overlap
 			UINT32 MinNumCores,					// and if the putative overlap contains at least this many cores
-			UINT32 MinPropBinned,				// and if the putative overlap contains at least this proportion (1..100) of 250bp bins binned cores
 			UINT32 MaxAcceptHitsPerSeedCore,	// limit accepted hits per seed core to no more than this many
 			UINT32 DfltMaxProbeSeqLen)			// initially allocate for this length probe sequence to be aligned, will be realloc'd as may be required
 {
@@ -216,7 +211,6 @@ m_MaxSeedCoreDepth = MaxSeedCoreDepth;
 m_DeltaCoreOfs = DeltaCoreOfs;
 m_SeedCoreLen = CoreSeqLen;
 m_MinNumCores = MinNumCores;
-m_MinPropBinned = MinPropBinned;
 m_MaxAcceptHitsPerSeedCore = MaxAcceptHitsPerSeedCore;
 m_DfltMaxProbeSeqLen = DfltMaxProbeSeqLen;
 
@@ -613,6 +607,11 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 		AvailBuffSize = AllocdBuffSize - BuffOfs;
 		}
 	}
+if(Rslt < eBSFSuccess && Rslt != eBSErrSession)
+	{
+	while(Fasta.NumErrMsgs())
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,Fasta.GetErrMsg());
+	}
 
 if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// close entry
 	{
@@ -688,6 +687,22 @@ memset(&pCoreHit[1],0,sizeof(tsPBSSWACoreHit));	// ensuring that used cores are 
 return(pInstance->NumCoreHits);
 }
 
+int									// returns index 1..N of core hits remaining or -1 if errors
+CSWAlign::RemoveAddedCoreHits(tsPBSSWInstance *pInstance,		// using this instance
+				int NumToRemove)                   // removing the last NumToRemove AddCoreHit() added
+{
+
+if(pInstance->NumCoreHits > (UINT32)NumToRemove)
+	{
+	pInstance->NumCoreHits -= NumToRemove;
+	memset(&pInstance->pCoreHits[pInstance->NumCoreHits],0,sizeof(tsPBSSWACoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
+	return(pInstance->NumCoreHits);
+	}
+pInstance->NumCoreHits = 0;
+memset(pInstance->pCoreHits,0,sizeof(tsPBSSWACoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
+return(-1);
+}
+
 int
 CSWAlign::IdentifyCoreHits(tsPBSSWInstance *pInstance,		// using this instance
 				bool bRevCpl)		// true if probe sequence to be reverse complemented
@@ -705,6 +720,8 @@ UINT32 LastProbeOfs;
 UINT32 ChkOvrLapCoreProbeOfs;
 UINT32 LastCoreProbeOfs;
 int ChkOvrLapCoreStartIdx;
+
+int TooManyHits = 0;
 
 etSeqBase *pCoreSeq;
 
@@ -733,7 +750,12 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=m_DeltaCoreOfs,pCoreSeq+=m_
   		AddCoreHit(pInstance,bRevCpl,ProbeOfs,HitEntryID,HitLoci,m_SeedCoreLen);
 		HitsThisCore += 1;
 		if(HitsThisCore > m_MaxAcceptHitsPerSeedCore)
+			{
+			TooManyHits += 1;
+			RemoveAddedCoreHits(pInstance,HitsThisCore);
+			HitsThisCore = 0;
 			break;
+			}
 
 		}
 	if(HitsThisCore)	// if at least one hit from this core
@@ -759,10 +781,6 @@ CSWAlign::AlignProbeSeq(UINT32 SWAInstance,         // alignment instance
 {
 tsPBSSWInstance *pSWAInstance;
 
-UINT32  OverlapSLen;
-UINT32  OverlapALen;
-UINT32  PropSBinsOverlap;
-UINT32  PropABinsOverlap;
 UINT32 TargLen;
 UINT32 CurTargCoreHitCnts;
 
@@ -782,12 +800,10 @@ UINT32 CurSummaryHitCnts;
 UINT32 LowestSummaryHitCnts;
 sPBSSWCoreHitCnts *pLowestSummaryHitCnts;
 UINT32 HitIdx;
-int NumHitsFlgMulti;
-UINT32 NumCoreHits;
+
 tsPBSSWACoreHit *pCoreHit;
 UINT32 CurTargSeqID;
-UINT32 CurProbeOfs;
-UINT32 CurTargOfs;
+
 UINT32 CurTargHitOfs;
 UINT32 CurProbeHitOfs;
 UINT32 CurSEntryIDHits;
@@ -879,75 +895,14 @@ if(m_SeedCoreLen < cMaxPacBioSeedExtn)
 
 pSWAInstance->NumTargCoreHitCnts = 0;
 memset(pSWAInstance->TargCoreHitCnts,0,sizeof(pSWAInstance->TargCoreHitCnts));
-if(pSWAInstance->NumCoreHits)
+if(pSWAInstance->NumCoreHits >= m_MinNumCores)
 	{
-	if(pSWAInstance->NumCoreHits > 1)
-		{
-		// sort core hits by ProbeNodeID.ProbeOfs.TargNodeID.TargOfs ascending so multiple hits onto a target from single probe offset can be detected
-		pSWAInstance->pmtqsort->qsort(pSWAInstance->pCoreHits,pSWAInstance->NumCoreHits,sizeof(tsPBSSWACoreHit),SortCoreHitsByProbeTargOfs);
-		CurProbeOfs = 0;
-		CurTargSeqID = 0;
-		CurTargOfs = 0;
-		NumHitsFlgMulti = 0;
-		pCoreHit = pSWAInstance->pCoreHits;
-		for(HitIdx = 0; HitIdx < pSWAInstance->NumCoreHits; HitIdx++,pCoreHit++)
-			{
-			if(CurTargSeqID == pCoreHit->TargSeqID && 
-					(pCoreHit->ProbeOfs >= CurProbeOfs && (pCoreHit->ProbeOfs <= (CurProbeOfs + m_BinClusterSize)))) 
-				{
-				NumHitsFlgMulti += 1;
-				pCoreHit->flgMulti = 1;
-				}				
-			else
-				{
-				CurProbeOfs = pCoreHit->ProbeOfs;
-				CurTargSeqID = pCoreHit->TargSeqID;
-				CurTargOfs = pCoreHit->TargOfs;
-				pCoreHit->flgMulti = 0;
-				}    
-			}
-
 			// resort core hits by TargNodeID.TargOfs.ProbeNodeID.ProbeOfs ascending
-		pSWAInstance->pmtqsort->qsort(pSWAInstance->pCoreHits,pSWAInstance->NumCoreHits,sizeof(tsPBSSWACoreHit),SortCoreHitsByTargProbeOfs);
-		CurTargSeqID = 0;
-		CurTargOfs = 0;
-		pCoreHit = pSWAInstance->pCoreHits;
-		for(HitIdx = 0; HitIdx < pSWAInstance->NumCoreHits; HitIdx++,pCoreHit++)
-			{
-			if(pCoreHit->flgMulti)
-				continue;
-			if(CurTargSeqID == pCoreHit->TargSeqID && 
-					(pCoreHit->TargOfs >= CurTargOfs && (pCoreHit->TargOfs <= (CurTargOfs + m_BinClusterSize)))) 
-				{
-				NumHitsFlgMulti += 1;
-				pCoreHit->flgMulti = 1;
-				}				
-			else
-				{
-				CurProbeOfs = pCoreHit->ProbeOfs;
-				CurTargSeqID = pCoreHit->TargSeqID;
-				CurTargOfs = pCoreHit->TargOfs;
-				}    
-			}
-		}
-
-
-	// reduce, remove core hits marked as being multiloci and thus not to be further processed  
+	pSWAInstance->pmtqsort->qsort(pSWAInstance->pCoreHits,pSWAInstance->NumCoreHits,sizeof(tsPBSSWACoreHit),SortCoreHitsByTargProbeOfs);
 	pCoreHit = pSWAInstance->pCoreHits;
-	pNxtCoreHit = pCoreHit;
-	NumCoreHits = 0;
 	for(HitIdx = 0; HitIdx < pSWAInstance->NumCoreHits; HitIdx++, pCoreHit++)
-		{
-		if(pCoreHit->flgMulti)
-			continue;
-		if(pNxtCoreHit != pCoreHit)
-			*pNxtCoreHit = *pCoreHit;
-		pNxtCoreHit += 1;
-		NumCoreHits += 1;
-		}
-	pSWAInstance->NumCoreHits = NumCoreHits;
-
-
+		pCoreHit->flgMulti = 0;
+		
 	CurSEntryIDHits = 0;
 	CurAEntryIDHits = 0;
 	CurTargHitOfs = 0;
@@ -961,47 +916,86 @@ if(pSWAInstance->NumCoreHits)
 	CurAProbeStartOfs = 0;
 	CurAProbeEndOfs = 0;
 
-
-	// with large target sequences then can have many artefactual core hits
-	// process and mark these probable artefact hits by identifying the most spatially related cluster of hits; hits outside of
+	// with large target sequences then can have many artifactual core hits
+	// process and mark these probable artifact hits by identifying the most spatially related cluster of hits; hits outside of
 	// the most spatially related cluster are marked as being artefactual 
 
+	UINT32 PrevAcceptedProbeOfs;
+	UINT32 PrevAcceptedTargOfs;
+	UINT32 MaxNoHitGapLen;
+	UINT32 NumNoHitGaps;
+	UINT32 SumNoHitGapLens;
+
+	MaxNoHitGapLen = 1000;                 // expecting cores to be distributed such that there shouldn't be many separated by more than this intercore bp gap
 	CurTargSeqID = 0;
 	pFirstCoreHit = NULL;
 	MaxWinSize = (ProbeSeqLen * 115) / 100;
 	pCoreHit = pSWAInstance->pCoreHits;
 	pMaxCoreHit = NULL;
 	for (HitIdx = 0; HitIdx < pSWAInstance->NumCoreHits; HitIdx++, pCoreHit++)
-	{
-		if (CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
 		{
+		if (CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
+			{
 			pMaxCoreHit = NULL;
 			pFirstCoreHit = pCoreHit;
 			CurTargSeqID = pCoreHit->TargSeqID;
-		}
+			TargSeqLen = m_pSfxArray->GetSeqLen(CurTargSeqID);
+			}
 
 		// if just checked last core hit for the current target ...
 		if (HitIdx + 1 == pSWAInstance->NumCoreHits || pCoreHit[1].TargSeqID != CurTargSeqID)
-		{
-			while (pFirstCoreHit <= pCoreHit)
 			{
+			while (pFirstCoreHit <= pCoreHit)
+				{
 				pFirstCoreHit->WinHits = 0;
 				pFirstCoreHit->flgClustered = 0;
 				pNxtCoreHit = pFirstCoreHit;
 				RelWinSize = 0;
+				PrevAcceptedProbeOfs = 0;
+				PrevAcceptedTargOfs = 0;
+				SumNoHitGapLens = 0;
+				NumNoHitGaps = 0;
+
+				if(pFirstCoreHit->ProbeOfs > MaxNoHitGapLen && pFirstCoreHit->TargOfs > MaxNoHitGapLen)
+					{
+					pFirstCoreHit += 1;
+					continue;
+					}
+					
 				while (pNxtCoreHit <= pCoreHit)
-				{
+					{
 					RelWinSize = pNxtCoreHit->TargOfs - pFirstCoreHit->TargOfs;
 					if (RelWinSize > MaxWinSize)
 						break;
-					if (pNxtCoreHit->flgRevCpl == pFirstCoreHit->flgRevCpl)
-						pFirstCoreHit->WinHits += 1;
+					if (pNxtCoreHit->flgRevCpl == pFirstCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
+						{
+						if(PrevAcceptedProbeOfs == 0 || pNxtCoreHit->ProbeOfs >= PrevAcceptedProbeOfs + m_SeedCoreLen) // a single matched seed core extension may have resulted in multiple hits, reduce counts by requiring a differential of at least m_SeedCoreLen
+							{
+							if((pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs) >= MaxNoHitGapLen)
+								{
+								NumNoHitGaps += 1;
+								SumNoHitGapLens += pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs;
+								}
+							PrevAcceptedProbeOfs = pNxtCoreHit->ProbeOfs;
+							PrevAcceptedTargOfs = pNxtCoreHit->TargOfs;
+							pFirstCoreHit->WinHits += 1;
+							}
+						}
 					pNxtCoreHit += 1;
-				}
-				if (pMaxCoreHit == NULL || pFirstCoreHit->WinHits > pMaxCoreHit->WinHits)
-					pMaxCoreHit = pFirstCoreHit;
+					}
+
+				if(pFirstCoreHit->WinHits >= m_MinNumCores && ((PrevAcceptedProbeOfs + MaxNoHitGapLen) > ProbeSeqLen || (PrevAcceptedTargOfs + MaxNoHitGapLen) > TargSeqLen))
+					{
+					UINT32 PutativeOverlapLen = PrevAcceptedProbeOfs - pFirstCoreHit->ProbeOfs;
+					if(((SumNoHitGapLens * 100) / PutativeOverlapLen) <= 20)		// only accepting if no more than 20% of alignment sums to gaps > MaxNoHitGapLen
+						{
+						if (pMaxCoreHit == NULL || pFirstCoreHit->WinHits > pMaxCoreHit->WinHits)
+							pMaxCoreHit = pFirstCoreHit;
+						}
+					}
 				pFirstCoreHit += 1;
-			}
+				}
+
 			if (pMaxCoreHit != NULL)
 			{
 				RelWinSize = 0;
@@ -1011,12 +1005,13 @@ if(pSWAInstance->NumCoreHits)
 					RelWinSize = pNxtCoreHit->TargOfs - pMaxCoreHit->TargOfs;
 					if (RelWinSize > MaxWinSize)
 						break;
-					pNxtCoreHit->flgClustered = 1;
+					if (pNxtCoreHit->flgRevCpl == pMaxCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
+						pNxtCoreHit->flgClustered = 1;
 					pNxtCoreHit->flgMulti = 0;
 					pNxtCoreHit += 1;
 				}
 			}
-			CurTargSeqID = 0;
+			CurTargSeqID = 0;  // looking for cores on a new target
 		}
 	}
 
@@ -1094,34 +1089,27 @@ if(pSWAInstance->NumCoreHits)
 		// if just processed last core hit for the current target ...
 		if(HitIdx + 1 == pSWAInstance->NumCoreHits || pCoreHit[1].TargSeqID != CurTargSeqID)
 			{
-			// checking here if the overlap is very likely to be artefact
-			// requiring that at least MinPropBinned of the bins along the putative alignment length contain hits
-			// and that the first and last hit are consistent with either a completely contained or overlapped
-			if(CurSEntryIDHits > 1 && ((OverlapSLen = CurSProbeEndOfs - CurSProbeStartOfs) > m_BinClusterSize))
-				PropSBinsOverlap = (m_BinClusterSize * CurSEntryIDHits * 100)/OverlapSLen;
-			else
-				PropSBinsOverlap = 0;
-
-			if(CurAEntryIDHits > 1 && ((OverlapALen = CurAProbeEndOfs - CurAProbeStartOfs) > m_BinClusterSize))
-				PropABinsOverlap = (m_BinClusterSize * CurAEntryIDHits * 100)/OverlapALen;
-			else
-				PropABinsOverlap = 0;
-
+			// checking here that the first and last hit are consistent with either a completely contained or overlapped
 			TargLen = m_pSfxArray->GetSeqLen(pCoreHit->TargSeqID);
-			if(PropSBinsOverlap >= m_MinPropBinned) 
+			if(CurSEntryIDHits >= m_MinNumCores) 
 				{
 				if((CurSProbeStartOfs >= m_OverlapFloat &&  CurSTargStartOfs >= m_OverlapFloat) ||
 						((TargLen - CurSTargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurSProbeEndOfs) >= AdjOverlapFloat))
-					PropSBinsOverlap = 0;
+					CurSEntryIDHits = 0;
 				}
-			if(PropABinsOverlap >= m_MinPropBinned)
+			else
+				CurSEntryIDHits = 0;
+
+			if(CurAEntryIDHits >= m_MinNumCores)
 				{
 				if((CurAProbeStartOfs >= m_OverlapFloat && CurATargStartOfs >= m_OverlapFloat) ||
 					((TargLen - CurATargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurAProbeEndOfs) >= AdjOverlapFloat))
-					PropABinsOverlap = 0;
+					CurAEntryIDHits = 0;
 				}
+			else
+				CurAEntryIDHits = 0;
 
-			if((PropSBinsOverlap >= m_MinPropBinned && CurSEntryIDHits >= m_MinNumCores) || (PropABinsOverlap >= m_MinPropBinned && CurAEntryIDHits >= m_MinNumCores))
+			if(CurSEntryIDHits >= m_MinNumCores || CurAEntryIDHits >= m_MinNumCores)
 				{
 				if(pSWAInstance->NumTargCoreHitCnts == cPBSSWSummaryTargCoreHitCnts)
 					{

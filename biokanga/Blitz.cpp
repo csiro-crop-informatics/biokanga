@@ -2443,6 +2443,12 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 		AvailBuffSize = AllocdBuffSize - BuffOfs;
 		}
 	}
+if(Rslt < eBSFSuccess && Rslt != eBSErrSession)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcLoadQuerySeqsFile: Parsing errors");
+	while(Fasta.NumErrMsgs())
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,Fasta.GetErrMsg());
+	}
 
 if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// last entry
 	Rslt=EnqueueQuerySeq(szName,(int)BuffOfs,pSeqBuff);

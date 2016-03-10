@@ -3,14 +3,14 @@
 #include "BKScommon.h"
 
 const UINT32 cServiceProviderVersion = 1;			// service provider is at this version
-const UINT32 cMaxServiceProviderInsts = 100;	    // limited to support a maximum of this many service instances
+const UINT32 cMaxServiceProviderInsts = cMaxServiceInsts;	    // limited to support a maximum of this many service instances
 // when negotiating with potential service requesters then minimal buffer tx/rx buffer sizes are allocated
 const int cMinTxRxBuffSize = (cMaxServiceTypes * sizeof(tsServiceDetail)) + sizeof(tsBKSReqServices) * 3;	// always allocate at least this sized TxdBuff/RxdBuffs - ensures negotiation frames fit!
 
-const int cMaxReqDataSize = 5000000;		// each worker thread allocates to process up to this much request data
-const int cMaxReqParamSize = 50000;			// each worker thread allocates to process up to this much parameterisation data
-const int cMaxRespDataSize = 5000000;		// each worker thread allocates to return up to this much response data
-const int cMaxMFABuffSize = (cMaxRespDataSize - 10000);	// each worker thread allocates to hold at most this sized MAlignCols2fasta/MAlignCols2MFA alignments
+const int cMaxReqDataSize =  cMaxSWReqPayloadSize;		// each worker thread allocates to process up to this much request data
+const int cMaxReqParamSize = cMaxSWParamLen;			// each worker thread allocates to process up to this much parameterisation data
+const int cMaxRespDataSize = cMaxSWRespPayloadSize;		// each worker thread allocates to return up to this much response data
+const int cMaxMFABuffSize =  cMaxSWMAFBuffSize;			// each worker thread allocates to hold at most this sized MAlignCols2fasta/MAlignCols2MFA alignments plus row descriptor prefixes
 
 // service providers will be in one of these exclusive states
 typedef enum TAG_eBKSPProvState

@@ -639,7 +639,17 @@ while((Rslt = SeqLen = pFasta->ReadSequence(m_pSeq,MaxLength + 10)) > eBSFSucces
 	m_SeqNsCnts[SeqNsIdx] += 1;
 	NumAccepted += 1;
 	}
+if(Rslt < eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Encountered errors after %d sequences loaded of which %d were processed. There were %d underlength and %d overlength",
+					NumProcessed,NumAccepted,NumUnderLen,NumOverLen);
+	while(pFasta->NumErrMsgs())
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,pFasta->GetErrMsg());
+	delete pFasta;
+	return(Rslt);
+	}
 delete pFasta;
+
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sequences loaded %d of which %d were processed. There were %d underlength and %d overlength",
 					NumProcessed,NumAccepted,NumUnderLen,NumOverLen);
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Maximum length sequence loaded and accepted for processing was %d bp",MaxLengthRead);
