@@ -2682,6 +2682,13 @@ return(1);
 // a lower confidence sequence. Weighting to use is in m_MAFlags for each sequence
 // writes consensus base and score back into m_pMACols
 // score = TotalBases * (MostAbundant - NextAbundant) / (MostAbundant + NextAbundant)
+// Note: there is evidence that some PacBio reads are chimeric. In these reads there are alignments stacking up at the 5' end which all terminate at/near some internal read offset and alignments stacking up at the 3' end
+// which all terminate at/near the same internal read offset as the 5' stacking reads. When error corrected the 'chimeric' read 5' and 3' ends align to the targeted genome at > 99.9% identity but each end may differ in 
+// sense orientation and be separated by 10's of Kbp. In one example I checked the 5' and 3' ends were >10Kbp long, the 5' end aligned sense, the 3' end aligned antisense and the apparent insert size was 70Kbp. The MAF 5' alignments ended at
+// just 1bp away from the 3' MAF alignments!
+// So now a check is made on where the alignments are being terminated and if the termination loci is clustering in a 75bp window then the confidence in the bases being called is set to be a maximum of 2; this allows for these alignments
+// to be split by confidence score at the assumed chimeric internal read loci using the default filtering confidence score which is currently 3.
+
 int
 CSSW::GenMultialignConcensus(void)
 {
@@ -2694,9 +2701,14 @@ int XAbundIdxs;
 int TotBaseCnts;
 UINT8 Base;
 UINT8 *pBase;
+UINT8 *pNxColBase;
+int NumNxtBasesChkd;
+int NumTermAlignments;
+int NumNonTermAlignments;
 int BaseIdx;
 int BaseWeight;
 tsMAlignCol *pCol;
+tsMAlignCol *pNxtCol;
 tsMAlignCol *pInDelStartCol;
 tsMAlignCol *pInDelEndCol;
 
@@ -2741,6 +2753,8 @@ pCol = (tsMAlignCol *)m_pMACols;
 do
 	{
 	memset(BaseCnts,0,sizeof(BaseCnts));
+	NumTermAlignments = 0;
+	NumNonTermAlignments = 0;
 	TotBaseCnts = 0;
 	pBase = pCol->Bases;
 	for(BaseIdx = 0; BaseIdx < pCol->Depth; BaseIdx++,pBase++)
@@ -2750,6 +2764,24 @@ do
 			BaseWeight = (int)(m_MAFlags[BaseIdx] & 0x0f);    // weighting is in bits 0..3
 			BaseCnts[*pBase & eBaseEOS] += BaseWeight;
 			TotBaseCnts += BaseWeight;
+			// look ahead and see if this sequence alignment terminates within the next 75bp, if too many current alignments terminate than that will impact on the confidence in this stacked column of bases
+			NumNxtBasesChkd = 0;
+			pNxtCol = pCol;
+			do {
+				pNxColBase = &pNxtCol->Bases[BaseIdx];
+				if((*pNxColBase & eBaseEOS) == eBaseUndef)		// stop checking at 1st eBaseUndef, means that there is no further alignment 
+					break;
+				NumNxtBasesChkd += 1;
+				if(pNxtCol->NxtColIdx == 0)
+					pNxtCol = NULL;
+				else
+					pNxtCol = (tsMAlignCol *)&m_pMACols[(pCol->NxtColIdx - 1) * (size_t)m_MAColSize];
+				}
+			while(NumNxtBasesChkd <= 75 && pNxtCol != NULL);
+			if(pNxtCol != NULL && NumNxtBasesChkd < 75)
+				NumTermAlignments += 1;
+			else
+				NumNonTermAlignments += 1;
 			}
 		}
 
@@ -2780,6 +2812,10 @@ do
 	ConsMostAbundCnt = BaseCnts[AbundIdxs[0]];
 	ConsMNextAbundCnt = BaseCnts[AbundIdxs[1]];
 	ConsConf = TotBaseCnts * (ConsMostAbundCnt - ConsMNextAbundCnt) / (1 + ConsMostAbundCnt + ConsMNextAbundCnt);
+
+	if(NumTermAlignments >= NumNonTermAlignments)		// if proportion of alignments terminating equal or higher than non-terminating within next 75bp then treat stacked column as being much lower confidence, at most 2
+		ConsConf = min(ConsConf, 2);
+
 	pCol->ConsConf = ConsConf > 9 ? 9 : ConsConf;
 	if(pCol->NxtColIdx == 0)
 		pCol = NULL;

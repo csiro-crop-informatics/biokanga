@@ -78,15 +78,15 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
-		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 15Kbp) and if
-		int MaxPBSeqLen,			// no more than this length (defaults to 30Kbp)
+		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
+		int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp)
 		int HCRelWeighting,         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
 		int MinErrCorrectLen,		// error corrected sequences must be at least this minimum length
-		int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
+		int MinConcScore,			// error corrected sequences trimmed until mean 50bp concensus score is at least this threshold
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
 		int NumHiConfFiles,			// number of input hiconfidence file specs
@@ -1134,15 +1134,15 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
-		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 5Kbp) and if
-        int MaxPBSeqLen,			// no more than this length (defaults to 30Kbp)
+		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
+        int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 		int HCRelWeighting,         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
 	    int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
-		int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
+		int MinConcScore,			// error corrected sequences trimmed until mean 50bp concensus score is at least this threshold
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
 		int NumHiConfFiles,			// number of input hiconfidence file specs
@@ -1252,7 +1252,7 @@ m_MultiAlignFileUnsyncedSize = 0;
 m_ErrCorFileUnsyncedSize = 0;
 
 m_MinErrCorrectLen = cDfltMinErrCorrectLen;
-m_MinConcScore = 2;
+m_MinConcScore = 3;
 
 m_PMode = ePBPMErrCorrect;
 
@@ -1820,7 +1820,7 @@ return(SumFileSizes);
 
 int
 CPBErrCorrect::GenConsensusFromMAF(int MinErrCorrectLen,		// error corrected sequences must be at least this minimum length
-			 int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
+			 int MinConcScore,			// error corrected sequences trimmed until mean 50bp concensus score is at least this threshold
 			char *pszErrCorFile,		// name of file into which write error corrected sequences
 			char *pszMultiAlignFile)	// name of file containing multiple alignments to process
 {
@@ -1935,7 +1935,7 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 		int HCRelWeighting,             // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
 	    int MinErrCorrectLen,		// error corrected and trimmed sequences must be at least this minimum length
-		int MinConcScore,			// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
+		int MinConcScore,			// error corrected sequences trimmed until mean 50bp concensus score is at least this threshold
 		int NumPacBioFiles,			// number of input pacbio file specs
 		char *pszPacBioFiles[],		// input pacbio files
 		int NumHiConfFiles,			// number of input hiconfidence file specs
