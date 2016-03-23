@@ -128,7 +128,7 @@ return(eBSFSuccess);
 }
 
 
-tSeqID									// identifier by which this sequence can later be retreived (0 if unable to add sequence)
+tSeqID									// identifier by which this sequence can later be retrieved (0 if unable to add sequence)
 CSeqStore::AddSeq(UINT32 Flags,			// any flags associated with this sequence
 			   char *pszDescr,			// sequence descriptor
 			   UINT32 SeqLen,			// sequence is this length

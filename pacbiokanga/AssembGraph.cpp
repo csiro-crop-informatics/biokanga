@@ -260,7 +260,7 @@ m_bReduceEdges = true;
 m_NumReducts = 0;
 m_NumComponents = 0;	
 m_AllocComponents= 0;
-
+m_bSenseEdgesOnly = false;
 m_MinScaffScoreThres = cDfltMin1kScore;
 m_bAcceptOrphanSeqs = false;
 
@@ -270,7 +270,8 @@ DeleteMutexes();
 }
 
 teBSFrsltCodes 
-CAssembGraph::Init(int ScaffScoreThres,		// accepted edges must be of at least this overlap score
+CAssembGraph::Init(bool bSenseEdgesOnly,            // only processing for edges overlapping sense onto sense, and with no inferenced edges
+					int ScaffScoreThres,		// accepted edges must be of at least this overlap score
 				   bool bAcceptOrphanSeqs,		// also report sequences which are not overlapped or overlapping any other sequence
 					int MaxThreads)		// initialise with maxThreads threads, if maxThreads == 0 then number of threads not set	
 {
@@ -278,6 +279,7 @@ if(MaxThreads < 0 || MaxThreads > cMaxWorkerThreads ||
 		ScaffScoreThres < 0)
 		return(eBSFerrParams);
 Reset();
+m_bSenseEdgesOnly = bSenseEdgesOnly;
 m_MinScaffScoreThres = ScaffScoreThres;
 m_bAcceptOrphanSeqs = bAcceptOrphanSeqs;
 if(MaxThreads > 0)
@@ -403,6 +405,9 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 	if(pOverlap->Score < m_MinScaffScoreThres || pOverlap->OverlapClass == eOLCOverlapping)   // only accepting if previously classified as being overlapping and score at least threshold
 		continue;
 
+	if(pOverlap->bAntisense && m_bSenseEdgesOnly)
+		continue;
+
 	// ensure up front that the sequence identifiers can be have been associated to the correct vertex
 	if(pOverlap->FromSeqID != CurOverlapSeqID)
 		{
@@ -470,6 +475,10 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 	pPrevEdge = pOutEdge;
 	pOutEdge += 1;
 	m_UsedGraphOutEdges += 1;
+
+	if(m_bSenseEdgesOnly)
+		continue;
+
 	// add back edge from the OverlappedVertexID back to the OverlappingVertexID in case caller doesn't provide one
 	// will mark as being an inferred edge so later can be removed if caller does provide it
 	memcpy(pOutEdge,pPrevEdge,sizeof(tsGraphOutEdge));
@@ -517,7 +526,10 @@ tVertID OverlappingVertexID;
 tVertID OverlappedVertexID;
 
 if(Score < m_MinScaffScoreThres || OverlapClass >= eOLCartefact)			// only accepting edges which have not been classified by caller as artefact and that score at least the minimum threshold
-	return(m_UsedGraphOutEdges);			
+	return(m_UsedGraphOutEdges);
+
+if(bAntisense &&  m_bSenseEdgesOnly)
+	return(m_UsedGraphOutEdges);
 
 if(FromSeqID < 1 || ToSeqID < 1 || FromSeqID > cMaxValidID || ToSeqID > cMaxValidID)
 	{
@@ -688,48 +700,51 @@ pOutEdge->flgArtefact = OverlapClass == eOLCartefact ? 1 : 0;
 pOutEdge->flgsOvlSense = bAntisense ? 2 : 0;
 pOutEdge->flgInfBackEdge = 0;
 
-pPrevEdge = pOutEdge;
-
-// add back edge from the OverlappedVertexID back to the OverlappingVertexID in case caller doesn't provide one
-// will mark as being an inferred edge so later can be removed if caller does provide it
-pOutEdge = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
-memcpy(pOutEdge,pPrevEdge,sizeof(tsGraphOutEdge));
-pOutEdge->FromVertexID = OverlappedVertexID;
-pOutEdge->ToVertexID = OverlappingVertexID;
-pOutEdge->FromSeqLen = ToSeqLen;
-pOutEdge->ToSeqLen = FromSeqLen;
-pOutEdge->FromSeq5Ofs = ToSeq5Ofs;
-pOutEdge->FromSeq3Ofs = ToSeq3Ofs;
-pOutEdge->ToSeq5Ofs = FromSeq5Ofs;
-pOutEdge->ToSeq3Ofs = FromSeq3Ofs;
-pOutEdge->flgsOvlSense = bAntisense ? 1 : 0;
-pOutEdge->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
-
-
-// add edge as antisense overlapping antisense if was originally sense overlapping sense
-// will mark as being an inferred edges so later can be removed if caller does provide it
-if(!bAntisense)
+if(!m_bSenseEdgesOnly)
 	{
-	tsGraphOutEdge *pOutEdgeA;
+	pPrevEdge = pOutEdge;
 
-	pOutEdgeA = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
-	memcpy(pOutEdgeA,pPrevEdge,sizeof(tsGraphOutEdge));
-	pOutEdgeA->FromSeq5Ofs = FromSeqLen - (FromSeq3Ofs + 1);
-	pOutEdgeA->FromSeq3Ofs = FromSeqLen - (FromSeq5Ofs + 1);
-	pOutEdgeA->ToSeq5Ofs = ToSeqLen - (ToSeq3Ofs + 1);
-	pOutEdgeA->ToSeq3Ofs = ToSeqLen - (ToSeq5Ofs + 1);
-	pOutEdgeA->flgsOvlSense = 3;
-	pOutEdgeA->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
+	// add back edge from the OverlappedVertexID back to the OverlappingVertexID in case caller doesn't provide one
+	// will mark as being an inferred edge so later can be removed if caller does provide it
+	pOutEdge = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
+	memcpy(pOutEdge,pPrevEdge,sizeof(tsGraphOutEdge));
+	pOutEdge->FromVertexID = OverlappedVertexID;
+	pOutEdge->ToVertexID = OverlappingVertexID;
+	pOutEdge->FromSeqLen = ToSeqLen;
+	pOutEdge->ToSeqLen = FromSeqLen;
+	pOutEdge->FromSeq5Ofs = ToSeq5Ofs;
+	pOutEdge->FromSeq3Ofs = ToSeq3Ofs;
+	pOutEdge->ToSeq5Ofs = FromSeq5Ofs;
+	pOutEdge->ToSeq3Ofs = FromSeq3Ofs;
+	pOutEdge->flgsOvlSense = bAntisense ? 1 : 0;
+	pOutEdge->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
 
 
-	pOutEdgeA = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
-	memcpy(pOutEdgeA,pOutEdge,sizeof(tsGraphOutEdge));
-	pOutEdgeA->FromSeq5Ofs = pOutEdge->FromSeqLen - (pOutEdge->FromSeq3Ofs + 1);
-	pOutEdgeA->FromSeq3Ofs = pOutEdge->FromSeqLen - (pOutEdge->FromSeq5Ofs + 1);
-	pOutEdgeA->ToSeq5Ofs = pOutEdge->ToSeqLen - (pOutEdge->ToSeq3Ofs + 1);
-	pOutEdgeA->ToSeq3Ofs = pOutEdge->ToSeqLen - (pOutEdge->ToSeq5Ofs + 1);
-	pOutEdgeA->flgsOvlSense = 3;
-	pOutEdgeA->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
+	// add edge as antisense overlapping antisense if was originally sense overlapping sense
+	// will mark as being an inferred edges so later can be removed if caller does provide it
+	if(!bAntisense)
+		{
+		tsGraphOutEdge *pOutEdgeA;
+
+		pOutEdgeA = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
+		memcpy(pOutEdgeA,pPrevEdge,sizeof(tsGraphOutEdge));
+		pOutEdgeA->FromSeq5Ofs = FromSeqLen - (FromSeq3Ofs + 1);
+		pOutEdgeA->FromSeq3Ofs = FromSeqLen - (FromSeq5Ofs + 1);
+		pOutEdgeA->ToSeq5Ofs = ToSeqLen - (ToSeq3Ofs + 1);
+		pOutEdgeA->ToSeq3Ofs = ToSeqLen - (ToSeq5Ofs + 1);
+		pOutEdgeA->flgsOvlSense = 3;
+		pOutEdgeA->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
+
+
+		pOutEdgeA = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
+		memcpy(pOutEdgeA,pOutEdge,sizeof(tsGraphOutEdge));
+		pOutEdgeA->FromSeq5Ofs = pOutEdge->FromSeqLen - (pOutEdge->FromSeq3Ofs + 1);
+		pOutEdgeA->FromSeq3Ofs = pOutEdge->FromSeqLen - (pOutEdge->FromSeq5Ofs + 1);
+		pOutEdgeA->ToSeq5Ofs = pOutEdge->ToSeqLen - (pOutEdge->ToSeq3Ofs + 1);
+		pOutEdgeA->ToSeq3Ofs = pOutEdge->ToSeqLen - (pOutEdge->ToSeq5Ofs + 1);
+		pOutEdgeA->flgsOvlSense = 3;
+		pOutEdgeA->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
+		}
 	}
 
 m_bReduceEdges = true;
@@ -831,8 +846,8 @@ int CmpRslt;
 UINT32 TargPsn;
 UINT32 NodeLo;				
 UINT32 NodeHi;				
-if( SeqID < 1,								// must be valid
-	m_pGraphVertices == NULL,				// must be allocated
+if( SeqID < 1 ||								// must be valid
+	m_pGraphVertices == NULL ||				// must be allocated
   	m_UsedGraphVertices < 1 ||				// must have at least 1 vertex
 	m_VerticesSortOrder != eVSOSeqID)		// and vertices must be sorted by SeqID ascending
 	return(NULL);
@@ -1782,7 +1797,6 @@ UINT64											// highest scoring of any path from pEdge
 CAssembGraph::ScorePath(UINT32 Depth,			// current recursive depth - used to detect circular paths
 				  tsGraphOutEdge *pEdge,		// score paths starting with this edge
 				  bool bFromIsAntisense)		// path from vertex has this path starting vertex relative sense
-
 {
 bool bToIsAntisense;
 UINT32 Idx;
@@ -2063,6 +2077,271 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"FindHighestScoringPaths: Completed");
 
 return(0);
 }
+
+// components contain those vertices which are linked to at least one other vertex in that component and no other vertices in another component
+int												 // eBSFSuccess or otherwise
+CAssembGraph::ReportVerticesEdgesGEXF(char *pszOutFile,		 // report as GEXF on all vertices and their edges for each component to this file
+										   CSeqStore *pSeqStore)	// holds sequences used to assemble contig
+{
+int hOutFile;
+
+int BuffIdx;
+char szBuffer[0x3fff];
+char szDescr[100];
+
+tVertID Idx;
+tComponentID CurCompID;
+tVertID CurVertexID;
+tsGraphVertex *pVertex;
+tsComponent *pComponent;
+
+tsGraphOutEdge *pToEdge;
+int EdgeCnt;
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"ReportVerticesEdgesGEXF: Starting ...");
+
+#ifdef _WIN32
+hOutFile = open(pszOutFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
+#else
+if((hOutFile = open(pszOutFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+	if(ftruncate(hOutFile,0)!=0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",pszOutFile,strerror(errno));
+		return(eBSFerrCreateFile);
+		}
+#endif
+if(hOutFile < 0)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ReportVerticesEdgesGEXF: unable to create/truncate output file '%s'",pszOutFile);
+	return(eBSFerrCreateFile);
+	}
+
+
+BuffIdx = sprintf(szBuffer,"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"<gexf xmlns=\"http://www.gexf.net/1.2draft\" version=\"1.2\">\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<meta lastmodifieddate=\"2016-03-22\">\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<creator>PacBioKanga</creator>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<description>Error corrected overlaps</description>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t</meta>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<graph mode=\"static\" defaultedgetype=\"directed\">\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<attributes class=\"node\">\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<attribute id=\"0\" title=\"SeqLen\" type=\"integer\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<attribute id=\"1\" title=\"OutDegree\" type=\"integer\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<attribute id=\"2\" title=\"InDegree\" type=\"integer\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t</attributes>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<attributes class=\"edge\">\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<attribute id=\"weight\" title=\"weight\" type=\"float\"></attribute>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t</attributes>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<nodes>\n");
+CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+BuffIdx = 0;
+// generate list of nodes
+
+
+pComponent = m_pComponents;
+for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
+	{
+	pComponent->NumTraceBacks = 0;
+	pComponent->StartTraceBackID = 0;
+	pVertex = m_pGraphVertices;	
+	for(CurVertexID = 1; CurVertexID <= m_UsedGraphVertices; CurVertexID++,pVertex++)
+		{
+		if(pVertex->ComponentID != CurCompID)
+			continue;
+
+		pSeqStore->GetDescr(pVertex->SeqID,sizeof(szDescr)-1,szDescr);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<node id=\"%d\" label=\"%s\" >\n",pVertex->VertexID,szDescr);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t<attvalues>\n");
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t\t<attvalue for=\"0\" value=\"%d\"/>\n",pVertex->SeqLen);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t\t<attvalue for=\"1\" value=\"%d\"/>\n",pVertex->DegreeOut);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t\t<attvalue for=\"2\" value=\"%d\"/>\n",pVertex->DegreeIn);
+        BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t</attvalues>\n");
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t</node>\n");
+	
+		if(BuffIdx + 500 > sizeof(szBuffer))
+			{
+			CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+			BuffIdx = 0;
+			}
+		}
+	}
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t</nodes>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<edges>\n");
+
+// now generate list of edges
+EdgeCnt = 0;
+pComponent = m_pComponents;
+for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
+	{
+	pComponent->NumTraceBacks = 0;
+	pComponent->StartTraceBackID = 0;
+	pVertex = m_pGraphVertices;	
+	for(CurVertexID = 1; CurVertexID <= m_UsedGraphVertices; CurVertexID++,pVertex++)
+		{
+		if(pVertex->ComponentID != CurCompID)
+			continue;
+		if(pVertex->DegreeOut == 0)
+			continue;
+		pToEdge = &m_pGraphOutEdges[pVertex->OutEdgeID-1];
+		for(Idx = 0; Idx < pVertex->DegreeOut; Idx++,pToEdge++)
+			{
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<edge id=\"%d\" source=\"%d\" target=\"%d\">\n",++EdgeCnt, pToEdge->FromVertexID, pToEdge->ToVertexID);
+
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<attvalues>\n");
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t<attvalue for=\"weight\" value=\"%1.3f\"/>\n",(double)pToEdge->Score/1000.0);
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t</attvalues>\n");
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t</edge>\n");
+
+			if(BuffIdx + 500 > sizeof(szBuffer))
+				{
+				CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+				BuffIdx = 0;
+				}
+			}
+
+		}
+	}
+
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t</edges>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t</graph>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"</gexf>\n");
+
+CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+
+#ifdef _WIN32
+_commit(hOutFile);
+#else
+fsync(hOutFile);
+#endif
+close(hOutFile);
+return(0);
+}
+
+int												 // eBSFSuccess or otherwise
+CAssembGraph::ReportVerticesEdgesGraphML(char *pszOutFile,		 // report as GraphML on all vertices and their edges for each component to this file
+										   CSeqStore *pSeqStore)	// holds sequences used to assemble contig
+{
+int hOutFile;
+
+int BuffIdx;
+char szBuffer[0x3fff];
+char szDescr[100];
+
+tVertID Idx;
+tComponentID CurCompID;
+tVertID CurVertexID;
+tsGraphVertex *pVertex;
+tsComponent *pComponent;
+
+tsGraphOutEdge *pToEdge;
+int EdgeCnt;
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"ReportVerticesEdgesGraphML: Starting ...");
+
+#ifdef _WIN32
+hOutFile = open(pszOutFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
+#else
+if((hOutFile = open(pszOutFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+	if(ftruncate(hOutFile,0)!=0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",pszOutFile,strerror(errno));
+		return(eBSFerrCreateFile);
+		}
+#endif
+if(hOutFile < 0)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ReportVerticesEdgesGraphML: unable to create/truncate output file '%s'",pszOutFile);
+	return(eBSFerrCreateFile);
+	}
+
+
+BuffIdx = sprintf(szBuffer,"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\"\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\txmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\txsi:schemaLocation=\"http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd\">\n");
+
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<key id=\"n1\" for=\"node\" attr.name=\"SeqName\" attr.type=\"string\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<key id=\"n2\" for=\"node\" attr.name=\"SeqLen\" attr.type=\"int\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<key id=\"n3\" for=\"node\" attr.name=\"OutDegree\" attr.type=\"int\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<key id=\"n4\" for=\"node\" attr.name=\"InDegree\" attr.type=\"int\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<key id=\"e1\" for=\"edge\" attr.name=\"weight\" attr.type=\"double\"/>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t<graph id=\"ECreads\" edgedefault=\"directed\">\n");
+
+CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+BuffIdx = 0;
+// generate list of nodes
+pComponent = m_pComponents;
+for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
+	{
+	pComponent->NumTraceBacks = 0;
+	pComponent->StartTraceBackID = 0;
+	pVertex = m_pGraphVertices;	
+	for(CurVertexID = 1; CurVertexID <= m_UsedGraphVertices; CurVertexID++,pVertex++)
+		{
+		if(pVertex->ComponentID != CurCompID)
+			continue;
+
+		pSeqStore->GetDescr(pVertex->SeqID,sizeof(szDescr)-1,szDescr);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<node id=\"%d\" >\n",pVertex->VertexID);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<data key=\"n1\">%s</data>\n", szDescr);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<data key=\"n2\">%d</data>\n", pVertex->SeqLen);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<data key=\"n3\">%d</data>\n", pVertex->DegreeOut);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<data key=\"n4\">%d</data>\n", pVertex->DegreeIn);
+		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t</node>\n");
+	
+		if(BuffIdx + 500 > sizeof(szBuffer))
+			{
+			CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+			BuffIdx = 0;
+			}
+		}
+	}
+
+// now generate list of edges
+EdgeCnt = 0;
+pComponent = m_pComponents;
+for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
+	{
+	pComponent->NumTraceBacks = 0;
+	pComponent->StartTraceBackID = 0;
+	pVertex = m_pGraphVertices;	
+	for(CurVertexID = 1; CurVertexID <= m_UsedGraphVertices; CurVertexID++,pVertex++)
+		{
+		if(pVertex->ComponentID != CurCompID)
+			continue;
+		if(pVertex->DegreeOut == 0)
+			continue;
+		pToEdge = &m_pGraphOutEdges[pVertex->OutEdgeID-1];
+		for(Idx = 0; Idx < pVertex->DegreeOut; Idx++,pToEdge++)
+			{
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<edge id=\"%d\" source=\"%d\" target=\"%d\">\n",++EdgeCnt, pToEdge->FromVertexID, pToEdge->ToVertexID);
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<data key=\"e1\">%1.3f</data>\n", (double)pToEdge->Score/1000.0);
+			BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t</edge>\n");
+
+			if(BuffIdx + 500 > sizeof(szBuffer))
+				{
+				CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+				BuffIdx = 0;
+				}
+			}
+
+		}
+	}
+
+BuffIdx += sprintf(&szBuffer[BuffIdx],"\t</graph>\n");
+BuffIdx += sprintf(&szBuffer[BuffIdx],"</graphml>\n");
+
+CUtility::SafeWrite(hOutFile,szBuffer,BuffIdx);
+
+#ifdef _WIN32
+_commit(hOutFile);
+#else
+fsync(hOutFile);
+#endif
+close(hOutFile);
+return(0);
+}
+
 
 
 UINT32					// number of replacements
@@ -2361,7 +2640,7 @@ while(NodeHi >= NodeLo);
 return(0);	// unable to locate any instance of SeqID
 }
 
-UINT64 
+int 
 CAssembGraph::WriteContigSeqs(char *pszOutFile,  // write assembled contigs to this output file
 								CSeqStore *pSeqStore)  // holds sequences used to assemble contig
 {

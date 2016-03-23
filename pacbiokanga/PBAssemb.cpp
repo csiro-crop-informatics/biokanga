@@ -94,7 +94,7 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 use pregenerated overlap loci details file and error corrected sequences");
+struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 use pregenerated overlap loci details file and error corrected sequences, 1 generate sense/sense GEFX output format, 2 generate sense/sense GraphML output format");
 struct arg_int *minscafflen = arg_int0("l","minscafflen","<int>",	"minimum individual sequence length (default 5000, range 500 to 100000)");
 struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum overlap required to merge reads into single contig (default 5000, range 250 to 100000)");
 
@@ -105,9 +105,9 @@ struct arg_lit  *orphanseqs = arg_lit0("S", "orphanseqs", "accept orphan sequenc
 struct arg_file *pacbiosovlps = arg_file1("I","pacbiosovlps","<file>",	"input file containing pregenerated error corrected overlap detail");
 
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,	"names of input files containing error corrected sequences to be used for contigs");
-struct arg_file *outfile = arg_file1("o","out","<file>",			"output merged contig sequences to this file");
+struct arg_file *outfile = arg_file1("o","out","<file>",					"output merged contig sequences (processing mode 0) or GEFX format (processing mode 1) to this file");
 
-struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
+struct arg_int *threads = arg_int0("T","threads","<int>",					"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",				"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
@@ -256,9 +256,9 @@ if (!argerrors)
 		}
 
 	PMode = (etPBPMode)(pmode->count ? pmode->ival[0] : (int)ePBPMScaffold);
-	if(PMode < ePBPMScaffold || PMode > ePBPMScaffold)
+	if(PMode < ePBPMScaffold || PMode > ePBPMToGraphML)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Processing mode '-m%d' must be in range 0..%d",PMode,ePBPMScaffold);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Processing mode '-m%d' must be in range 0..%d",PMode,ePBPMToGraphML);
 		return(1);
 		}
 
@@ -303,7 +303,6 @@ if (!argerrors)
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input PacBio file(s) specified with '-i<filespec>' option)\n");
 		exit(1);
 		}
-
 
 	strncpy(szOverlapDetailFile,pacbiosovlps->filename[0],sizeof(szOverlapDetailFile));
 	szOverlapDetailFile[sizeof(szOverlapDetailFile)-1] = '\0';
@@ -352,7 +351,12 @@ if (!argerrors)
 		case ePBPMScaffold:		// scaffolding
 			pszMode = (char *)"Using pregenerated overlaps for scaffolding";
 			break;
-
+		case ePBPMToGEFX:		// converting input overlap detail into GEFX ready for graph visualisation
+			pszMode = (char *)"Converting sense/sense overlaps into GEFX ready for graph visualisation";
+			break;
+		case ePBPMToGraphML:		// converting input overlap detail into GraphML ready for graph visualisation
+			pszMode = (char *)"Converting sense/sense overlaps into GraphML ready for graph visualisation";
+			break;
 			}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: '%s'",pszMode);
@@ -367,7 +371,10 @@ if (!argerrors)
 	for(Idx=0; Idx < NumPacBioFiles; Idx++)
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input sequences file spec: '%s'",pszPacBioFiles[Idx]);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output contig sequences file: '%s'",szOutFile);
+	if(PMode == ePBPMScaffold)
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output contig sequences file: '%s'",szOutFile);
+	else
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output GEFX file (sense overlap sense only reported): '%s'",szOutFile);
 
 	if(szExperimentName[0] != '\0')
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"This processing reference: %s",szExperimentName);
@@ -656,8 +663,9 @@ __sync_val_compare_and_swap(&m_CASLock,1,0);
 
 
 UINT32												//  returns number of overlaps loaded and accepted, if > cMaxValidID then cast to teBSFrsltCodes for actual error 
-CPBAssemb::LoadPacBioOvlps(char *pszPacBioOvlps,  // load from this pregenerated PacBio sequence overlap loci CSV file
-							 bool bValidateOnly)	// if true then simply parse and validate that the CSV format is as expected
+CPBAssemb::LoadPacBioOvlps(char *pszPacBioOvlps,			// parse and load pregenerated PacBio sequence overlap loci CSV file 
+						bool bValidateOnly,		// true if parse and validate only
+						bool bSenseOnly)		// true if to only accept sense overlapping sense
 {
 int Rslt;
 int NumFields;
@@ -991,10 +999,6 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		}
 
 	switch(Class) {
-//		case eOLCcontained:     // slough the containing or contained
-//		case eOLCcontains:				
-//			m_NumRejectContained += 1;
-//			continue;
 		case eOLCartefact:		// slough any artefacts
 			m_NumRejectArtefact += 1;
 			continue;
@@ -1010,7 +1014,7 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 			break;
 		}
 
-	if(bValidateOnly)
+	if(bValidateOnly || !(TargSense == 'S' || TargSense == 's') && bSenseOnly)
 		continue;
 
 	if(szPrevProbeDescr[0] == 0 || stricmp(szPrevProbeDescr,szProbeDescr) != 0)
@@ -1346,35 +1350,42 @@ m_MinScaffOverlap = MinScaffOverlap;
 m_MinScaffScoreThres = Min1kScore;
 m_bAcceptOrphanSeqs = bAcceptOrphanSeqs;
 
-if(PMode == ePBPMScaffold)  // quick check to see if there are any overlaps to be processed
+if((UINT32)(Rslt = (int)LoadPacBioOvlps(pszMAFFile, true, PMode == ePBPMScaffold ? false : true)) > cMaxValidID)
 	{
-	if((UINT32)(Rslt = (int)LoadPacBioOvlps(pszMAFFile, true)) > cMaxValidID)
-		{
-		Reset(false);
-		return(Rslt);
-		}
-	if(Rslt = 0)
-		{
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadPacBioOvlps: Nothing to do, no accepted overlaps to process");
-		if(m_NumRejectedScoreThres > 0 || m_NumRejectContained > 0 || m_NumRejectArtefact > 0)
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Rejected %u score, %u contained, %u artefact) from file '%s'",
-												m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectArtefact,pszMAFFile);
-		Reset(false);
-		return(Rslt);
-		}
+	Reset(false);
+	return(Rslt);
+	}
+if(Rslt = 0)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadPacBioOvlps: Nothing to do, no accepted overlaps to process");
+	if(m_NumRejectedScoreThres > 0 || m_NumRejectContained > 0 || m_NumRejectArtefact > 0)
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Rejected %u score, %u contained, %u artefact) from file '%s'",
+											m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectArtefact,pszMAFFile);
+	Reset(false);
+	return(Rslt);
 	}
 
-m_NumErrCorrectedFiles = NumErrCorrectedFiles;
 memset(m_szErrCorrectedFiles,0,sizeof(m_szErrCorrectedFiles));
-for(Idx = 0; Idx < NumErrCorrectedFiles; Idx++)
+if(PMode == ePBPMScaffold)
+	{
+	m_NumErrCorrectedFiles = NumErrCorrectedFiles;
+	for(Idx = 0; Idx < NumErrCorrectedFiles; Idx++)
 		strcpy(m_szErrCorrectedFiles[Idx],pszErrCorrectedFiles[Idx]);
+	}
+else
+	m_NumErrCorrectedFiles = 0;
 
+	
 strncpy(m_szOutFile,pszOutFile,sizeof(m_szOutFile));
 m_szOutFile[sizeof(m_szOutFile)-1] = '\0';	
 
 m_NumThreads = NumThreads;	
 if(m_pSeqStore != NULL)
+	{
 	delete m_pSeqStore;
+	m_pSeqStore = NULL;
+	}
+
 if((m_pSeqStore = new CSeqStore) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CSeqStore");
@@ -1388,20 +1399,17 @@ if(m_pAssembGraph != NULL)
 	m_pAssembGraph = NULL;
 	}
 
-if(PMode == ePBPMScaffold)
+if((m_pAssembGraph = new CAssembGraph) == NULL)
 	{
-	if((m_pAssembGraph = new CAssembGraph) == NULL)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CAssembGraph");
-		Reset(false);
-		return(eBSFerrObj);
-		}
-	if((Rslt=m_pAssembGraph->Init(m_MinScaffScoreThres, m_bAcceptOrphanSeqs,min(4,NumThreads)))!=eBSFSuccess)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to initialise CAssembGraph");
-		Reset(false);
-		return(eBSFerrObj);
-		} 
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CAssembGraph");
+	Reset(false);
+	return(eBSFerrObj);
+	}
+if((Rslt=m_pAssembGraph->Init(PMode == ePBPMScaffold ? false : true, m_MinScaffScoreThres, m_bAcceptOrphanSeqs,min(4,NumThreads)))!=eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to initialise CAssembGraph");
+	Reset(false);
+	return(eBSFerrObj);
 	}
 
 if((Rslt = LoadTargetSeqs(MinScaffSeqLen,NumErrCorrectedFiles,pszErrCorrectedFiles)) < eBSFSuccess)
@@ -1409,7 +1417,7 @@ if((Rslt = LoadTargetSeqs(MinScaffSeqLen,NumErrCorrectedFiles,pszErrCorrectedFil
 	Reset(false);
 	return(Rslt);
 	}
-	// get number of sequences loaded as targets to be used for scaffolding
+// get number of sequences loaded as targets to be used for scaffolding
 NumTargSeqs = m_pSeqStore->GetNumSeqs();
 if(NumTargSeqs < 1)
 	{
@@ -1443,10 +1451,7 @@ memset(m_pMapEntryID2NodeIDs,0,sizeof(UINT32) * (NumTargSeqs+1));
 m_NumPBScaffNodes = 0;
 
 // initialise scaffold nodes
-if(PMode == ePBPMScaffold)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Initialising %d scaffold nodes and graph vertices",NumTargSeqs);
-else
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Initialising %d scaffold nodes",NumTargSeqs);	
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Initialising %d scaffold nodes and graph vertices",NumTargSeqs);
 MaxSeqLen = 0;
 pCurPBScaffNode = m_pPBScaffNodes;
 for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
@@ -1457,23 +1462,18 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	if(MaxSeqLen == 0 || pCurPBScaffNode->SeqLen > (UINT32)MaxSeqLen)
 		MaxSeqLen = pCurPBScaffNode->SeqLen;
 
-	if(PMode == ePBPMScaffold)
+	if((pCurPBScaffNode->VertexID = m_pAssembGraph->AddVertex(pCurPBScaffNode->SeqLen,CurNodeID)) > cMaxValidID)
 		{
-		if((pCurPBScaffNode->VertexID = m_pAssembGraph->AddVertex(pCurPBScaffNode->SeqLen,CurNodeID)) > cMaxValidID)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddVertex failed");
-			Reset(false);
-			return((int)pCurPBScaffNode->VertexID);
-			}
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddVertex failed");
+		Reset(false);
+		return((int)pCurPBScaffNode->VertexID);
 		}
 	}
+
 m_NumPBScaffNodes = NumTargSeqs;
-if(PMode == ePBPMScaffold)
-	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Finalising %d graph vertices",NumTargSeqs);
-	m_pAssembGraph->FinaliseVertices();
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Finalised graph vertices");
-	}
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Finalising %d graph vertices",NumTargSeqs);
+m_pAssembGraph->FinaliseVertices();
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Finalised graph vertices");
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d scaffold nodes",NumTargSeqs);
 
@@ -1492,7 +1492,7 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	}
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading previously generated overlap detail from file '%s' ...",pszMAFFile);
-if((UINT32)(Rslt = LoadPacBioOvlps(pszMAFFile)) > cMaxValidID)
+if((UINT32)(Rslt = LoadPacBioOvlps(pszMAFFile, false,PMode == ePBPMScaffold ? false : true)) > cMaxValidID)
 	return(Rslt);
 if(m_NumAcceptedOverlaps == 0)
 	{
@@ -1522,9 +1522,18 @@ if((NumDiscComponents = m_pAssembGraph->IdentifyDiscComponents()) > cMaxValidID)
 	return((int)NumDiscComponents);
 	}
 
-m_pAssembGraph->FindHighestScoringPaths();
-
-m_pAssembGraph->WriteContigSeqs(pszOutFile,m_pSeqStore);
+switch(PMode) {
+	case ePBPMScaffold:
+		if((Rslt = m_pAssembGraph->FindHighestScoringPaths()) >= eBSFSuccess)
+			Rslt = m_pAssembGraph->WriteContigSeqs(pszOutFile,m_pSeqStore);
+		break;
+	case ePBPMToGEFX:
+		Rslt = m_pAssembGraph->ReportVerticesEdgesGEXF(pszOutFile,m_pSeqStore);
+		break;
+	case ePBPMToGraphML:
+		Rslt = m_pAssembGraph->ReportVerticesEdgesGraphML(pszOutFile,m_pSeqStore);
+		break;
+	}
 
 Reset(false);
 return(Rslt);

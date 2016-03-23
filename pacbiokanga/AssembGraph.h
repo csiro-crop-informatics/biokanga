@@ -173,6 +173,7 @@ class CAssembGraph
 	UINT32 m_AllocGraphVertices;		// number of graph vertices allocated
 	tsGraphVertex *m_pGraphVertices;   // allocated to hold array of graph vertices
 
+	bool m_bSenseEdgesOnly;             // only processing for edges overlapping sense onto sense, and with no inferenced edges
 	bool m_bOutEdgeSorted;				// true if m_pGraphOutEdges has been sorted in ascending FromVertexID.ToVertexOrder
 	UINT32 m_UsedGraphOutEdges;			// number of forward graph edges currently used
 	UINT32 m_AllocGraphOutEdges;		// number of forward graph edges allocated
@@ -284,7 +285,8 @@ public:
 
 	void Reset(void);								// reset and free any allocated resources
 	teBSFrsltCodes		// initialise with ScaffScoreThres and  maxThreads
-		Init(int ScaffScoreThres = cDfltMin1kScore,		// accepted edges must be of at least this overlap score
+		Init(bool bSenseEdgesOnly = false,            // only processing for edges overlapping sense onto sense, and with no inferenced edges
+			 int ScaffScoreThres = cDfltMin1kScore,		// accepted edges must be of at least this overlap score
 			 bool bAcceptOrphanSeqs = false,		// also report sequences which are not overlapped or overlapping any other sequence
 						int MaxThreads = 8);						// set number of threads
 
@@ -352,6 +354,14 @@ public:
 	int										 // eBSFSuccess or otherwise
 		FindHighestScoringPaths(void);		 // score all possible paths and record highest scoring path for each component
 
+	int											 // eBSFSuccess or otherwise
+			ReportVerticesEdgesGEXF(char *pszOutFile,		 // report as GEXF format all vertices and their edges for each component to this file
+								CSeqStore *pSeqStore);	// holds sequences used to assemble contig
+
+	int												 // eBSFSuccess or otherwise
+			ReportVerticesEdgesGraphML(char *pszOutFile,		 // report as GraphML on all vertices and their edges for each component to this file
+										   CSeqStore *pSeqStore);	// holds sequences used to assemble contig
+
 	int
 		AddTraceBackPath(bool bFirst,			// true if path starting
 				 tComponentID ComponentID,      // path for this component
@@ -367,7 +377,7 @@ public:
 
 	UINT32	IdentifyDiscComponents(void);
 
-	UINT64 WriteContigSeqs(char *pszOutFile,CSeqStore *pSeqStore);  // write assmbled PacBio contig sequences to this output file
+	int WriteContigSeqs(char *pszOutFile,CSeqStore *pSeqStore);  // write assmbled PacBio contig sequences to this output file
 };
 
 

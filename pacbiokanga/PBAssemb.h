@@ -27,7 +27,9 @@ const int cDfltScaffScoreGapExtn  = -1;			// expecting very few gap extensions i
 
 
 typedef enum TAG_ePBPMode {
-	ePBPMScaffold										// scaffolding mode, uses previously generated overlap loci detail csv file and error corrected sequences
+	ePBPMScaffold,										// scaffolding mode, uses previously generated overlap loci detail csv file and error corrected sequences
+	ePBPMToGEFX,										// convert overlap loci detail into GEFX format file ready for import into a graph visualisation toolset, e.g. Gephi
+	ePBPMToGraphML										// convert overlap loci detail into GraphML format file ready for import into a graph visualisation toolset, e.g. Cytoscape
 	} etPBPMode;
 
 
@@ -154,7 +156,9 @@ public:
 		int NumThreads);				// maximum number of worker threads to use
 
 	UINT32   //  returns number of overlaps loaded and accepted, if > cMaxValidID then cast to teBSFrsltCodes for actual error 
-		LoadPacBioOvlps(char *pszPacBioOvlps, bool bValidateOnly = false);	// load pregenerated PacBio sequence overlap loci CSV file
+		LoadPacBioOvlps(char *pszPacBioOvlps,			// parse and load pregenerated PacBio sequence overlap loci CSV file 
+						bool bValidateOnly = false,		// true if parse and validate only
+						bool bSenseOnly = false);		// true if to only accept sense overlapping sense
 };
 
 
