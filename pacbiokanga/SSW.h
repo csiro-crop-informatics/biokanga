@@ -61,11 +61,21 @@ typedef enum TAG_eSWMethod {
 	eSWMClassifyPath,			// ClassifyPath
 	eSWMTracebacksToAlignOps,	// TracebacksToAlignOps
 	eSWMAddMultiAlignment,		// AddMultiAlignment
+	eSWMCombinedTargAlign,      // method which combines the functionality of eSWMSetTarg, eSWMSetAlignRange, eSWMAlign, eSWMClassifyPath, eSWMTracebacksToAlignOps, eSWMAddMultiAlignment into a single method to reduce RMI overheads 
 	eSWMGenMultialignConcensus,	// GenMultialignConcensus
 	eSWMMAlignCols2fasta,		// MAlignCols2fasta
 	eSWMMAlignCols2MFA,			// MAlignCols2MFA
 	eSWMPlaceHolder,			// used to mark range of methods
 	} teSWMethod;
+
+// following overlap classifications are expected to have 1:1 correspondence with eOverlapClass enumerations in AssembGraph.h and are used within SWMCombinedTargAlign() processing
+typedef enum TAG_eSWOverlapClass {
+	eSWOLCOverlapping = 0,	// probe classified as overlapping target, either 5' or 3'
+	eSWOLCcontains,			// probe completely contains the target
+	eSWOLCcontained,			// probe is completely contained within the target
+	eSWOLCartefact			// probe contains a subsequence of target, classifying as an artefact overlap and not further processed
+} eSWOverlapClass;
+
 
 typedef enum TAG_eRMIParamType {
 	eRMIPTBool = 0,	// boolean
@@ -177,6 +187,33 @@ typedef struct TAG_sTraceBackScore {
 	int ProbeOfs;								// at this probe sequence alignment start relative offset
 	int Score;									// was this accumulated score
 } tsTraceBackScore;
+
+typedef struct TAG_sCombinedTargAlignPars {
+	UINT8 PMode;				// processing mode: 0 error correct , 1 generate consensus from previously generated multiple alignments, 2  generate overlap detail from previously generated consensus sequences
+	UINT32 NumTargSeqs;			// current probe is putatively overlaying this many targets
+	UINT32 ProbeSeqLen;         // use this probe sequence length 
+	UINT32 ProbeStartRelOfs;	// when aligning then start SW from this probe sequence relative offset
+	UINT32 TargStartRelOfs; 	// and SW starting from this target sequence relative offset
+	UINT32 ProbeRelLen;			// and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+	UINT32 TargRelLen;			// and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+	UINT32 OverlapFloat;		// allowing up to this much float on overlaps to account for the PacBio error profile
+	UINT32 MaxArtefactDev;		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+	UINT32 MinOverlapLen;       // minimum accepted overlap length
+	UINT32 MaxOverlapLen;       // max expected overlap length
+	UINT8 TargFlags;		    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+	UINT32 TargSeqLen;			// target sequence length
+	etSeqBase *pTargSeq;		// target sequence
+} tsCombinedTargAlignPars;
+
+typedef struct TAG_sCombinedTargAlignRet {
+	UINT8 ProcPhase;			// processing phase completed
+	INT32 ErrRslt;				// result returned by that processing phase
+	UINT8 Class;				// returned overlap classification
+	tsSSWCell PeakMatchesCell;	// returned peak matches cell
+	UINT32 ProbeAlignLength;	// probe alignment length
+	UINT32 TargAlignLength;		// target alignment length
+	UINT8 Flags;				// bit 0: set if probe overlapping target, bit 1:set if overlap classified as artefact, bit 2: set if probe contained, bit 3: set if added as a multialignment
+} tsCombinedTargAlignRet;
 
 #pragma pack()
 
@@ -405,6 +442,36 @@ public:
 					  UINT32 TargSeqLen,			// target sequence length
 					  etSeqBase *pTargSeq,			// alignment target sequence
 					  UINT8 Flags);				    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+
+      // method which combines the functionality of SetTarg, SetAlignRange, Align, ClassifyPath, TracebacksToAlignOps, and AddMultiAlignment into a single method 
+	bool CombinedTargAlign(tsCombinedTargAlignPars *pAlignPars, // input alignment parameters
+						tsCombinedTargAlignRet *pAlignRet);		// returned alignment results
+
+      // method which combines the functionality of SetTarg, SetAlignRange, Align, ClassifyPath, TracebacksToAlignOps, and AddMultiAlignment into a single method 
+	bool CombinedTargAlign(UINT8 PMode,              // processing mode: 0 error correct , 1 generate consensus from previously generated multiple alignments, 2  generate overlap detail from previously generated consensus sequences
+						UINT32 NumTargSeqs,			// current probe putatively overlaying this many targets
+						UINT32 ProbeSeqLen,         // use this probe sequence length 
+						UINT8 TargFlags,		    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+						UINT32 TargSeqLen,          // target sequence length
+						etSeqBase *pTargSeq,        // target sequence
+						UINT32 ProbeStartRelOfs,	// when aligning then start SW from this probe sequence relative offset
+						UINT32 TargStartRelOfs, 	// and SW starting from this target sequence relative offset
+						UINT32 ProbeRelLen,		    // and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+						UINT32 TargRelLen,		    // and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+						UINT32 OverlapFloat,		// allowing up to this much float on overlaps to account for the PacBio error profile
+						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+						UINT32 MinOverlapLen,       // minimum accepted overlap length
+						UINT32 MaxOverlapLen,      // max expected overlap length
+						UINT8 *pRetProcPhase,			// processing phase completed
+						INT32 *pErrRslt,				// result returned by that processing phase
+						UINT8 *pRetClass,			// returned overlap classification
+						tsSSWCell *pRetPeakMatchesCell, // returned peak matches cell
+						UINT32 *pRetProbeAlignLength, // probe alignment length
+						UINT32 *pRetTargAlignLength, // target alignment length
+						bool *pRetbProvOverlapping,  // probe overlapping target
+						bool *pRetbProvArtefact,	// set true if overlap classified as artefact
+						bool *pRetbProvContained,	// probe contained
+						bool *pRetbAddedMultiAlignment); // added as a multialignment
 
 
 	int

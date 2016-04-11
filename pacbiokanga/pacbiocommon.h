@@ -24,6 +24,7 @@ const int cDfltMaxSeedCoreDepth = 15000;                // only extend a seed co
 const int cDfltMaxAcceptHitsPerSeedCore = 10000;		// only accept up to this many extended cores at any probe offset 
 const int cMinNumSeedCores = 1;							// user can specify requiring at least this many seed cores between overlapping scaffold sequences
 const int cDfltNumSeedCores = 10;						// default is to require at least this many seed cores between overlapping scaffold sequences
+const int cDfltScaffSeedCores = 30;				        // default is to require at least this many seed cores between overlapping scaffold sequences if generating overlap details, sequences expected to be relatively error free 
 const int cMaxNumSeedCores = 50;						// user can specify requiring up to many seed cores between overlapping scaffold sequences
 const int cAnchorLen = 8;								// require 5' and 3' end anchors of at least this length for overlap merging
 const int cQualCoreKMerLen = 3;							// using tri-mers when checking for core downstream shared kmers between probe and target. Note currently a max of 4 would be supported as any more would violate cQualCoreDelta constraint 
@@ -37,8 +38,6 @@ const int cDfltMaxPBSeqLen = 35000;					 // default is to allow for PacBio seque
 const int cDfltMinErrCorrectLen = 5000;              // default is for this minimum length error corrected PacBio sequences
 const int cMaxMinPBSeqLen = 100000;					 // allowing for minimum PacBio sequences to be specified up to this length 
 const int cMaxMaxPBSeqLen = 500000;					 // allowing for maximum PacBio sequences to be specified up to this length 
-
-
 
 const int cDfltSWMatchScore = 3;						// default SW match score for pacbio alignments
 const int cDfltSWMismatchPenalty = -7;					// default SW mismatch penalty for pacbio alignments
@@ -57,7 +56,7 @@ const int cAllocdNumCoreHits = 1000000;					 // each thread preallocs for this m
 const int cAllocdQuerySeqLen = 500000;					 // each thread preallocs to hold query sequences of this length, realloc'd as may be required
 const int cSummaryTargCoreHitCnts = 200;				 // summary core hit counts on at most this many targets
 
-const int cChkOverlapGapLen = 20;						 // if gap between probe cores with at least one match > this threhold then set core probe offset at which to check for core extension (set 0 to disable core extensions)
+const int cChkOverlapGapLen = 20;						 // if gap between probe cores with at least one match > this threshold then set core probe offset at which to check for core extension (set 0 to disable core extensions)
 
 const int cMaxWorkerThreads = 128;							// limiting max number of threads to this many
 

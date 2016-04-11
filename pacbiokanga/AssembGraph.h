@@ -58,16 +58,6 @@ typedef enum TAG_eOverlapClass {
 // edges are of two types - forward edges represent overlaying sequences (vertexA is overlaying vertexB), and overlaid (vertexA is overlaid by vertexB)
 // it is also important to note that the graph is likely to contain many - perhaps millions - of disconnected components 
 
-typedef struct TAG_sRelSense {
-		UINT8 FromIsAntisense:1;	// 0 if From path vertex is starting vertex sense relative, 1 if antisense starting vertex relative
-		UINT8 ToIsAntisense:1;	    // 0 if To path vertex is starting vertex sense relative, 1 if antisense starting vertex relative
-		UINT8 flgPathScored:1;		// set if highest scoring path already processed
-		UINT8 flgPathTerm:1;		// vertex classified as path terminating
-		UINT32 RecurseDepth;		// recurse depth at which this relative sense vertex was processed - used to determine circular reference
-		UINT64 PathScore;			// highest score for any path originating from this vertex
-		tEdgeID PathScoreEdgeID;	// highest scoring path starts with this outgoing edge
-	} tsRelSense;
-
 // an instance of a Vertex which is used to represent a read sequence
 typedef struct TAG_sGraphVertex {
 	    tVertID VertexID;		// monotonically ascending (1..V) identifier uniquely identifies this vertex
@@ -82,7 +72,10 @@ typedef struct TAG_sGraphVertex {
 		UINT8 flgEmitted:1;		// sequence has been emitted as part of a fragment;	
 		UINT8 flgRmvEdges:1;	// sequence may contain SMRTbell hairpin as this read aligns at least twice to the same other read
 		UINT8 flgPathAccepted:1;	// this vertex has been accepted as part of a highest scoring path
-		tsRelSense RelSensePaths[2]; // 0: sense relative, 1: antisense relative
+		UINT8 flgPathScored:1;		// set if highest scoring path already processed
+		UINT8 flgPathTerm:1;		// vertex classified as path terminating
+		UINT64 PathScore;			// highest score for any path originating from this vertex
+		tEdgeID PathScoreEdgeID;	// highest scoring path starts with this outgoing edge
 	} tsGraphVertex;
 
 
@@ -99,13 +92,8 @@ typedef struct TAG_sGraphOutEdge {
 	UINT32 ToSeq3Ofs;		// overlap onto ToVertexID from FromVertexID ends at this base relative to ToVertexID 5' start
 	UINT32 Score;			// score associated with this overlap, higher scores represent higher confidence in the overlap
 	UINT32 ScoreAlignLen;	// scored for this alignment length: (1 + ProbeAlignLen + TargAlignLen) / 2
-	UINT16 OverlapClass:2;  // original classification (eOverlapClass)
-	UINT16 flgContains:1;	// set if FromVertexID completely contains ToVertexID
-	UINT16 flgContained:1;	// set if ToVertexID completely contains FromVertexID
-	UINT16 flgArtefact:1;	// set if FromVertexID overlap onto ToVertexID classified as being artefactual
-
-	UINT16 flgsOvlSense:2;  // 0 - if From:sense overlapping To:sense, 1: if From:antisense overlapping To:sense, 2: if From:sense overlapping To:antisense, 3: if From:antisense overlapping To:antisense
-
+	UINT16 flgFromAntisense:1;// set if From was revcpl as antisense probe 
+	UINT16 flgToAntisense:1;// set if To was revcpl as antisense target 
 	UINT16 flgRemove:1;		// set if this edge marked for removal
 	UINT16 flgTravFwd:1;	// set after this edge has been traversed from FromVertexID to ToVertexID
 	UINT16 flgTravRev:1;	// set after this edge has been traversed from ToVertexID to FromVertexID
@@ -123,8 +111,9 @@ typedef struct TAG_sOverlappedSeq {
 				UINT32 ToSeq3Ofs;			// overlap onto ToVertexID from FromVertexID ends at this base relative to ToVertexID 5' start
 				UINT32 Score;				// score associated with this overlap, higher scores represent higher confidence in the overlap
 				UINT32 ScoreAlignLen;		// scored for this alignment length: (1 + ProbeAlignLen + TargAlignLen) / 2
+				UINT8 flgFromAntisense:1;	// set if From was revcpl as antisense probe 
+				UINT8 flgToAntisense:1;		// set if To was revcpl as antisense target 
 				eOverlapClass OverlapClass;	// classification of overlap from OverlappingSeqID onto OverlappedSeqID
-				bool bAntisense;			// false: sense overlaps sense, true: antisense overlaps sense 
 	} tsOverlappedSeq;
 
 const int cAllocPathEdges = 100;			// initally allocate for this many path edges per component; realloc as needed
@@ -135,7 +124,6 @@ typedef struct TAG_sPathTraceBack {
 		 UINT32 SeqLen;					// vertex sequence length
 		UINT32 Off5;						// using from this 5' offset (0 based)
 		UINT32 Off3;						// to to this 3' offset inclusive
-		UINT8 IsAntisense:1;				// relative strand sense: 0 = sense, 1 = antisense
 	} tsPathTraceBack;
 
 // disconnected graph components
@@ -173,7 +161,7 @@ class CAssembGraph
 	UINT32 m_AllocGraphVertices;		// number of graph vertices allocated
 	tsGraphVertex *m_pGraphVertices;   // allocated to hold array of graph vertices
 
-	bool m_bSenseEdgesOnly;             // only processing for edges overlapping sense onto sense, and with no inferenced edges
+	bool m_bAnySenseOvlps;         // true if processing for sense/sense and sense/antisense overlapping edges, false for sense/sense only
 	bool m_bOutEdgeSorted;				// true if m_pGraphOutEdges has been sorted in ascending FromVertexID.ToVertexOrder
 	UINT32 m_UsedGraphOutEdges;			// number of forward graph edges currently used
 	UINT32 m_AllocGraphOutEdges;		// number of forward graph edges allocated
@@ -276,9 +264,6 @@ class CAssembGraph
 	UINT32  ClearEdgeTravFwdRevs(void);
 	UINT32	ClearDiscCompIDs(void);
 
-int DumpVertex(tsGraphVertex *pVertex);
-int DumpEdge(tsGraphOutEdge *pEdge);
-
 public:
 	CAssembGraph(void);
 	~CAssembGraph(void);
@@ -313,7 +298,7 @@ public:
 				UINT32 ToSeq5Ofs,			// overlap onto ToSeqID from FromSeqID starts at this base relative to ToSeqID 5' start
 				UINT32 ToSeq3Ofs,			// overlap onto ToSeqID from FromSeqID ends at this base relative to ToSeqID 5' start
 				eOverlapClass OverlapClass,	// classification of overlap from FromSeqID onto ToSeqID, note that classification must be eOLCOverlapping
-				bool bAntisense);			// false: 'From' sense overlaps 'To' sense, true: 'From' sense overlaps 'To' antisense 
+				bool bSenseOvlpAnti);	// false: 'From' sense overlaps 'To' sense, true: 'From' sense overlaps 'To' antisense 
 
 	UINT32									// returns total number of edges , including any of these edges, if accepted, thus far accepted 
 		AddEdges(UINT32 NumSeqs,				// number of overlapped sequences
@@ -332,24 +317,14 @@ public:
 				tComponentID ComponentID);			 // mark all traversed vertices as members of this component
 
 	INT32											// returned From sequence extension; -1 if no sequence extension
-	OverlapAcceptable(tsGraphOutEdge *pEdge,		// overlap edge
-					   bool bFromIsAntisense,		// 'From' is this sense relative to initial starting vertex 
-					   bool *pbToAntisense);       // accepted overlap would result in 'To' vertex having this sense relative to initial starting vertex						
+	OverlapAcceptable(tsGraphOutEdge *pEdge);		// overlap edge
 
 	UINT64
-		ScorePaths(tVertID VertexID,			// score all paths starting with outgoing edges from this vertex
-					bool bFromIsAntisense = false);	// initial starting vertex relative sense
+		ScorePaths(tVertID VertexID);			// score all paths starting with outgoing edges from this vertex
 
 	UINT64										// highest scoring of any path from pEdge
 		ScorePath(UINT32 Depth,					// current recursive depth - used to detect circular paths
-				  tsGraphOutEdge *pEdge,		// score paths starting with this edge
-				  bool bFromIsAntisense);		// path from vertex has this path starting vertex relative sense
-
-	void
-		ReportEdgeOverlap(const char *pDescr,   // description used to tag the reported overlap
-					UINT32 Depth,				// current recursive depth - used to detect circular paths
-				 tsGraphOutEdge *pEdge);		// edge overlap
-
+				  tsGraphOutEdge *pEdge);		// score paths starting with this edge
 
 	int										 // eBSFSuccess or otherwise
 		FindHighestScoringPaths(void);		 // score all possible paths and record highest scoring path for each component
@@ -368,12 +343,10 @@ public:
 				 tVertID VertexID,				// path includes this vertex
 				 UINT32 SeqLen,					// sequence length
 				 UINT32 Off5,					// sequence from this 5' offset
-				 UINT32 Off3,					// to this 3' offset inclusive
-				 bool bIsAntisense);            // sequence relative strand
+				 UINT32 Off3);					// to this 3' offset inclusive
 
 	int										// eBSFSuccess or otherwise
-		GenTraceBackPath(tsComponent *pComponent, // generate traceback path for this component
-						bool bIsAntisense = false);	// initial starting vertex relative sense
+		GenTraceBackPath(tsComponent *pComponent); // generate traceback path for this component
 
 	UINT32	IdentifyDiscComponents(void);
 

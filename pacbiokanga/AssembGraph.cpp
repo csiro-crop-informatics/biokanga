@@ -260,7 +260,7 @@ m_bReduceEdges = true;
 m_NumReducts = 0;
 m_NumComponents = 0;	
 m_AllocComponents= 0;
-m_bSenseEdgesOnly = false;
+m_bAnySenseOvlps = false;
 m_MinScaffScoreThres = cDfltMin1kScore;
 m_bAcceptOrphanSeqs = false;
 
@@ -270,7 +270,7 @@ DeleteMutexes();
 }
 
 teBSFrsltCodes 
-CAssembGraph::Init(bool bSenseEdgesOnly,            // only processing for edges overlapping sense onto sense, and with no inferenced edges
+CAssembGraph::Init(bool bAnySenseOvlps,         // true if processing for sense/sense and sense/antisense overlapping edges, false for sense/sense only
 					int ScaffScoreThres,		// accepted edges must be of at least this overlap score
 				   bool bAcceptOrphanSeqs,		// also report sequences which are not overlapped or overlapping any other sequence
 					int MaxThreads)		// initialise with maxThreads threads, if maxThreads == 0 then number of threads not set	
@@ -279,7 +279,7 @@ if(MaxThreads < 0 || MaxThreads > cMaxWorkerThreads ||
 		ScaffScoreThres < 0)
 		return(eBSFerrParams);
 Reset();
-m_bSenseEdgesOnly = bSenseEdgesOnly;
+m_bAnySenseOvlps = bAnySenseOvlps;
 m_MinScaffScoreThres = ScaffScoreThres;
 m_bAcceptOrphanSeqs = bAcceptOrphanSeqs;
 if(MaxThreads > 0)
@@ -405,10 +405,10 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 	if(pOverlap->Score < m_MinScaffScoreThres || pOverlap->OverlapClass == eOLCOverlapping)   // only accepting if previously classified as being overlapping and score at least threshold
 		continue;
 
-	if(pOverlap->bAntisense && m_bSenseEdgesOnly)
+	if((pOverlap->flgFromAntisense == 1 || pOverlap->flgToAntisense == 1) && !m_bAnySenseOvlps)
 		continue;
 
-	// ensure up front that the sequence identifiers can be have been associated to the correct vertex
+	// ensure up front that the sequence identifiers have been associated to the correct vertex
 	if(pOverlap->FromSeqID != CurOverlapSeqID)
 		{
 		CurOverlapSeqID = pOverlap->FromSeqID;
@@ -465,19 +465,13 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 	pOutEdge->FromSeq3Ofs = pOverlap->FromSeq3Ofs;
 	pOutEdge->ToSeq5Ofs = pOverlap->ToSeq5Ofs;
 	pOutEdge->ToSeq3Ofs = pOverlap->ToSeq3Ofs;
-	pOutEdge->OverlapClass = pOverlap->OverlapClass;
 	pOutEdge->Score = pOverlap->Score;
 	pOutEdge->ScoreAlignLen = pOverlap->ScoreAlignLen;
-	pOutEdge->flgContains = pOverlap->OverlapClass == eOLCcontains ? 1 : 0;
-	pOutEdge->flgContained = pOverlap->OverlapClass == eOLCcontained ? 1 : 0;
-	pOutEdge->flgArtefact =  pOverlap->OverlapClass == eOLCartefact ? 1 : 0;
-	pOutEdge->flgsOvlSense = pOverlap->bAntisense ? 2 : 0;;
+	pOutEdge->flgFromAntisense = pOverlap->flgFromAntisense;
+	pOutEdge->flgToAntisense = pOverlap->flgToAntisense;
 	pPrevEdge = pOutEdge;
 	pOutEdge += 1;
 	m_UsedGraphOutEdges += 1;
-
-	if(m_bSenseEdgesOnly)
-		continue;
 
 	// add back edge from the OverlappedVertexID back to the OverlappingVertexID in case caller doesn't provide one
 	// will mark as being an inferred edge so later can be removed if caller does provide it
@@ -488,7 +482,8 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 	pOutEdge->FromSeq3Ofs = pOverlap->ToSeq3Ofs;
 	pOutEdge->ToSeq5Ofs = pOverlap->FromSeq5Ofs;
 	pOutEdge->ToSeq3Ofs = pOverlap->FromSeq3Ofs;
-	pOutEdge->flgsOvlSense = pOverlap->bAntisense ? 1 : 0;
+	pOutEdge->flgFromAntisense = pOverlap->flgFromAntisense;
+	pOutEdge->flgToAntisense = pOverlap->flgToAntisense;
 
 	pOutEdge->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
 	pOutEdge += 1;
@@ -514,7 +509,7 @@ CAssembGraph::AddEdge(tSeqID FromSeqID,		// identifies the 'From' or overlapping
 				UINT32 ToSeq5Ofs,			// overlap onto ToSeqID from FromSeqID starts at this base relative to ToSeqID 5' start
 				UINT32 ToSeq3Ofs,			// overlap onto ToSeqID from FromSeqID ends at this base relative to ToSeqID 5' start
 				eOverlapClass OverlapClass,	// classification of overlap from FromSeqID onto ToSeqID, note that classification must be eOLCOverlapping
-				bool bAntisense)			// false: 'From' sense overlaps 'To' sense, true: 'From' sense overlaps 'To' antisense 
+				bool bSenseOvlpAnti)			// false: 'From' sense overlaps 'To' sense, true: 'From' sense overlaps 'To' antisense 
 {
 size_t AllocMem;
 tsGraphOutEdge *pOutEdge;
@@ -525,15 +520,15 @@ tsGraphVertex *pToVertex;
 tVertID OverlappingVertexID;
 tVertID OverlappedVertexID;
 
-if(Score < m_MinScaffScoreThres || OverlapClass >= eOLCartefact)			// only accepting edges which have not been classified by caller as artefact and that score at least the minimum threshold
+if(Score < m_MinScaffScoreThres || OverlapClass > eOLCOverlapping)			// only accepting edges which have been classified by caller as overlapping and that score at least the minimum threshold
 	return(m_UsedGraphOutEdges);
 
-if(bAntisense &&  m_bSenseEdgesOnly)
+if(bSenseOvlpAnti && !m_bAnySenseOvlps)
 	return(m_UsedGraphOutEdges);
 
-if(FromSeqID < 1 || ToSeqID < 1 || FromSeqID > cMaxValidID || ToSeqID > cMaxValidID)
+if(FromSeqID < 1 || ToSeqID < 1 || FromSeqID > cMaxStoredSeqs || ToSeqID > cMaxStoredSeqs)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: Sequence identifiers must be in range 1..%u",cMaxValidID);
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddEdge: Sequence identifiers must be in range 1..%u",cMaxStoredSeqs);
 	m_bTerminate = true;
 	return((UINT32)eBSFerrMaxEntries);
 	}
@@ -693,59 +688,29 @@ pOutEdge->FromSeq5Ofs = FromSeq5Ofs;
 pOutEdge->FromSeq3Ofs = FromSeq3Ofs;
 pOutEdge->ToSeq5Ofs = ToSeq5Ofs;
 pOutEdge->ToSeq3Ofs = ToSeq3Ofs;
-pOutEdge->OverlapClass = OverlapClass;
-pOutEdge->flgContains = OverlapClass == eOLCcontains ? 1 : 0;  // redundant as only overlapping, non-contained, edges accepted
-pOutEdge->flgContained = OverlapClass == eOLCcontained ? 1 : 0;
-pOutEdge->flgArtefact = OverlapClass == eOLCartefact ? 1 : 0;
-pOutEdge->flgsOvlSense = bAntisense ? 2 : 0;
+pOutEdge->flgFromAntisense = 0;
+pOutEdge->flgToAntisense = bSenseOvlpAnti ? 1 : 0;
 pOutEdge->flgInfBackEdge = 0;
 
-if(!m_bSenseEdgesOnly)
-	{
-	pPrevEdge = pOutEdge;
+pPrevEdge = pOutEdge;
 
-	// add back edge from the OverlappedVertexID back to the OverlappingVertexID in case caller doesn't provide one
-	// will mark as being an inferred edge so later can be removed if caller does provide it
-	pOutEdge = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
-	memcpy(pOutEdge,pPrevEdge,sizeof(tsGraphOutEdge));
-	pOutEdge->FromVertexID = OverlappedVertexID;
-	pOutEdge->ToVertexID = OverlappingVertexID;
-	pOutEdge->FromSeqLen = ToSeqLen;
-	pOutEdge->ToSeqLen = FromSeqLen;
-	pOutEdge->FromSeq5Ofs = ToSeq5Ofs;
-	pOutEdge->FromSeq3Ofs = ToSeq3Ofs;
-	pOutEdge->ToSeq5Ofs = FromSeq5Ofs;
-	pOutEdge->ToSeq3Ofs = FromSeq3Ofs;
-	pOutEdge->flgsOvlSense = bAntisense ? 1 : 0;
-	pOutEdge->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
-
-
-	// add edge as antisense overlapping antisense if was originally sense overlapping sense
-	// will mark as being an inferred edges so later can be removed if caller does provide it
-	if(!bAntisense)
-		{
-		tsGraphOutEdge *pOutEdgeA;
-
-		pOutEdgeA = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
-		memcpy(pOutEdgeA,pPrevEdge,sizeof(tsGraphOutEdge));
-		pOutEdgeA->FromSeq5Ofs = FromSeqLen - (FromSeq3Ofs + 1);
-		pOutEdgeA->FromSeq3Ofs = FromSeqLen - (FromSeq5Ofs + 1);
-		pOutEdgeA->ToSeq5Ofs = ToSeqLen - (ToSeq3Ofs + 1);
-		pOutEdgeA->ToSeq3Ofs = ToSeqLen - (ToSeq5Ofs + 1);
-		pOutEdgeA->flgsOvlSense = 3;
-		pOutEdgeA->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
-
-
-		pOutEdgeA = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
-		memcpy(pOutEdgeA,pOutEdge,sizeof(tsGraphOutEdge));
-		pOutEdgeA->FromSeq5Ofs = pOutEdge->FromSeqLen - (pOutEdge->FromSeq3Ofs + 1);
-		pOutEdgeA->FromSeq3Ofs = pOutEdge->FromSeqLen - (pOutEdge->FromSeq5Ofs + 1);
-		pOutEdgeA->ToSeq5Ofs = pOutEdge->ToSeqLen - (pOutEdge->ToSeq3Ofs + 1);
-		pOutEdgeA->ToSeq3Ofs = pOutEdge->ToSeqLen - (pOutEdge->ToSeq5Ofs + 1);
-		pOutEdgeA->flgsOvlSense = 3;
-		pOutEdgeA->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
-		}
-	}
+// add back edge from the OverlappedVertexID back to the OverlappingVertexID in case caller doesn't provide one
+// will mark as being an inferred edge so later can be removed if caller does provide it
+pOutEdge = &m_pGraphOutEdges[m_UsedGraphOutEdges++];
+memset(pOutEdge,0,sizeof(tsGraphOutEdge));
+pOutEdge->FromVertexID = OverlappedVertexID;
+pOutEdge->ToVertexID = OverlappingVertexID;
+pOutEdge->FromSeqLen = ToSeqLen;
+pOutEdge->ToSeqLen = FromSeqLen;
+pOutEdge->Score = Score;
+pOutEdge->ScoreAlignLen = ScoreAlignLen;
+pOutEdge->FromSeq5Ofs = ToSeq5Ofs;
+pOutEdge->FromSeq3Ofs = ToSeq3Ofs;
+pOutEdge->ToSeq5Ofs = FromSeq5Ofs;
+pOutEdge->ToSeq3Ofs = FromSeq3Ofs;
+pOutEdge->flgFromAntisense = 0;
+pOutEdge->flgToAntisense = bSenseOvlpAnti ? 1 : 0;
+pOutEdge->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
 
 m_bReduceEdges = true;
 ReleaseCASSerialise();
@@ -979,7 +944,7 @@ if(m_VerticesSortOrder != eVSOVertexID)
 	m_bVertexEdgeSet = false;
 	}
 
-// ensure outgoing edges are sorted FromVertexID.ToVertexID ascending order
+// ensure outgoing edges are sorted FromVertexID.ToVertexID.flgsOvlSense.flgInfBackEdge ascending order
 if(!m_bOutEdgeSorted)
 	{
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %u outgoing edges ...",m_UsedGraphOutEdges);
@@ -993,21 +958,42 @@ if(!m_bOutEdgeSorted)
 	m_bVertexEdgeSet = false;
 	}
 
-// mark for removal all back edges which were originally inferred but for which an actual alignment edge exists
+// remove edges which are:
+// a) not forward overlapping, forward overlapping if overlap is 3' end of given sequence onto 5' end of other sequence in overlap pair
+// b) inferenced overlap where the actual overlap was provided
+// mark for removal all edges which are parallel duplicates
+
+
+// first reduce by removing inferenced overlaps where actual overlap was provided
+// for a given sense/sense or sense/antisense overlap pair then inferenced overlaps come after any actual
+// so can easily determine if there was an actual provided and remove the inferenced
 pEdge = m_pGraphOutEdges;
-pOutEdge = pEdge+1;
 Num2Remove = 0;
-for(EdgeIdx = 0; EdgeIdx < m_UsedGraphOutEdges - 1; EdgeIdx++,pOutEdge++,pEdge++)
+for(EdgeIdx = 0; EdgeIdx < m_UsedGraphOutEdges; EdgeIdx++, pEdge++)
 	{
-	if(pEdge->FromVertexID == pOutEdge->FromVertexID &&
-	   pEdge->ToVertexID == pOutEdge->ToVertexID &&
-	   pEdge->flgsOvlSense == pOutEdge->flgsOvlSense &&
-		pOutEdge->flgInfBackEdge == 1)
+	if(pEdge->flgRemove)
+		continue;
+	if(pEdge->ToSeq5Ofs >= pEdge->FromSeq5Ofs)  // slough if not a forward overlap
+		{
+		pEdge->flgRemove = 1;
+		Num2Remove += 1;
+		continue;
+		}
+	// accepting as a forward overlap; now check ahead and mark for deletion any additional copies of this overlap which
+    // must either have been duplicates or were inferred
+	pOutEdge = pEdge + 1;
+	while(pOutEdge != &m_pGraphOutEdges[m_UsedGraphOutEdges] && 
+				pEdge->FromVertexID == pOutEdge->FromVertexID && pEdge->ToVertexID == pOutEdge->ToVertexID)
+		{
+		if(!pOutEdge->flgRemove)
 			{
 			pOutEdge->flgRemove = 1;
 			Num2Remove += 1;
 			}
+		pOutEdge += 1;
+		}
 	}
+
 if(Num2Remove)
 	{
 	pOutEdge = m_pGraphOutEdges;
@@ -1026,6 +1012,7 @@ if(Num2Remove)
 		}
 	m_UsedGraphOutEdges -= NumRemoved;
 	}
+
 
 // ensure incoming edges are sorted ToVertexID.FromVertexID ascending order
 if(!m_bInEdgeSorted)
@@ -1516,35 +1503,6 @@ m_CurTransitDepth = 0;
 }
 
 
-int
-CAssembGraph::DumpVertex(tsGraphVertex *pVertex)
-{
-int Idx;
-int BuffIdx;
-char szBuff[2000];
-
-BuffIdx = sprintf(szBuff,"Vertex - VertexID:%u,SeqID:%u,SeqLen:%u,ComponentID:%u",
-							pVertex->VertexID,pVertex->SeqID,pVertex->SeqLen,pVertex->ComponentID);
-for(Idx = 0; Idx < 2; Idx++)
-	BuffIdx += sprintf(&szBuff[BuffIdx],"\n RelSense: %d flgPathScored:%u,flgPathTerm:%u, RecurseDepth:%u,PathScore:%llu,PathScoreEdgeID:%u",
-							Idx, pVertex->RelSensePaths[Idx].flgPathScored,pVertex->RelSensePaths[Idx].flgPathTerm,pVertex->RelSensePaths[Idx].RecurseDepth,pVertex->RelSensePaths[Idx].PathScore,pVertex->RelSensePaths[Idx].PathScoreEdgeID);		
-printf("\n%s",szBuff);
-return(BuffIdx);
-}
-
-int
-CAssembGraph::DumpEdge(tsGraphOutEdge *pEdge)
-{
-int BuffIdx;
-char szBuff[2000];
-BuffIdx = sprintf(szBuff,"Edge - FromVertexID:%u,ToVertexID:%u,FromSeqLen:%u,ToSeqLen:%u,FromSeq5Ofs:%u,FromSeq3Ofs:%u,ToSeq5Ofs:%u,ToSeq3Ofs:%u,Score:%u,ScoreAlignLen:%u,",
-			pEdge->FromVertexID,pEdge->ToVertexID,pEdge->FromSeqLen,pEdge->ToSeqLen,pEdge->FromSeq5Ofs,pEdge->FromSeq3Ofs,pEdge->ToSeq5Ofs,pEdge->ToSeq3Ofs,pEdge->Score,pEdge->ScoreAlignLen);
-BuffIdx += sprintf(&szBuff[BuffIdx]," flgOvlAntisense:%d,flgInfBackEdge:%d",
-			pEdge->flgsOvlSense,pEdge->flgInfBackEdge);
-printf("\n%s",szBuff);
-return(BuffIdx);
-}
-
 // components contain those vertices which are linked to at least one other vertex in that component and to no other vertex in any another component
 UINT32												 // number of vertices marked as members of this component
 CAssembGraph::IdentifyDiscComponent(tVertID VertexID, // start component traversal from this vertex
@@ -1650,60 +1608,20 @@ return(NumMembers);
 // OverlapAcceptable
 // Determines if the overlap from the 'From' vertex onto the 'To' vertex would extend the 'From' vertex in the 3' direction 
 INT32					// returned From sequence extension; -1 if no sequence extension
-CAssembGraph::OverlapAcceptable(tsGraphOutEdge *pEdge,			// overlap edge
-			  					bool bFromIsAntisense,			// 'From' vertex is this sense relative to initial starting vertex
-								bool *pbToAntisense)			// accepted overlap would result in 'To' vertex having this sense relative to initial starting vertex						
-
+CAssembGraph::OverlapAcceptable(tsGraphOutEdge *pEdge)			// overlap edge
 {
-bool bToAntisense;
-INT32 ExtdFromSeqLen;
-
-switch(pEdge->flgsOvlSense) {
-	case 0:				// sense overlapping sense; accept overlaps
-		if(bFromIsAntisense)
-			return(-1);
-		bToAntisense = false;
-		break;
- 
-	case 2:				// sense overlapping antisense
-		if(bFromIsAntisense)
-			return(-1);
-		bToAntisense = true;
-		break;
-
-	case 1:				// antisense overlapping sense; accept 3' overlap extension only if bIsAntisense true
-		if(!bFromIsAntisense)
-			return(-1);
-		bToAntisense = false; // 'To' would be relative sense
-		break;
-
-	case 3:				// antisense overlapping antisense; accept 3' overlap only if bIsAntisense true
-		if(!bFromIsAntisense)
-			return(-1);
-		bToAntisense = true; // 'To' would be relative antisense
-		break;
-	}
-
 		// will overlap 3' extend the 'From' sequence?
 if((pEdge->FromSeqLen - pEdge->FromSeq3Ofs) < (pEdge->ToSeqLen - pEdge->ToSeq3Ofs))
-	{
-	ExtdFromSeqLen = pEdge->FromSeq3Ofs + pEdge->ToSeqLen - pEdge->ToSeq3Ofs;
-	*pbToAntisense = bToAntisense;
-	}
-else
-	ExtdFromSeqLen = -1;
-return(ExtdFromSeqLen);
+	return(pEdge->FromSeq3Ofs + pEdge->ToSeqLen - pEdge->ToSeq3Ofs);
+return(-1);
 }
 
 static int CurStackDepth = 0;
 static int MaxStackDepth = 0;
 
 UINT64
-CAssembGraph::ScorePaths(tVertID VertexID,	// score all paths starting with outgoing edges from this 'From' vertex
-						bool bFromIsAntisense)	// initial starting vertex relative sense
+CAssembGraph::ScorePaths(tVertID VertexID)	// score all paths starting with outgoing edges from this 'From' vertex
 {
-bool bToIsAntisense;
-bool bHighestToIsAntisense;
 UINT64 EdgeScore;
 UINT64 HighestScore;
 UINT32 HighestScoreEdgeID;
@@ -1712,43 +1630,42 @@ int FromExtdLen;
 tsGraphVertex *pVertex;
 tsGraphVertex *pToNxtVertex;
 tsGraphOutEdge *pEdge;
-tsRelSense *pRelSense;
 
 pVertex = &m_pGraphVertices[VertexID-1];
 
 // vertex may have already been committed as part of a previously accepted highest scoring path
 if(pVertex->flgPathAccepted)
 	return(0);
-pRelSense = &pVertex->RelSensePaths[bFromIsAntisense==false ? 0 : 1];
 
 // if score already generated for paths originating at this vertex then no need to regenerate ...
-if(pRelSense->flgPathScored)
-	return(pRelSense->PathScore);
+if(pVertex->flgPathScored)
+	return(pVertex->PathScore);
 
+CurStackDepth = 1;
 pVertex->RecurseDepth = 1;
-pRelSense->RecurseDepth = 1;
 pEdge = &m_pGraphOutEdges[pVertex->OutEdgeID-1];
 for(Idx = 0; Idx < pVertex->DegreeOut; Idx++,pEdge++)
 	{
 	pToNxtVertex = &m_pGraphVertices[pEdge->ToVertexID-1];
-	pToNxtVertex->RecurseDepth = 2;
+	if(pToNxtVertex->RecurseDepth == 0)
+		pToNxtVertex->RecurseDepth = pVertex->RecurseDepth+1;
+	else
+		continue;
 	}
 
 // iterate each of the outgoing edges scoring paths
 HighestScore = 0;
 HighestScoreEdgeID = 0;
-bHighestToIsAntisense = false;
 pEdge = &m_pGraphOutEdges[pVertex->OutEdgeID-1];
 for(Idx = 0; Idx < pVertex->DegreeOut; Idx++,pEdge++)
 	{
-	if((FromExtdLen=OverlapAcceptable(pEdge,bFromIsAntisense,&bToIsAntisense)) > 0)	// explore if edge represents a 'From' extension assuming initial sense
+	if((FromExtdLen=OverlapAcceptable(pEdge)) > 0)	// explore if edge represents a 'From' extension assuming initial sense
 		{
 		CurStackDepth += 1;
-		EdgeScore = ScorePath(pRelSense->RecurseDepth+1,pEdge,bToIsAntisense);		// score paths starting with this edge
+		EdgeScore = ScorePath(pVertex->RecurseDepth+1,pEdge);		// score paths starting with this edge
 		CurStackDepth -= 1;
-		if(EdgeScore > HighestScore || (!bToIsAntisense && EdgeScore == HighestScore))	// if path score higher than any previously seen for VertexID then note the edge
+		if(EdgeScore > HighestScore)	// if path score higher than any previously seen for VertexID then note the edge
 			{
-			bHighestToIsAntisense = bToIsAntisense;
 			HighestScore = EdgeScore;
 			HighestScoreEdgeID =  pVertex->OutEdgeID + Idx;
 			}
@@ -1756,61 +1673,34 @@ for(Idx = 0; Idx < pVertex->DegreeOut; Idx++,pEdge++)
 	}
 
 // iterated all paths starting with vertex outgoing edges and noted the highest scoring
-pRelSense->flgPathScored = 1;
-pRelSense->ToIsAntisense = bHighestToIsAntisense ? 1 : 0;
+pVertex->flgPathScored = 1;
 if(HighestScore == 0)	// 0 if a terminating vertex with no accepted outgoing edges
 	{
-	pRelSense->PathScore = (UINT64)pVertex->SeqLen;
-	pRelSense->flgPathTerm = 1;
+	pVertex->PathScore = (UINT64)pVertex->SeqLen;
+	pVertex->flgPathTerm = 1;
 	}
 else
-	pRelSense->PathScore = HighestScore + pEdge->ScoreAlignLen;
-pRelSense->PathScoreEdgeID =  HighestScoreEdgeID;
-return(pRelSense->PathScore);
-}
-
-void
-CAssembGraph::ReportEdgeOverlap(const char *pszDescr,		// description used to tag the reported overlap
-			 UINT32 Depth,								// current recursive depth - used to detect circular paths
-			 tsGraphOutEdge *pEdge)						// edge overlap
-{
-const char *pszOvlSense;
-
-switch(pEdge->flgsOvlSense) {
-	case 0:
-		pszOvlSense = "Sense/Sense";
-		break;
-	case 1:
-		pszOvlSense = "Antisense/Sense";
-		break;
-	case 2:
-		pszOvlSense = "Sense/Antisense";
-		break;
-	case 3:
-		pszOvlSense = "Antisense/Antisense";
-		break;
-	}
-gDiagnostics.DiagOut(eDLWarn,gszProcName,"'%s' from: %d To: %u with overlap sense '%s'",pszDescr,pEdge->FromVertexID,pEdge->ToVertexID, pszOvlSense);
+	pVertex->PathScore = HighestScore + pEdge->ScoreAlignLen;
+pVertex->PathScoreEdgeID =  HighestScoreEdgeID;
+return(pVertex->PathScore);
 }
 
 UINT64											// highest scoring of any path from pEdge
 CAssembGraph::ScorePath(UINT32 Depth,			// current recursive depth - used to detect circular paths
-				  tsGraphOutEdge *pEdge,		// score paths starting with this edge
-				  bool bFromIsAntisense)		// path from vertex has this path starting vertex relative sense
+				  tsGraphOutEdge *pEdge)		// score paths starting with this edge
 {
-bool bToIsAntisense;
 UINT32 Idx;
 int FromSeqExtn;
 tsGraphVertex *pToVertex;
 tsGraphVertex *pToNxtVertex;
 tsGraphOutEdge *pToEdge;
-tsRelSense *pRelSense;
 tVertID HighestScoreToVertexID;
 UINT64 EdgeScore;
 UINT64 HighestScore;
 UINT32 HighestScoreEdgeID;
 UINT32 HighScoreAlignLen;
-bool bHighestToIsAntisense;
+UINT32 ScoreAlignLen;
+
 if(CurStackDepth > MaxStackDepth)
 	{
 	MaxStackDepth = CurStackDepth;
@@ -1820,11 +1710,9 @@ if(CurStackDepth > MaxStackDepth)
 
 // if score already generated for paths originating at this vertex then no need to regenerate ...
 pToVertex = &m_pGraphVertices[pEdge->ToVertexID-1];
-pRelSense = &pToVertex->RelSensePaths[bFromIsAntisense==false ? 0 : 1];
-if(pRelSense->flgPathScored)
-	return(pRelSense->PathScore);
-pRelSense->RecurseDepth = Depth;
-pRelSense->FromIsAntisense = bFromIsAntisense ? 1 : 0;
+if(pToVertex->flgPathScored)
+	return(pToVertex->PathScore);
+pToVertex->RecurseDepth = Depth;
 
 // need to mark all ToVertices with current Depth so can check circular references
 pToEdge = &m_pGraphOutEdges[pToVertex->OutEdgeID-1];
@@ -1832,7 +1720,9 @@ for(Idx = 0; Idx < pToVertex->DegreeOut; Idx++,pToEdge++)
 	{
 	pToNxtVertex = &m_pGraphVertices[pToEdge->ToVertexID-1];
 	if(pToNxtVertex->RecurseDepth == 0)
-		pToNxtVertex->RecurseDepth = Depth;
+		pToNxtVertex->RecurseDepth = Depth + 1;
+	else
+		continue;
 	}
 
 	// recursively iterate each of the outgoing edges scoring paths
@@ -1840,51 +1730,47 @@ HighScoreAlignLen = 0;
 HighestScore = 0;
 HighestScoreEdgeID = 0;
 HighestScoreToVertexID = 0;
-bHighestToIsAntisense = false;
-bToIsAntisense = false;
 pToEdge = &m_pGraphOutEdges[pToVertex->OutEdgeID-1];
 for(Idx = 0; Idx < pToVertex->DegreeOut; Idx++,pToEdge++)
 	{
 	if(pToEdge->ToVertexID == pEdge->FromVertexID)
 		continue;
 	pToNxtVertex = &m_pGraphVertices[pToEdge->ToVertexID-1];
-	if(pToNxtVertex->RecurseDepth > 0 &&  (pToNxtVertex->RecurseDepth + 50) < Depth)
+	if(pToNxtVertex->RecurseDepth > 0 &&  pToNxtVertex->RecurseDepth <= Depth)
 		continue;
-	if((FromSeqExtn = OverlapAcceptable(pToEdge,bFromIsAntisense,&bToIsAntisense)) > 0)
+	if((FromSeqExtn = OverlapAcceptable(pToEdge)) > 0)
 		{
-		if(!pToNxtVertex->RelSensePaths[bToIsAntisense==false ? 0 : 1].flgPathScored)
+		if(!pToNxtVertex->flgPathScored)
 			{
-			if(pToNxtVertex->RelSensePaths[bToIsAntisense==false ? 0 : 1].RecurseDepth > 0)  // circular reference?
-				continue;
 			CurStackDepth += 1;
-			EdgeScore = ScorePath(Depth+1,pToEdge,bToIsAntisense);
+			EdgeScore = ScorePath(Depth+1,pToEdge);
 			CurStackDepth -= 1;
 			}
 		else
-			EdgeScore = pToNxtVertex->RelSensePaths[bToIsAntisense==false ? 0 : 1].PathScore;
-		if(EdgeScore > HighestScore || (EdgeScore == HighestScore && pToEdge->ScoreAlignLen > HighScoreAlignLen))
+			EdgeScore = pToNxtVertex->PathScore;
+
+		ScoreAlignLen = ((pToEdge->FromSeqLen + pToEdge->ToSeqLen) - pToEdge->ScoreAlignLen ) + pToEdge->Score; // higher scores for longer resultant combined subsequences and for higher scoring alignment
+		if(EdgeScore > HighestScore || (EdgeScore == HighestScore && ScoreAlignLen > HighScoreAlignLen))
 			{
-			HighScoreAlignLen = pToEdge->ScoreAlignLen;
+			HighScoreAlignLen = ScoreAlignLen;
 			HighestScore = EdgeScore;
 			HighestScoreEdgeID = pToVertex->OutEdgeID + Idx;
 			HighestScoreToVertexID = pToEdge->ToVertexID;
-			bHighestToIsAntisense = bToIsAntisense;
 			}
 		}
 	}
 
-pRelSense->flgPathScored = 1;
+pToVertex->flgPathScored = 1;
 if(HighestScore == 0)	// 0 if classing as terminating vertex with no accepted outgoing edges
 	{
-	pRelSense->flgPathTerm = 1;
-	pRelSense->PathScore = pToVertex->SeqLen;
+	pToVertex->flgPathTerm = 1;
+	pToVertex->PathScore = pToVertex->SeqLen;
 	}
 else
-	pRelSense->PathScore = HighestScore + HighScoreAlignLen;
-pRelSense->ToIsAntisense =  bHighestToIsAntisense ? 1 : 0;
-pRelSense->PathScoreEdgeID =  HighestScoreEdgeID;
-pRelSense->RecurseDepth = 0;
-return(pRelSense->PathScore);
+	pToVertex->PathScore = HighestScore + HighScoreAlignLen;
+pToVertex->PathScoreEdgeID =  HighestScoreEdgeID;
+pToVertex->RecurseDepth = 0;
+return(pToVertex->PathScore);
 }
 
 int
@@ -1893,8 +1779,7 @@ CAssembGraph::AddTraceBackPath(bool bFirst,		// true if path starting
 				 tVertID VertexID,				// path includes this vertex
 				 UINT32 SeqLen,					// vertex sequence length
 				 UINT32 Off5,					// sequence from this 5' offset
-				 UINT32 Off3,					// to this 3' offset inclusive
-				 bool bIsAntisense)            // sequence relative strand
+				 UINT32 Off3)					// to this 3' offset inclusive
 {
 tsComponent *pComponent;
 tsPathTraceBack *pPathTraceback;
@@ -1940,15 +1825,13 @@ pComponent->NumTraceBacks += 1;
 pPathTraceback->ComponentID = ComponentID;
 pPathTraceback->Off5 = Off5;
 pPathTraceback->Off3 = Off3;
-pPathTraceback->IsAntisense = bIsAntisense ? 1 : 0;
 pPathTraceback->VertexID = VertexID;
 pPathTraceback->SeqLen = SeqLen;
 return(pComponent->NumTraceBacks);
 }
 
 int														// returns path length
-CAssembGraph::GenTraceBackPath(tsComponent *pComponent, // generate traceback path for this component
-								bool bIsAntisense)		// initial starting vertex relative sense
+CAssembGraph::GenTraceBackPath(tsComponent *pComponent) // generate traceback path for this component
 {
 UINT32 Vertices;
 UINT32 PathLength;
@@ -1956,39 +1839,35 @@ tsGraphVertex *pCurVertex;
 tsGraphOutEdge *pCurEdge;
 bool bTermVertex;
 bool bFirst;
-bool bIsNxtAntisense;
 
 pCurVertex = &m_pGraphVertices[pComponent->PathStartVertexID-1];
 bTermVertex = false;
 PathLength = 0;
 Vertices = 0;
 bFirst = true;
-bIsAntisense = false;
 pCurEdge = NULL;
 do {
 	Vertices += 1;
 
-	if(pCurVertex->RelSensePaths[bIsAntisense==false ? 0 : 1].flgPathTerm)
+	if(pCurVertex->flgPathTerm)
 		break;
-	pCurEdge = &m_pGraphOutEdges[pCurVertex->RelSensePaths[bIsAntisense==false ? 0 : 1].PathScoreEdgeID-1];
-	bIsNxtAntisense = pCurVertex->RelSensePaths[bIsAntisense==false ? 0 : 1].ToIsAntisense == 0 ? false : true;
+	pCurEdge = &m_pGraphOutEdges[pCurVertex->PathScoreEdgeID-1];
 	PathLength += pCurEdge->FromSeq5Ofs;
 
-	AddTraceBackPath(bFirst,pCurVertex->ComponentID,pCurVertex->VertexID,pCurVertex->SeqLen,0,pCurEdge->FromSeq5Ofs-1,bIsAntisense);
+	AddTraceBackPath(bFirst,pCurVertex->ComponentID,pCurVertex->VertexID,pCurVertex->SeqLen,0,pCurEdge->FromSeq5Ofs-1);
 	bFirst = false;
-	bIsAntisense = bIsNxtAntisense;
 	pCurVertex = &m_pGraphVertices[pCurEdge->ToVertexID-1];	
 	}
 while(!bTermVertex);
 if(pCurEdge != NULL)
 	{
 	PathLength += pCurEdge->ToSeqLen;
-	AddTraceBackPath(bFirst,pCurVertex->ComponentID,pCurVertex->VertexID,pCurVertex->SeqLen,0,pCurEdge->ToSeqLen-1,bIsAntisense);
+	AddTraceBackPath(bFirst,pCurVertex->ComponentID,pCurVertex->VertexID,pCurVertex->SeqLen,0,pCurEdge->ToSeqLen-1);
 	}
 else
 	{
 	PathLength = pCurVertex->SeqLen;
-	AddTraceBackPath(bFirst,pCurVertex->ComponentID,pCurVertex->VertexID,pCurVertex->SeqLen,0,pCurVertex->SeqLen-1,bIsAntisense);
+	AddTraceBackPath(bFirst,pCurVertex->ComponentID,pCurVertex->VertexID,pCurVertex->SeqLen,0,pCurVertex->SeqLen-1);
 	}	
 return(PathLength);
 }
@@ -2050,7 +1929,11 @@ for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
 			if(pVertexA->ComponentID != CurCompID)
 				continue;
 			pVertexA->RecurseDepth = 0;
-			memset(pVertexA->RelSensePaths,0,sizeof(pVertexA->RelSensePaths));
+			pVertexA->flgPathScored = 0;
+			pVertexA->flgPathTerm = 0;
+			pVertexA->RecurseDepth = 0;
+			pVertexA->PathScore = 0;
+			pVertexA->PathScoreEdgeID = 0;
 			}
 		PathScore = ScorePaths(CurVertexID);
 		if(PathScore > 0)
@@ -2069,6 +1952,7 @@ UINT32 ComponentIdx;
 pComponent = m_pComponents;
 for(ComponentIdx = 0; ComponentIdx < min(50,m_NumComponents); ComponentIdx++,pComponent++)
 	{
+	if(pComponent->NumVertices > 1)
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Component: %d Path length: %u Path Vertices: %u Path Score: %llu", pComponent->ComponentID, pComponent->PathLength, pComponent->NumTraceBacks, pComponent->PathScore);
 
 	}
@@ -2149,6 +2033,9 @@ for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
 		if(pVertex->ComponentID != CurCompID)
 			continue;
 
+		if(pVertex->DegreeOut == 0 && pVertex->DegreeIn == 0)
+			continue;
+
 		pSeqStore->GetDescr(pVertex->SeqID,sizeof(szDescr)-1,szDescr);
 		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<node id=\"%d\" label=\"%s\" >\n",pVertex->VertexID,szDescr);
 		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t\t<attvalues>\n");
@@ -2180,7 +2067,7 @@ for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
 		{
 		if(pVertex->ComponentID != CurCompID)
 			continue;
-		if(pVertex->DegreeOut == 0)
+		if(pVertex->DegreeOut == 0 && pVertex->DegreeIn == 0)
 			continue;
 		pToEdge = &m_pGraphOutEdges[pVertex->OutEdgeID-1];
 		for(Idx = 0; Idx < pVertex->DegreeOut; Idx++,pToEdge++)
@@ -2281,6 +2168,9 @@ for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
 		if(pVertex->ComponentID != CurCompID)
 			continue;
 
+		if(pVertex->DegreeOut == 0 && pVertex->DegreeIn == 0)
+			continue;
+
 		pSeqStore->GetDescr(pVertex->SeqID,sizeof(szDescr)-1,szDescr);
 		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t<node id=\"%d\" >\n",pVertex->VertexID);
 		BuffIdx += sprintf(&szBuffer[BuffIdx],"\t\t\t<data key=\"n1\">%s</data>\n", szDescr);
@@ -2309,7 +2199,7 @@ for(CurCompID = 1; CurCompID <= m_NumComponents; CurCompID++,pComponent++)
 		{
 		if(pVertex->ComponentID != CurCompID)
 			continue;
-		if(pVertex->DegreeOut == 0)
+		if(pVertex->DegreeOut == 0 && pVertex->DegreeIn == 0)
 			continue;
 		pToEdge = &m_pGraphOutEdges[pVertex->OutEdgeID-1];
 		for(Idx = 0; Idx < pVertex->DegreeOut; Idx++,pToEdge++)
@@ -2468,7 +2358,7 @@ while(NodeHi >= NodeLo);
 return(0);	// unable to locate any instance of FromVertexID
 }
 
-tsGraphOutEdge *					// ptr to edge with matching FromVertexID and ToVertexID, or NULL if unable to locate				
+tsGraphOutEdge *					// ptr to first edge edge with matching FromVertexID and ToVertexID, or NULL if unable to locate				
 CAssembGraph::LocateFromToEdge(tVertID FromVertexID,	// match edge with this FromVertexID which is
 				  tVertID ToVertexID)			// to this ToVertexID
 {
@@ -2487,21 +2377,24 @@ do {
 	pEl2 = &m_pGraphOutEdges[TargPsn];
 
 	if(FromVertexID == pEl2->FromVertexID && ToVertexID == pEl2->ToVertexID)
-		return(pEl2);
-
-	if(FromVertexID > pEl2->FromVertexID)
-		CmpRslt = 1;
+		CmpRslt = 0;
 	else
-		{
-		if(FromVertexID < pEl2->FromVertexID)
-			CmpRslt = -1;
+		if(FromVertexID > pEl2->FromVertexID || (FromVertexID == pEl2->FromVertexID && ToVertexID > pEl2->ToVertexID))
+			CmpRslt = 1;
 		else
-			{
-			if(ToVertexID > pEl2->ToVertexID)
-				CmpRslt = 1;
-			else
-				CmpRslt = -1;
+			CmpRslt = -1;
+
+	if(!CmpRslt)	// if a match then may not be the lowest indexed match
+		{
+		do {
+			if(TargPsn == 0 || NodeLo == TargPsn) // check if already lowest
+				return(&m_pGraphOutEdges[TargPsn]);
+			TargPsn -= 1;
+			pEl2 = &m_pGraphOutEdges[TargPsn];
+			if(FromVertexID != pEl2->FromVertexID || ToVertexID != pEl2->ToVertexID)
+				return(&m_pGraphOutEdges[TargPsn+1]);
 			}
+		while(1);
 		}
 
 	if(CmpRslt < 0)
@@ -2724,13 +2617,7 @@ for(ComponentIdx = 0; ComponentIdx < m_NumComponents; ComponentIdx+=1,pCurCompon
 			return(eBSFerrMem);
 			}
 
-		if(TraceBackIdx != pCurComponent->NumTraceBacks && pPathTraceback->IsAntisense == 1)
-			{
-			pSeqStore->GetSeq(pVertex->SeqID,pVertex->SeqLen - SubSeqLen,SubSeqLen,&pContigSeq[ContigLen]);
-			CSeqTrans::ReverseComplement(SubSeqLen,&pContigSeq[ContigLen]);
-			}
-		else
-			pSeqStore->GetSeq(pVertex->SeqID,pPathTraceback->Off5,SubSeqLen,&pContigSeq[ContigLen]);
+		pSeqStore->GetSeq(pVertex->SeqID,pPathTraceback->Off5,SubSeqLen,&pContigSeq[ContigLen]);
 		ContigLen += SubSeqLen;
 		}
 		
@@ -2815,7 +2702,7 @@ ToVertexID = 0;
 flgsOvlSense = 0;
 for(Idx = 0; Idx < m_UsedGraphOutEdges; Idx++,pEdge++)
 	{
-	if(pPrevEdge != NULL && pPrevEdge->FromVertexID == pEdge->FromVertexID && pPrevEdge->ToVertexID == pEdge->ToVertexID && pPrevEdge->flgsOvlSense == pEdge->flgsOvlSense)
+	if(pPrevEdge != NULL && pPrevEdge->FromVertexID == pEdge->FromVertexID && pPrevEdge->ToVertexID == pEdge->ToVertexID)
 		{
 		pFromVertex = &m_pGraphVertices[FromVertexID-1];
 		pFromVertex->flgRmvEdges = 1;
@@ -2941,7 +2828,7 @@ else
 return(0);
 }
 
-int  // function for sorting outgoing edges on FromVertexID.ToVertexID ascending 
+int  // function for sorting outgoing edges on FromVertexID.ToVertexID.flgInfBackEdge ascending 
 CAssembGraph::SortOutEdgeFromVertexID(const void *arg1, const void *arg2)
 {
 tsGraphOutEdge *pEdge1 = (tsGraphOutEdge *)arg1;
@@ -2956,11 +2843,6 @@ if(pEdge1->ToVertexID < pEdge2->ToVertexID)
 	return(-1);
 else
 	if(pEdge1->ToVertexID > pEdge2->ToVertexID)
-		return(1);
-if(pEdge1->flgsOvlSense < pEdge2->flgsOvlSense)
-	return(-1);
-else
-	if(pEdge1->flgsOvlSense > pEdge2->flgsOvlSense)
 		return(1);
 if(pEdge1->flgInfBackEdge < pEdge2->flgInfBackEdge)
 	return(-1);
@@ -3010,7 +2892,7 @@ else
 return(0);
 }
 
-int  // function for sorting incoming edges on ToVertexID.FromVertexID ascending 
+int  // function for sorting incoming edges on ToVertexID.FromVertexID.flgInfBackEdge ascending 
 CAssembGraph::SortInEdgesToVertexID(const void *arg1, const void *arg2)
 {
 tsGraphOutEdge *pEdge1 = &pStaticGraphOutEdges[(*(tEdgeID *)arg1)-1];
@@ -3027,11 +2909,6 @@ else
 	if(pEdge1->FromVertexID > pEdge2->FromVertexID)
 		return(1);
 
-if(pEdge1->flgsOvlSense < pEdge2->flgsOvlSense)
-	return(-1);
-else
-	if(pEdge1->flgsOvlSense > pEdge2->flgsOvlSense)
-		return(1);
 if(pEdge1->flgInfBackEdge < pEdge2->flgInfBackEdge)
 	return(-1);
 else
@@ -3041,7 +2918,7 @@ return(0);
 }
 
 
-int  // function for sorting components on NumVertices decending 
+int  // function for sorting components on NumVertices descending 
 CAssembGraph::SortComponentNumVertices(const void *arg1, const void *arg2)
 {
 tsComponent *pComp1 = (tsComponent *)arg1;
@@ -3060,7 +2937,7 @@ else
 return(0);
 }
 
-int  // function for sorting components on NumVertices decending 
+int  // function for sorting components on NumVertices descending 
 CAssembGraph::SortComponentID(const void *arg1, const void *arg2)
 {
 tsComponent *pComp1 = (tsComponent *)arg1;

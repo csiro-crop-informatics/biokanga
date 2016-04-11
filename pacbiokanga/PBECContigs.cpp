@@ -2084,11 +2084,8 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 				Rslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
 											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
 				}
-#ifdef _PEAKSCOREACCEPT_
-			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell,m_MaxHiConfSeqLen);
-#else
+
 			pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_MaxHiConfSeqLen);
-#endif
 			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= MinOverlapLen)
 				{

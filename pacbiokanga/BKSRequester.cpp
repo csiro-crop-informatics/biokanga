@@ -2658,7 +2658,7 @@ for (pNxtAddrInfoRes = pAddrInfoRes; pNxtAddrInfoRes != NULL; pNxtAddrInfoRes = 
 		continue;		// try next address
 
 	int SockOptEnable = 1;
-	setsockopt(ListenerSocket, SOL_SOCKET, SO_REUSEADDR , (char *)&SockOptEnable, sizeof(SockOptEnable));
+	Rslt = setsockopt(ListenerSocket, SOL_SOCKET, SO_REUSEADDR , (char *)&SockOptEnable, sizeof(SockOptEnable));
 
 	if ((Rslt = bind(ListenerSocket, pNxtAddrInfoRes->ai_addr, (int)pNxtAddrInfoRes->ai_addrlen)) == 0)  // 0 if bound successfully
 		break;
@@ -2672,16 +2672,21 @@ for (pNxtAddrInfoRes = pAddrInfoRes; pNxtAddrInfoRes != NULL; pNxtAddrInfoRes = 
 #endif
 	}
 
-// report the listening address
 #ifdef WIN32
-if (ListenerSocket != INVALID_SOCKET)
+if(ListenerSocket == INVALID_SOCKET)
 #else
-if (ListenerSocket != -1)
+if (ListenerSocket == -1)
 #endif
 	{
-	getnameinfo(pNxtAddrInfoRes->ai_addr, (int)pNxtAddrInfoRes->ai_addrlen, szHost, sizeof(szHost), szService, sizeof(szService), 0);
-	gDiagnostics.DiagOut(eDLInfo, gszProcName, "InitialiseListener: listening for connections to host '%s' and service '%s' with protocol %d", szHost, szService, pNxtAddrInfoRes->ai_protocol);
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "InitialiseListener: Unable to bind socket to host '%s' and service '%s'", m_szHostName, m_szServiceName);
+	freeaddrinfo(pAddrInfoRes);
+	return(false);
 	}
+
+
+// report the listening address
+getnameinfo(pNxtAddrInfoRes->ai_addr, (int)pNxtAddrInfoRes->ai_addrlen, szHost, sizeof(szHost), szService, sizeof(szService), 0);
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "InitialiseListener: listening for connections to host '%s' and service '%s' with protocol %d", szHost, szService, pNxtAddrInfoRes->ai_protocol);
 
 strncpy(m_szHostName,szHost,sizeof(m_szHostName));
 m_szHostName[sizeof(m_szHostName)-1] = '\0';
@@ -2690,15 +2695,6 @@ m_szServiceName[sizeof(m_szServiceName)-1] = '\0';
 
 freeaddrinfo(pAddrInfoRes);
 
-#ifdef WIN32
-if(ListenerSocket == INVALID_SOCKET)
-#else
-if (ListenerSocket == -1)
-#endif
-	{
-	gDiagnostics.DiagOut(eDLInfo, gszProcName, "InitialiseListener: Unable to bind socket to host '%s' and service '%s' with protocol %d", szHost, szService, pNxtAddrInfoRes->ai_protocol);
-	return(false);
-	}
 
 					// need socket to be non-blocking
 #ifdef WIN32

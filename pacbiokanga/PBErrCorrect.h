@@ -46,7 +46,7 @@ const int cDfltRMIBufferSize =   cMaxSWMAFBuffSize;			// each worker thread defa
 
 const UINT32 cRMI_SecsTimeout = 180;				// allowing for most RMI SW requests to take at most this many seconds to complete (request plus response)
 const UINT32 cRMI_AlignSecsTimeout = 600;			// allowing for a RMI SW alignment request to take at most this many seconds to complete (request plus response)
-const UINT32 cRMIThreadsPerCore = 4;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
+const UINT32 cRMIThreadsPerCore = 5;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
                                                     // predicated on assuming that the qualifying of read pairs for SW requires around 20% of per core time, the other 80% is spent on SW
 
 typedef enum TAG_ePBPMode {								// processing mode
@@ -218,6 +218,8 @@ class CPBErrCorrect
 	UINT32 m_MinConcScore;					// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
 
 	UINT32 m_SampleRate;					// sample input sequences at this rate (1..100)
+	bool m_bAntisenseOvlps;					// true if to process for both sense and antisense overlaps
+
 
 	int m_NumPacBioFiles;					// number of input pacbio file specs
 	char m_szPacBioFiles[cMaxInFileSpecs][_MAX_PATH];		// input pacbio files
@@ -414,6 +416,38 @@ static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 						tsSSWCell *pPeakScoreCell = NULL,	// optionally also return conventional peak scoring cell
 						UINT32 MaxOverlapLen = 0);		// process tracebacks for this maximal expected overlap, 0 if no tracebacks required
 
+      // methods which combines the functionality of SetTarg, SetAlignRange, Align, ClassifyPath, TracebacksToAlignOps, and AddMultiAlignment into a single method 
+	int					// -3: timeout waiting for job to complete, -2: parameter errors, -1: class instance no longer exists, 0: currently no available service instance 1: if job accepted and was processed
+		RMI_CombinedTargAlign(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+						tsCombinedTargAlignPars *pAlignPars, // input alignment parameters
+						tsCombinedTargAlignRet *pAlignRet);		// returned alignment results
+
+	int					//  -3: timeout waiting for job to complete, -2: parameter errors, -1: class instance no longer exists, 0: currently no available service instance 1: if job accepted and processed
+		RMI_CombinedTargAlign(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+						UINT8 PMode,              // processing mode: 0 error correct , 1 generate consensus from previously generated multiple alignments, 2  generate overlap detail from previously generated consensus sequences
+						UINT32 NumTargSeqs,			// current probe putatively overlaying this many targets
+						UINT32 ProbeSeqLen,         // use this probe sequence length 
+						UINT8 TargFlags,		    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+						UINT32 TargSeqLen,          // target sequence length
+						etSeqBase *pTargSeq,        // target sequence
+						UINT32 ProbeStartRelOfs,	// when aligning then start SW from this probe sequence relative offset
+						UINT32 TargStartRelOfs, 	// and SW starting from this target sequence relative offset
+						UINT32 ProbeRelLen,		    // and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+						UINT32 TargRelLen,		    // and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+						UINT32 OverlapFloat,		// allowing up to this much float on overlaps to account for the PacBio error profile
+						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+						UINT32 MinOverlapLen,       // minimum accepted overlap length
+						UINT32 MaxOverlapLen,      // max expected overlap length
+						UINT8 *pRetClass,			// returned overlap classification
+						tsSSWCell *pRetPeakMatchesCell, // returned peak matches cell
+						UINT32 *pRetProbeAlignLength, // probe alignment length
+						UINT32 *pRetTargAlignLength, // target alignment length
+						bool *pRetbProvOverlapping,  // probe overlapping target
+						bool *pRetbProvArtefact,	// set true if overlap classified as artefact
+						bool *pRetbProvContained,	// probe was contained
+						bool *pRetbAddedMultiAlignment); // added as a multialignment
+
+
 int												// attempting to determine if path is artfact resulting from aligning to a paralogous fragment
 		RMI_ClassifyPath(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
 					int MaxArtefactDev,			// classify path as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
@@ -471,6 +505,7 @@ public:
 		int MaxRMI,					// max number of RMI SW service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads supported
 		int SampleRate,				// sample input sequences at this rate (1..100)
+		bool bAntisenseOvlps,		// true if to process for both sense and antisense overlaps
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences

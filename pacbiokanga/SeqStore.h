@@ -1,13 +1,15 @@
 #pragma once
 
-const UINT32 cMaxStoredSeqs = 0xfffffff0;			// can store up to this many sequences
+const UINT32 cMaxStoredSeqs = 0x7ffffff0;			// can store up to this many sequences
+const UINT32 cSeqIDMsk = 0x7fffffff;				// bit 31 reserved as a user defined flag bit so sequence identifiers will have bit31 masked off by CSeqStore functions
 const UINT32 cMinSeqStoreLen = 0x01;				// any individual sequence must be >= this min length
 const UINT32 cMaxSeqStoreLen = 0xfffffff0;			// any individual sequence must be <= this max length
 const UINT32 cAllocNumSeqHdrs = 50000;				// allocate for this incremental number of SeqHdrs
 const UINT32 cAllocDescrSeqMem = (cAllocNumSeqHdrs * 1000);	// allocate for this incremental descr + seq bytes
 
 
-typedef UINT32 tSeqID;		// sequence identifiers are 32bit 
+typedef UINT32 tSeqID;		// sequence identifiers are 32bit
+
 
 #pragma pack(1)
 typedef struct TAG_sSeqHdr {
@@ -47,7 +49,7 @@ public:
 	~CSeqStore();
 	int Reset(void);
 
-	tSeqID			// identifier by which this sequence can later be retreived (0 if unable to add sequence)
+	tSeqID			// identifier by which this sequence can later be retrieved (0 if unable to add sequence)
 		AddSeq(UINT32 Flags,			// any flags associated with this sequence
 			   char *pszDescr,			// sequence descriptor
 			   UINT32 SeqLen,			// sequence is this length

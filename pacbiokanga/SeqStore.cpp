@@ -349,6 +349,7 @@ CSeqStore::SetFlags(tSeqID SeqID,		// set flags associated with sequence identif
 {
 UINT32 PrevFlags;
 tsSeqHdr *pSeqHdr;
+SeqID &= cSeqIDMsk;
 if(m_pSeqHdrs == NULL || m_pDescrSeqs == NULL || SeqID < 1 || SeqID > m_NumStoredSeqs)
 	return(0);
 pSeqHdr = &m_pSeqHdrs[SeqID - 1];
@@ -437,6 +438,7 @@ return(m_TotStoredSeqsLen);
 UINT32									// returned sequence length
 CSeqStore::GetLen(tSeqID SeqID)		// get sequence length identified by SeqID
 {
+SeqID &= cSeqIDMsk;
 if(m_pSeqHdrs == NULL || m_pDescrSeqs == NULL || SeqID < 1 || SeqID > m_NumStoredSeqs)
 	return(0);
 return(m_pSeqHdrs[SeqID - 1].SeqLen);
@@ -445,6 +447,7 @@ return(m_pSeqHdrs[SeqID - 1].SeqLen);
 UINT32									// returned flags
 CSeqStore::GetFlags(tSeqID SeqID)		// get flags associated with sequence identified by SeqID
 {
+SeqID &= cSeqIDMsk;
 if(m_pSeqHdrs == NULL || m_pDescrSeqs == NULL || SeqID < 1 || SeqID > m_NumStoredSeqs)
 	return(0);
 return(m_pSeqHdrs[SeqID - 1].Flags);
@@ -457,7 +460,7 @@ CSeqStore::GetDescr(tSeqID SeqID,		// get descriptor associated with sequence id
 {
 tsSeqHdr *pSeqHdr;
 UINT8 *pDescrSeq;
-
+SeqID &= cSeqIDMsk;
 if(pszDescr == NULL || MaxDescrLen == 0 || m_pSeqHdrs == NULL || m_pDescrSeqs == NULL || SeqID < 1 || SeqID > m_NumStoredSeqs)
 	return(0);
 
@@ -478,7 +481,7 @@ CSeqStore::GetSeq(tSeqID SeqID,			// get sequence identified by SeqID
 tsSeqHdr *pSeqHdr;
 UINT8 *pDescrSeq;
 UINT32 SeqLen;
-
+SeqID &= cSeqIDMsk;
 if(m_pSeqHdrs == NULL || m_pDescrSeqs == NULL || SeqID < 1 || SeqID > m_NumStoredSeqs)
 	return(0);
 

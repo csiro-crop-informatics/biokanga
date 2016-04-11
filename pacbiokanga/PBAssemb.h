@@ -79,12 +79,17 @@ class CPBAssemb
 	int m_ScaffScoreGapOpen;				// expecting relatively few gap openings in error reduced scaffolding sequence overlaps
 	int m_ScaffScoreGapExtn;				// expecting very few gap extensions in error reduced scaffolding sequence overlaps
 	int m_MinScaffScoreThres;				// accepted overlaps must be at least this minimum score per Kbp overlap
+
+	UINT32 m_NumRejectedMinScaffOverlap;	// this number of overlaps rejected because overlap is less than m_MinScaffOverlap
 	UINT32 m_NumRejectedScoreThres;			// this number of overlaps rejected as being below m_MinScaffScoreThres threshold
 	UINT32 m_NumRejectContained;			// this number of overlaps rejected because the overlap was classified as contained
+	UINT32 m_NumRejectAntisense;            // this number of overlaps rejected because the overlap was sense/antisense and only sense/sense overlaps are being accepted
 	UINT32 m_NumRejectArtefact;				// this number of overlaps rejected because the overlap was classified as being an artefact
+	UINT32 m_NumRejectedMinSeqLen;			// this number of overlaps rejected because either the probe or target sequence was under length
 	UINT32 m_NumAcceptedOverlaps;			// this number of overlaps accepted for scaffolding
 
 	bool m_bAcceptOrphanSeqs;				// if true then report also report sequences which have no overlap with any other sequence
+	bool m_bAnySenseOvlps;		    		// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
 
 	int m_NumErrCorrectedFiles;					// number of input error corrected file specs
 	char m_szErrCorrectedFiles[cMaxInFileSpecs][_MAX_PATH];		// input error corrected files
@@ -149,6 +154,7 @@ public:
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		int Min1kScore,             // minimum normalised 1Kbp overlap score
 		bool bAcceptOrphanSeqs,		// also accepting sequences which are not overlapped or overlapping any other sequence
+		bool bAnySenseOvlps,		// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
 		char *pszMAFFile,			// pregenerated multialignment sequence overlap loci details
 		int NumErrCorrectedFiles,	// number of error corrected sequence specs
 		char *pszErrCorrectedFiles[],		// input error corrected sequence files

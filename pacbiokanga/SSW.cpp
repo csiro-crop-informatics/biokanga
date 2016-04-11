@@ -390,6 +390,205 @@ m_ProbeLen = Len;
 return(true);
 }
 
+// method which combines the functionality of SetTarg, SetAlignRange, Align, ClassifyPath, TracebacksToAlignOps, and AddMultiAlignment into a single method 
+bool		// true if combined phase alignment completed successfully
+CSSW::CombinedTargAlign(tsCombinedTargAlignPars *pAlignPars, // input alignment parameters
+						tsCombinedTargAlignRet *pAlignRet)		// returned alignment results
+{
+bool bRslt;
+UINT8 RetProcPhase;			// processing phase completed
+INT32 ErrRslt;				// result returned by that processing phase
+
+UINT8 Class;
+tsSSWCell PeakMatchesCell;
+UINT32 ProbeAlignLength;
+UINT32 TargAlignLength;
+bool bProvOverlapping;
+bool bProvArtefact;
+bool bProvContained;
+bool bAddedMultiAlignment;
+
+memset(pAlignRet,0,sizeof(tsCombinedTargAlignRet));
+bRslt = CombinedTargAlign(pAlignPars->PMode,pAlignPars->NumTargSeqs,pAlignPars->ProbeSeqLen,pAlignPars->TargFlags,
+								pAlignPars->TargSeqLen,pAlignPars->pTargSeq,
+								pAlignPars->ProbeStartRelOfs,pAlignPars->TargStartRelOfs,pAlignPars->ProbeRelLen,pAlignPars->TargRelLen,
+								pAlignPars->OverlapFloat,pAlignPars->MaxArtefactDev,pAlignPars->MinOverlapLen,pAlignPars->MaxOverlapLen,
+								&RetProcPhase,&ErrRslt,
+								&Class,&PeakMatchesCell,&ProbeAlignLength,&TargAlignLength,&bProvOverlapping,&bProvArtefact,&bProvContained,&bAddedMultiAlignment);
+pAlignRet->ErrRslt = ErrRslt;
+pAlignRet->ProcPhase = RetProcPhase;
+pAlignRet->Class = Class;
+pAlignRet->PeakMatchesCell = PeakMatchesCell;
+pAlignRet->ProbeAlignLength = ProbeAlignLength;
+pAlignRet->TargAlignLength = TargAlignLength;
+pAlignRet->Flags = bProvOverlapping ? 0x01 : 0x00;
+pAlignRet->Flags |= bProvArtefact ? 0x02 : 0x00;
+pAlignRet->Flags |= bProvContained ? 0x04 : 0x00;
+pAlignRet->Flags |= bAddedMultiAlignment ? 0x08 : 0x00;
+return(bRslt);
+}
+
+// method which combines the functionality of SetTarg, SetAlignRange, Align, ClassifyPath, TracebacksToAlignOps, and AddMultiAlignment into a single method 
+bool		// true if combined phase alignment completed successfully
+CSSW::CombinedTargAlign(UINT8 PMode,              // processing mode: 0 error correct , 1 generate consensus from previously generated multiple alignments, 2  generate overlap detail from previously generated consensus sequences
+						UINT32 NumTargSeqs,			// current probe putatively overlaying this many targets
+						UINT32 ProbeSeqLen,         // use this probe sequence length 
+						UINT8 TargFlags,		    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+						UINT32 TargSeqLen,          // target sequence length
+						etSeqBase *pTargSeq,        // target sequence
+						UINT32 ProbeStartRelOfs,	// when aligning then start SW from this probe sequence relative offset
+						UINT32 TargStartRelOfs, 	// and SW starting from this target sequence relative offset
+						UINT32 ProbeRelLen,		    // and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+						UINT32 TargRelLen,		    // and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+						UINT32 OverlapFloat,		// allowing up to this much float on overlaps to account for the PacBio error profile
+						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+						UINT32 MinOverlapLen,       // minimum accepted overlap length
+						UINT32 MaxOverlapLen,      // max expected overlap length
+						UINT8 *pRetProcPhase,			// processing phase completed
+						INT32 *pErrRslt,				// result returned by that processing phase
+						UINT8 *pRetClass,			// returned overlap classification
+						tsSSWCell *pRetPeakMatchesCell, // returned peak matches cell
+						UINT32 *pRetProbeAlignLength, // probe alignment length
+						UINT32 *pRetTargAlignLength, // target alignment length
+						bool *pRetbProvOverlapping,  // probe overlapping target
+						bool *pRetbProvArtefact,	// set true if overlap classified as artefact
+						bool *pRetbProvContained,	// probe contained
+						bool *pRetbAddedMultiAlignment) // added as a multialignment
+{
+int Rslt;
+int Class;
+bool bProvOverlapping;
+bool bProvArtefact;
+bool bProvContained;
+bool bAddedMultiAlignment;
+
+UINT32 ProbeAlignLength;
+UINT32 TargAlignLength;
+tsSSWCell *pPeakMatchesCell;
+tsSSWCell PeakMatchesCell;
+
+bProvOverlapping = false;
+bProvArtefact = false;
+bProvContained = false;
+bAddedMultiAlignment = false;
+Class = (int)eSWOLCartefact;
+memset(&PeakMatchesCell,0,sizeof(PeakMatchesCell));
+ProbeAlignLength = 0;
+TargAlignLength = 0;
+
+*pRetProcPhase = 0;
+*pErrRslt = -1;
+*pRetClass = Class;
+*pRetPeakMatchesCell = PeakMatchesCell;
+*pRetProbeAlignLength = ProbeAlignLength;
+*pRetTargAlignLength = TargAlignLength;
+*pRetbAddedMultiAlignment = bAddedMultiAlignment;
+*pRetbProvOverlapping = bProvOverlapping;
+*pRetbProvContained = bProvContained;
+*pRetbProvArtefact = bProvArtefact;
+
+if(!SetTarg(TargSeqLen,pTargSeq))
+	{
+	*pRetProcPhase = 1;
+	*pErrRslt = -1;
+	return(false);
+	}
+
+if((Rslt = SetAlignRange(ProbeStartRelOfs,TargStartRelOfs,ProbeRelLen,TargRelLen)) < eBSFSuccess)
+	{
+	*pRetProcPhase = 1;
+	*pErrRslt = Rslt;
+	return(false);
+	}
+
+pPeakMatchesCell = Align(NULL,MaxOverlapLen);
+
+if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
+	{
+	PeakMatchesCell = *pPeakMatchesCell;
+	ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;
+	TargAlignLength = PeakMatchesCell.EndTOfs - PeakMatchesCell.StartTOfs + 1;
+	}
+else
+	{
+	*pRetbProvArtefact = true;
+	*pRetProcPhase = 2;
+	*pErrRslt = eBSFSuccess;
+	return(true);
+	}
+
+if(((1+ ProbeAlignLength + TargAlignLength) / 2) >= MinOverlapLen)
+	{
+	bProvOverlapping = true;
+
+	// characterise the overlapped target
+	// eOLCOverlapping if probe accepted as overlapping, either 5' or 3'
+	// eOLCcontaining if both ends of target completely contained within probe
+    // eOLCartefact if target is only partially contained
+	int PathClass;
+	Class = (int)eSWOLCOverlapping;		
+	if((PeakMatchesCell.StartTOfs >= OverlapFloat &&  PeakMatchesCell.StartPOfs >= OverlapFloat) ||
+			((TargSeqLen - PeakMatchesCell.EndTOfs) >= OverlapFloat && (ProbeSeqLen - PeakMatchesCell.EndPOfs) >= OverlapFloat))
+		{
+		Class = (int)eSWOLCartefact;
+		bProvArtefact = true;
+		}
+
+	if(PMode != 1 && Class == eSWOLCOverlapping)
+		{
+		PathClass = ClassifyPath(MaxArtefactDev,	PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+																		PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
+		if(PathClass < 0)
+			{
+			*pRetProcPhase = 3;
+			*pErrRslt = PathClass;
+			return(false);
+			}
+
+		if(PathClass > 0)
+			{
+			Class = (int)eSWOLCartefact;
+			bProvArtefact = true;
+			}
+		}
+
+	if(Class == eSWOLCOverlapping)
+		{
+		if(PeakMatchesCell.StartTOfs < OverlapFloat && (TargSeqLen - PeakMatchesCell.EndTOfs) < OverlapFloat) // is target completely contained by probe?
+			Class = (int)eSWOLCcontains;
+		else
+			if(PeakMatchesCell.StartPOfs < OverlapFloat && (ProbeSeqLen - PeakMatchesCell.EndPOfs) < OverlapFloat) // or is probe completely contained within target?
+				Class = (int)eSWOLCcontained;
+		if(Class != eSWOLCOverlapping)
+			bProvContained = true;
+		}
+
+	if(PMode == 0 && Class != (int)eSWOLCartefact && NumTargSeqs >= 2)
+		{
+		TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
+		AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pTargSeq,TargFlags);
+		bAddedMultiAlignment = true;
+		}
+	}
+
+// need to return:
+// Class, PeakMatchesCell, ProbeAlignLength, TargAlignLength, bAddedMultiAlignment, bProvOverlapping, bProvContained, bProvArtefact,
+*pRetClass = (UINT8)(Class & 0x07f);
+*pRetPeakMatchesCell = PeakMatchesCell;
+*pRetProbeAlignLength = ProbeAlignLength;
+*pRetTargAlignLength = TargAlignLength;
+*pRetbAddedMultiAlignment = bAddedMultiAlignment;
+*pRetbProvOverlapping = bProvOverlapping;
+*pRetbProvContained = bProvContained;
+*pRetbProvArtefact = bProvArtefact;
+*pRetProcPhase = 4;
+*pErrRslt = eBSFSuccess;
+return(true);
+}
+
+
 // SetTarg
 // Set target sequence to use in subsequent alignments
 bool 
@@ -3414,15 +3613,18 @@ int ColIdx;
 int BaseIdx;
 tsMAlignCol *pCol;
 int ConcatSeqLen;
-etSeqBase *pParsimoniousBase;
+UINT8 *pParsimoniousBase;
 
-ConcatSeqLen = NumCols * Depth;
-if(m_pParsimoniousBuff == NULL || (ConcatSeqLen + 500) > m_AllocParsimoniousSize)
+if(Depth > cMaxMultiAlignSeqs || NumCols > cMaxParsimoniousAlignLen)
+	return(-1.0);
+
+ConcatSeqLen = max(NumCols * 2, cMaxParsimoniousAlignLen) * cMaxMultiAlignSeqs;		// allow more than required in order to minimise potential future reallocs
+if(m_pParsimoniousBuff == NULL || (ConcatSeqLen + 1000) > m_AllocParsimoniousSize)
 	{
 	if(m_pParsimoniousBuff != NULL)
 		delete m_pParsimoniousBuff;
 	m_AllocParsimoniousSize = ConcatSeqLen + 1000;
-	m_pParsimoniousBuff = new etSeqBase [m_AllocParsimoniousSize];
+	m_pParsimoniousBuff = new UINT8 [m_AllocParsimoniousSize];
 	if(m_pParsimoniousBuff == NULL)
 		{
 		m_AllocParsimoniousSize = 0;
@@ -3438,7 +3640,7 @@ do {
 	pParsimoniousBase = &m_pParsimoniousBuff[ColIdx++];
 	for(BaseIdx = 0; BaseIdx < Depth; BaseIdx++,pColBase++,pParsimoniousBase+=NumCols)
 		*pParsimoniousBase = *pColBase;
-	if(ColIdx == NumCols || pCol->NxtColIdx == 0)
+	if(ColIdx >= NumCols || pCol->NxtColIdx == 0)
 		pCol = NULL;
 	else
 		{
@@ -3447,22 +3649,23 @@ do {
 	}
 while(pCol != NULL);
 
-Score = ParsimoniousBasesMultialign(Depth,NumCols,m_pParsimoniousBuff);
-
-// copy back sequences back into columns
-ColIdx = 0;
-pCol = pInDelStartCol;
-do {
-	pColBase = &pCol->Bases[0];
-	pParsimoniousBase = &m_pParsimoniousBuff[ColIdx++];
-	for(BaseIdx = 0; BaseIdx < Depth; BaseIdx++,pColBase++,pParsimoniousBase+=NumCols)
-		*pColBase = *pParsimoniousBase;
-	if(ColIdx == NumCols || pCol->NxtColIdx == 0)
-		pCol = NULL;
-	else
-		pCol = (tsMAlignCol *)&m_pMACols[(pCol->NxtColIdx - 1) * (size_t)m_MAColSize];
+if((Score = ParsimoniousBasesMultialign(Depth,NumCols,m_pParsimoniousBuff)) >= 0.0)
+	{
+	// copy back sequences back into columns
+	ColIdx = 0;
+	pCol = pInDelStartCol;
+	do {
+		pColBase = &pCol->Bases[0];
+		pParsimoniousBase = &m_pParsimoniousBuff[ColIdx++];
+		for(BaseIdx = 0; BaseIdx < Depth; BaseIdx++,pColBase++,pParsimoniousBase+=NumCols)
+			*pColBase = *pParsimoniousBase;
+		if(ColIdx >= NumCols || pCol->NxtColIdx == 0)
+			pCol = NULL;
+		else
+			pCol = (tsMAlignCol *)&m_pMACols[(pCol->NxtColIdx - 1) * (size_t)m_MAColSize];
+		}
+	while(pCol != NULL);
 	}
-while(pCol != NULL);
 return(Score);
 }
 

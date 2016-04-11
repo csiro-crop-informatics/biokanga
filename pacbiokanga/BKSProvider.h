@@ -332,7 +332,6 @@ public:
 	tsClassInstance *AllocClassInstance(void); // allocate a new tsClassInstance and initialise with ClassInstanceID 
 	bool FreeClassInstance(UINT64 ClassInstanceID); // free a previously allocated class instance
 
-	int TestReqResps(void);
 };
 
 

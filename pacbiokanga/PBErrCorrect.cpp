@@ -69,6 +69,7 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int MaxRMI,					// max number of RMI service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads
 		int SampleRate,				// sample input sequences at this rate (1..100)
+		bool bAntisenseOvlps,		// true if to process for both sense/sense and sense/antisense overlaps
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -116,6 +117,7 @@ int Idx;                    // file index
 int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failure
 
 int PMode;					// processing mode
+bool bAntisenseOvlps;		// also process for antisense overlaps (default is for sense/sense overlaps only)
 int MinSeedCoreLen;			// use seed cores of this length when identifying putative overlapping sequences
 int MinNumSeedCores;        // require at least this many seed cores between overlapping sequences before attempting SW
 int DeltaCoreOfs;			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
@@ -169,6 +171,9 @@ struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of di
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
 struct arg_int *pmode = arg_int0("m","pmode","<int>",					"processing mode - 0 error correct, 1 consensus sequence only, 2 scaffold overlap detail only");
+
+struct arg_lit  *antisenseovlps    = arg_lit0("a","antisenseovlps",    "process for antisense overlaps (default is for sense overlap sense only)");
+
 struct arg_int *minpbseqlen = arg_int0("l","minpbseqlen","<int>",		"minimum individual PacBio sequence length (default 10000, range 500 to 100000)");
 struct arg_int *maxpbseqlen = arg_int0("L", "maxpbseqlen", "<int>",		"maximum individual PacBio sequence length (default 35000, minimum minpbseqlen)");
 
@@ -217,7 +222,7 @@ struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"exper
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
+					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,antisenseovlps,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
 					minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
@@ -365,6 +370,7 @@ if (!argerrors)
 		return(1);
 		}
 
+	bAntisenseOvlps = false;
 	MinSeedCoreLen = cDfltSeedCoreLen;
 	MinNumSeedCores = cDfltNumSeedCores;
 	DeltaCoreOfs = cDfltDeltaCoreOfs;
@@ -695,7 +701,7 @@ if (!argerrors)
 			return(1);
 			}
 
-		MinNumSeedCores = minseedcores->count ? minseedcores->ival[0] : 10;
+		MinNumSeedCores = minseedcores->count ? minseedcores->ival[0] : cDfltScaffSeedCores;
 		if(MinNumSeedCores < cMinNumSeedCores || MinNumSeedCores > cMaxNumSeedCores)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum number of accepted seed cores '-C%d' must be in range %d..%d",MinNumSeedCores,cMinNumSeedCores,cMaxNumSeedCores);
@@ -834,6 +840,9 @@ if (!argerrors)
 		szOutMAFile[0] = '\0';
 		}
 
+	if(PMode != ePBPMConsensus)
+		bAntisenseOvlps = antisenseovlps->count ? true : false;
+
 	if(PMode == ePBPMConsensus)
 		{
 		if(pacbiofiles->count > 1)
@@ -901,9 +910,9 @@ if (!argerrors)
 		MaxRMI = maxrmi->count ? maxrmi->ival[0] : (NumThreads * cRMIThreadsPerCore);
 		if(MaxRMI == 0)
 			MaxRMI = (NumThreads * cRMIThreadsPerCore);
-		if(MaxRMI < 16 || MaxRMI > 500)
+		if(MaxRMI < 8 || MaxRMI > 500)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range 16..500",MaxRMI,NumThreads);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range 8..500",MaxRMI,NumThreads);
 			return(1);
 			}
 		MaxNonRMI = maxnonrmi->count ? maxnonrmi->ival[0] : NumThreads;
@@ -941,10 +950,12 @@ if (!argerrors)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allowing a maximum of this many non-RMI SW threads: '%d'",MaxNonRMI);
 		}
 
+
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling input sequence rate: %d",SampleRate);
 
 	if(PMode != ePBPMConsensus)
 		{
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Overlap processing: '%s'",bAntisenseOvlps ? "Sense and antisense" : "Sense only");
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Use seed cores of this length when identifying putative overlapping sequences: %dbp",MinSeedCoreLen);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Require at least this many seed cores between overlapping sequences: %d",MinNumSeedCores);
 
@@ -1028,6 +1039,8 @@ if (!argerrors)
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PMode),"pmode",&PMode);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SampleRate),"samplerate",&SampleRate);
+
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(bAntisenseOvlps),"antisenseovlps",&bAntisenseOvlps);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinSeedCoreLen),"seedcorelen",&MinSeedCoreLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinNumSeedCores),"minseedcores",&MinNumSeedCores);
 
@@ -1092,7 +1105,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
+	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleRate,bAntisenseOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
@@ -1125,6 +1138,7 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int MaxRMI,					// max number of RMI service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads
 		int SampleRate,				// sample input sequences at this rate (1..100)
+		bool bAntisenseOvlps,		// true if to process for both sense and antisense overlaps
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -1160,7 +1174,7 @@ if((pPBErrCorrect = new CPBErrCorrect)==NULL)
 	return(eBSFerrObj);
 	}
 
-Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleRate,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
+Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleRate,bAntisenseOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,NumThreads);
 delete pPBErrCorrect;
@@ -1179,7 +1193,7 @@ m_hMultiAlignFile = -1;
 Init();
 }
 
-CPBErrCorrect::~CPBErrCorrect() // relies on base classes destructors
+CPBErrCorrect::~CPBErrCorrect() // relies on base classes destructor
 {
 Reset(false);
 }
@@ -1250,6 +1264,8 @@ m_ProvArtefact = 0;
 m_ProvSWchecked = 0;
 m_MultiAlignFileUnsyncedSize = 0;
 m_ErrCorFileUnsyncedSize = 0;
+
+m_bAntisenseOvlps = false;
 
 m_MinErrCorrectLen = cDfltMinErrCorrectLen;
 m_MinConcScore = 3;
@@ -1918,6 +1934,7 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		int MaxRMI,					// max number of RMI service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads supported
 		int SampleRate,				// sample input sequences at this rate (1..100)
+		bool bAntisenseOvlps,		// true if to process for both sense and antisense overlaps
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -2020,7 +2037,7 @@ m_HCRelWeighting = HCRelWeighting;
 m_MinErrCorrectLen = MinErrCorrectLen;
 m_MinConcScore = MinConcScore;
 m_SampleRate = SampleRate;
-
+m_bAntisenseOvlps = bAntisenseOvlps;
 
 switch(PMode) {
 	case ePBPMOverlapDetail:
@@ -2265,13 +2282,6 @@ else
 if(m_PMode == ePBPMOverlapDetail)
 	{
 	m_ScaffLineBuffIdx=sprintf(m_szScaffLineBuff,"\"Class\",\"ProbeID\",\"ProbDescr\",\"TargID\",\"TargDescr\",\"SeedHits\",\"ProbeSense\",\"TargSense\",\"ProbeLen\",\"TargLen\",\"ProbeAlignLength\",\"TargAlignLength\",\"PeakScore\",\"FinalScore\",\"NumAlignedBases\",\"NumExactBases\",\"NumProbeInserts\",\"NumProbeInsertBases\",\"NumTargInserts\",\"NumTargInsertBases\",\"ProbeStartOfs\",\"TargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"ProbeOfs5\",\"TargOfs5\",\"ProbeOfs3\",\"TargOfs3\"");
-#ifdef _PEAKSCOREACCEPT_
-	m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",\"PSAlignLength\",\"PSPeakScore\",\"PSNumAlignedBases\",\"PSNumExactBases\",\"PSNumProbeInserts\",\"PSNumProbeInsertBases\",\"PSNumTargInserts\",\"PSNumTargInsertBases\",\"PSProbeStartOfs\",\"PSTargStartOfs\",\"ProbeEndOfs\",\"TargEndOfs\",\"PSProbeOfs5\",\"PSTargOfs5\",\"PSProbeOfs3\",\"PSTargOfs3\"");
-#endif
-#ifdef _EXACTMATCHLENDIST_
-	for(int ExactLenIdx = 1; ExactLenIdx <= cExactMatchLenDist; ExactLenIdx++)
-		m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",\"ExactLen:%d\"",ExactLenIdx);
-#endif
 	CUtility::SafeWrite(m_hErrCorFile,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 	m_ScaffLineBuffIdx = 0;
 	}
@@ -2350,6 +2360,7 @@ UINT32 NumClasses;
 UINT32 NumCommitedClasses;
 UINT32 NumUncommitedClasses;
 UINT32 CurNodeID;
+int DeltaThreads;
 tsPBEScaffNode *pCurPBScaffNode;
 time_t Now;
 
@@ -2361,8 +2372,28 @@ if(m_ProcessStatsThen == 0)
 else
 	Now = time(NULL);
 
+DeltaThreads = 0;
 if(m_bRMI)
+	{
 	NumClasses = m_pRequester->GetNumClassInstances(eBKSPTSmithWaterman,&NumCommitedClasses,&NumUncommitedClasses);
+#ifdef WIN32
+	DeltaThreads = 0;
+#else
+	double Loadavgs[3];
+	getloadavg(Loadavgs,3);
+	if((Loadavgs[0] + 0.5) > (double)m_NumOvlpCores)    // using the last 60 sec average
+		{
+		// try to reduce number of non_RMI threads
+		DeltaThreads = (1 + m_NumOvlpCores - (int)Loadavgs[0])/2;
+		}
+	else
+		if(Loadavgs[0] < (double)m_NumOvlpCores)
+			{
+			// try to increase number of non_RMI threads
+			DeltaThreads = (1 + (int)Loadavgs[0] - m_NumOvlpCores)/2; 
+			}
+#endif
+	}
 else
 	{
 	NumClasses = 0;
@@ -2376,7 +2407,8 @@ m_RMINumCommitedClasses = NumCommitedClasses;
 m_RMINumUncommitedClasses = NumUncommitedClasses;
 
 TargRMIThreads = min(NumClasses,m_MaxRMIInstances);	
-TargNonRMIThreads = m_NumOvlpCores - min(m_NumOvlpCores, (TargRMIThreads + cRMIThreadsPerCore - 1) / cRMIThreadsPerCore);
+TargNonRMIThreads = (m_NumOvlpCores + DeltaThreads) - min(m_NumOvlpCores, (TargRMIThreads + cRMIThreadsPerCore - 1) / cRMIThreadsPerCore);
+
 if(TargNonRMIThreads < m_CurActiveNonRMIThreads)
 	m_ReduceNonRMIThreads = max(m_CurActiveNonRMIThreads - TargNonRMIThreads,cRMIThreadsPerCore);
 else
@@ -2722,8 +2754,7 @@ CPBErrCorrect::ThreadPBErrCorrect(tsThreadPBErrCorrect *pThreadPar)
 UINT32 AdjOverlapFloat;
 UINT32 CurTargCoreHitCnts;
 tsPBEScaffNode *pTargNode;
-UINT32 ProbeAlignLength;
-UINT32 TargAlignLength;
+
 UINT32 TargSeqLen;
 UINT32 ProbeSeqLen;
 UINT32 LongSAligns;
@@ -2763,7 +2794,7 @@ sPBECoreHitCnts *pSummaryCnts;
 UINT32 CurNodeID;
 UINT32 LowestCpltdProcNodeID;
 int NumInMultiAlignment;
-int Class;
+
 char szTargSeqName[cMaxDatasetSpeciesChrom];
 char szProbeSeqName[cMaxDatasetSpeciesChrom];
 
@@ -2774,7 +2805,15 @@ bool bRMIRslt;
 int iRMIRslt;
 bool bNonRMIRslt;
 int iNonRMIRslt;
+
+#ifdef USESEPARATEMETHODS
+int Rslt;
+UINT32 ProbeAlignLength;
+UINT32 TargAlignLength;
+int Class;
 tsSSWCell RMIPeakMatchesCell;
+#endif
+
 tsPBEScaffNode *pCurPBScaffNode;
 UINT32 RMINumUncommitedClasses;
 
@@ -2783,7 +2822,7 @@ pCurPBScaffNode = NULL;
 ClassInstanceID = 0;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-RMIRestartThread:							// RMI error detected threads are restarted from here with a goto!
+RMIRestartThread:							// RMI threads with errors detected are restarted from here with a goto!
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////
 if(ClassInstanceID != 0)   // non-zero if must have been a RMI SW thread which is restarting 
 	{
@@ -2911,8 +2950,11 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 	pThreadPar->bRevCpl = false;
 	IdentifyCoreHits(CurNodeID,pThreadPar);
 
-	pThreadPar->bRevCpl = true;
-	IdentifyCoreHits(CurNodeID,pThreadPar);
+	if(m_bAntisenseOvlps)
+		{
+		pThreadPar->bRevCpl = true;
+		IdentifyCoreHits(CurNodeID,pThreadPar);
+		}
 
 	ProvOverlapping = 0;
 	ProvOverlapped = 0;
@@ -3281,10 +3323,15 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 				CSeqTrans::ReverseComplement(TargSeqLen,pThreadPar->pTargSeq);
 			pThreadPar->pTargSeq[TargSeqLen] = eBaseEOS;
 
-		if(TargSeqLen > m_MaxPBSeqLen)
-			gDiagnostics.DiagOut(eDLWarn,gszProcName,"####### Probe length of %dbp is longer than expected max length of %dbp #######",
-						TargSeqLen,m_MaxPBSeqLen);
+			if(TargSeqLen > m_MaxPBSeqLen)
+				gDiagnostics.DiagOut(eDLWarn,gszProcName,"####### Target length of %dbp is longer than expected max length of %dbp #######",
+							TargSeqLen,m_MaxPBSeqLen);
 
+
+// start combined from here!
+
+
+#ifdef USESEPARATEMETHODS
 			if(!pThreadPar->bRMI)
 				{
 				bNonRMIRslt = pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
@@ -3297,9 +3344,26 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 				if(bRMIRslt == false)
 					goto RMIRestartThread;
 				}
-			
+#else
+tsCombinedTargAlignPars CombinedTargAlignPars;
+tsCombinedTargAlignRet TargAlignRet;
+memset(&CombinedTargAlignPars,0,sizeof(tsCombinedTargAlignPars));
+memset(&TargAlignRet,0,sizeof(tsCombinedTargAlignRet));
+CombinedTargAlignPars.PMode = m_PMode;
+CombinedTargAlignPars.NumTargSeqs = pThreadPar->NumTargCoreHitCnts;
+CombinedTargAlignPars.MinOverlapLen = MinOverlapLen;
+CombinedTargAlignPars.MaxOverlapLen = m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen;
+CombinedTargAlignPars.ProbeSeqLen = pCurPBScaffNode->SeqLen;
+CombinedTargAlignPars.TargSeqLen = TargSeqLen;
+CombinedTargAlignPars.pTargSeq = pThreadPar->pTargSeq;
+CombinedTargAlignPars.OverlapFloat = m_OverlapFloat;
+CombinedTargAlignPars.MaxArtefactDev = m_MaxArtefactDev;
+CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor;
+
+#endif
+
 			// restrict the range over which the SW will be processed to that of the overlap +/- m_OverlapFloat
-			int Rslt;
+
 			if(bTargSense)
 				{
 				if(pSummaryCnts->SProbeStartOfs < m_OverlapFloat)
@@ -3318,6 +3382,8 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					pSummaryCnts->STargEndOfs = TargSeqLen - 1;
 				else
 					pSummaryCnts->STargEndOfs += AdjOverlapFloat;
+
+#ifdef USESEPARATEMETHODS
 				if(!pThreadPar->bRMI)
 					{
 					iNonRMIRslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
@@ -3332,6 +3398,15 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					if(iRMIRslt < 0)
 						goto RMIRestartThread;
 					}
+
+#else
+
+				CombinedTargAlignPars.ProbeStartRelOfs = pSummaryCnts->SProbeStartOfs;
+				CombinedTargAlignPars.TargStartRelOfs = pSummaryCnts->STargStartOfs;
+				CombinedTargAlignPars.ProbeRelLen = pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs;
+				CombinedTargAlignPars.TargRelLen = pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs;
+
+#endif
 				}
 			else
 				{
@@ -3359,6 +3434,8 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					pSummaryCnts->ATargEndOfs = TargSeqLen - 1;
 				else
 					pSummaryCnts->ATargEndOfs += AdjOverlapFloat;
+
+#ifdef USESEPARATEMETHODS
 				if(!pThreadPar->bRMI)
 					{
 					iNonRMIRslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
@@ -3373,11 +3450,17 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					if(iRMIRslt < 0)
 						goto RMIRestartThread;
 					}
+#else
+
+				CombinedTargAlignPars.ProbeStartRelOfs = pSummaryCnts->AProbeStartOfs;
+				CombinedTargAlignPars.TargStartRelOfs = pSummaryCnts->ATargStartOfs;
+				CombinedTargAlignPars.ProbeRelLen = pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs;
+				CombinedTargAlignPars.TargRelLen = pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs;
+#endif
 				}
 
-#ifdef _PEAKSCOREACCEPT_
-			pPeakMatchesCell = pThreadPar->pSW->Align(&PeakScoreCell,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
-#else
+
+#ifdef USESEPARATEMETHODS
 			if(!pThreadPar->bRMI)
 				pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
 			else
@@ -3391,7 +3474,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 				else
 					goto RMIRestartThread;
 				}
-#endif
+
 			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
 				{
@@ -3464,29 +3547,6 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 	
 				if(m_PMode == ePBPMErrCorrect && Class != (int)eOLCartefact && pThreadPar->NumTargCoreHitCnts >= 2)
 					{
-#undef _CHECKKMERDIST_
-#ifdef _CHECKKMERDIST_	
-// define _CHECKKMERDIST_ if wanting to see the exact K-mer length distributions when debugging
-					UINT32 CurExactKmerDists[100];
-					pThreadPar->pSW->PathKmerCnts(70,CurExactKmerDists,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-																									PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);	
-				
-					char szKMerDists[2000];
-					int KMerDistsIdx;
-					AcquireCASSerialise();
-					for(int TTx = 0; TTx < 70; TTx += 1)
-						m_ExactKmerDists[TTx] += CurExactKmerDists[TTx];
-					m_TotAlignSeqLen += (PeakMatchesCell.PLastAnchorEndOfs - PeakMatchesCell.PFirstAnchorStartOfs);	
-					m_TotAlignSeqs += 1;
-					if(m_TotAlignSeqs % 100 == 99)
-						{
-						KMerDistsIdx = sprintf(szKMerDists,"ExactKMerDists over %d seq pairs with mean length %dbp ",m_TotAlignSeqs,m_TotAlignSeqLen/m_TotAlignSeqs);
-						for(int TTx = 0; TTx < 70; TTx += 1)
-							KMerDistsIdx += sprintf(&szKMerDists[KMerDistsIdx],",%d",m_ExactKmerDists[TTx]);
-						gDiagnostics.DiagOut(eDLInfo,gszProcName,szKMerDists);
-						}
-					ReleaseCASSerialise();
-#endif
 					if(!pThreadPar->bRMI)
 						pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
@@ -3512,6 +3572,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					}
 
 
+
 				if(m_PMode == ePBPMOverlapDetail && m_hErrCorFile != -1)
 					{
 					m_pSfxArray->GetIdentName(pTargNode->EntryID,sizeof(szTargSeqName)-1,szTargSeqName);
@@ -3523,54 +3584,79 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 						}
 
 					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"%c\",\"%c\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
-							Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,
+																			Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,
 																			bTargSense ? pSummaryCnts->NumSHits : pSummaryCnts->NumAHits, 'S', bTargSense ? 'S' : 'A',
 																			pCurPBScaffNode->SeqLen,TargSeqLen,
-							ProbeAlignLength, 
-							TargAlignLength,
-							PeakMatchesCell.PeakScore,
-							PeakMatchesCell.CurScore,
-							PeakMatchesCell.NumMatches,
-							PeakMatchesCell.NumExacts,
-							PeakMatchesCell.NumGapsIns,
-							PeakMatchesCell.NumBasesIns,
-							PeakMatchesCell.NumGapsDel,
-							PeakMatchesCell.NumBasesDel,
-							PeakMatchesCell.StartPOfs,
-							PeakMatchesCell.StartTOfs,
-							PeakMatchesCell.EndPOfs,
-							PeakMatchesCell.EndTOfs,
-							PeakMatchesCell.PFirstAnchorStartOfs,
-							PeakMatchesCell.TFirstAnchorStartOfs,
-							PeakMatchesCell.PLastAnchorEndOfs,
-							PeakMatchesCell.TLastAnchorEndOfs);
-#ifdef _PEAKSCOREACCEPT_
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], ",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
-							PeakScoreCell.NumMatches + PeakScoreCell.NumBasesIns - PeakScoreCell.NumBasesDel, 
-							PeakScoreCell.PeakScore,
-							PeakScoreCell.NumMatches,
-							PeakScoreCell.NumExacts,
-							PeakScoreCell.NumGapsIns,
-							PeakScoreCell.NumBasesIns,
-							PeakScoreCell.NumGapsDel,
-							PeakScoreCell.NumBasesDel,
-							PeakScoreCell.StartPOfs,
-							PeakScoreCell.StartTOfs,
-							PeakMatchesCell.EndPOfs,
-							PeakMatchesCell.EndTOfs,
-							PeakScoreCell.PFirstAnchorStartOfs,
-							PeakScoreCell.TFirstAnchorStartOfs,
-							PeakScoreCell.PLastAnchorEndOfs,
-							PeakScoreCell.TLastAnchorEndOfs);
-#endif
-#ifdef _EXACTMATCHLENDIST_
-					for(int ExactLenIdx = 0; ExactLenIdx < cExactMatchLenDist; ExactLenIdx++)
-						m_ScaffLineBuffIdx+=sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx],",%d",PeakMatchesCell.ExactMatchLenDist[ExactLenIdx]);
-#endif
+																			ProbeAlignLength, TargAlignLength, PeakMatchesCell.PeakScore, PeakMatchesCell.CurScore, PeakMatchesCell.NumMatches, PeakMatchesCell.NumExacts,
+																			PeakMatchesCell.NumGapsIns, PeakMatchesCell.NumBasesIns, PeakMatchesCell.NumGapsDel, PeakMatchesCell.NumBasesDel,
+																			PeakMatchesCell.StartPOfs, PeakMatchesCell.StartTOfs, PeakMatchesCell.EndPOfs, PeakMatchesCell.EndTOfs,
+																			PeakMatchesCell.PFirstAnchorStartOfs, PeakMatchesCell.TFirstAnchorStartOfs, PeakMatchesCell.PLastAnchorEndOfs, PeakMatchesCell.TLastAnchorEndOfs);
+
 					ReleaseCASSerialise();
 					}
 				ProvOverlapped += 1;
 				}
+#else
+
+			if(!pThreadPar->bRMI)
+				{
+				if(!pThreadPar->pSW->CombinedTargAlign(&CombinedTargAlignPars, &TargAlignRet))
+					goto CompletedNodeProcessing;
+				if(TargAlignRet.ErrRslt != eBSFSuccess || TargAlignRet.ProcPhase < 2 || TargAlignRet.ProcPhase == 3)
+					goto CompletedNodeProcessing;
+				}
+			else
+				{
+				if(!RMI_CombinedTargAlign(pThreadPar,cRMI_AlignSecsTimeout,ClassInstanceID,&CombinedTargAlignPars, &TargAlignRet))
+					goto RMIRestartThread;
+				if(TargAlignRet.ErrRslt != eBSFSuccess || TargAlignRet.ProcPhase < 2 || TargAlignRet.ProcPhase == 3)
+					goto RMIRestartThread;
+				}
+
+			PeakMatchesCell = TargAlignRet.PeakMatchesCell;
+			pPeakMatchesCell = &PeakMatchesCell;
+
+			ProvSWchecked += 1;
+			if(TargAlignRet.Flags & 0x02)		// set if alignment classified as an artifact
+				ProvArtefact += 1;
+			
+			if(TargAlignRet.ProcPhase == 4)
+				{
+				if(TargAlignRet.Flags & 0x08)		// set if alignment was accepted and added as a multialignment
+					NumInMultiAlignment += 1;
+				if(TargAlignRet.Flags & 0x04)		// set if alignment classified as contained
+					ProvContained += 1;
+
+				if(TargAlignRet.Flags & 0x01)		// set if alignment was classified as overlapping 
+					ProvOverlapping += 1;
+				ProvOverlapped += 1;
+				if(m_PMode == ePBPMOverlapDetail && m_hErrCorFile != -1)
+					{
+					m_pSfxArray->GetIdentName(pTargNode->EntryID,sizeof(szTargSeqName)-1,szTargSeqName);
+					AcquireCASSerialise();
+					if(m_ScaffLineBuffIdx > (sizeof(m_szScaffLineBuff) - 1000))
+						{
+						if(!CUtility::SafeWrite(m_hErrCorFile,m_szScaffLineBuff,m_ScaffLineBuffIdx))
+							{
+							gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to overlap details file",m_ScaffLineBuffIdx);
+							ReleaseCASSerialise();
+							goto CompletedNodeProcessing;
+							}
+						m_ScaffLineBuffIdx = 0;
+						}
+
+					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"%c\",\"%c\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
+														TargAlignRet.Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,
+														bTargSense ? pSummaryCnts->NumSHits : pSummaryCnts->NumAHits, 'S', bTargSense ? 'S' : 'A',
+														pCurPBScaffNode->SeqLen,TargSeqLen,
+														TargAlignRet.ProbeAlignLength, TargAlignRet.TargAlignLength, PeakMatchesCell.PeakScore, PeakMatchesCell.CurScore, PeakMatchesCell.NumMatches,
+														PeakMatchesCell.NumExacts, PeakMatchesCell.NumGapsIns, PeakMatchesCell.NumBasesIns, PeakMatchesCell.NumGapsDel, PeakMatchesCell.NumBasesDel, PeakMatchesCell.StartPOfs,
+														PeakMatchesCell.StartTOfs, PeakMatchesCell.EndPOfs, PeakMatchesCell.EndTOfs, PeakMatchesCell.PFirstAnchorStartOfs, PeakMatchesCell.TFirstAnchorStartOfs, PeakMatchesCell.PLastAnchorEndOfs, PeakMatchesCell.TLastAnchorEndOfs);
+
+					ReleaseCASSerialise();
+					}
+				}
+#endif
 			}
 		}
 
@@ -3598,7 +3684,12 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			if(pThreadPar->ErrCorBuffIdx > 0)
 				{
 				AcquireCASSerialise();
-				CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx);
+				if(!CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx))
+					{
+					gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to error corrected reads file",pThreadPar->ErrCorBuffIdx);
+					ReleaseCASSerialise();
+					goto CompletedNodeProcessing;
+					}
 				m_ErrCorFileUnsyncedSize += pThreadPar->ErrCorBuffIdx;
 				if(m_ErrCorFileUnsyncedSize > 50000)
 					{
@@ -3628,7 +3719,12 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 				{
 				pThreadPar->pszMultiAlignLineBuff[pThreadPar->MultiAlignBuffIdx++] = '\n';
 				AcquireCASSerialise();
-				CUtility::SafeWrite(m_hMultiAlignFile,pThreadPar->pszMultiAlignLineBuff,pThreadPar->MultiAlignBuffIdx);
+				if(!CUtility::SafeWrite(m_hMultiAlignFile,pThreadPar->pszMultiAlignLineBuff,pThreadPar->MultiAlignBuffIdx))
+					{
+					gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to multialignment file",pThreadPar->MultiAlignBuffIdx);
+					ReleaseCASSerialise();
+					goto CompletedNodeProcessing;
+					}
 				m_MultiAlignFileUnsyncedSize += pThreadPar->MultiAlignBuffIdx;
 				if(m_MultiAlignFileUnsyncedSize > 100000)
 					{
@@ -4453,6 +4549,119 @@ if(bPeakScoreCell)
 	*pPeakScoreCell = *pCell;
 	}
 return(&pThreadPar->RMIHighScoreCell);
+}
+
+      // methods which combines the functionality of SetTarg, SetAlignRange, Align, ClassifyPath, TracebacksToAlignOps, and AddMultiAlignment into a single method 
+int //  -3: timeout waiting for job to complete, -2: parameter errors, -1: class instance no longer exists, 0: currently no available service instance 1: if job accepted and processed
+CPBErrCorrect::RMI_CombinedTargAlign(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+						tsCombinedTargAlignPars *pAlignPars, // input alignment parameters
+						tsCombinedTargAlignRet *pAlignRet)		// returned alignment results
+{
+int Rslt;
+int RespDataOfs;
+UINT32 JobRslt;
+tJobIDEx JobID;
+UINT32 ClassMethodID;
+UINT32	MaxResponseSize = (sizeof(tsCombinedTargAlignRet) + 20) * 2;
+time_t Then;
+time_t Now;
+
+memset(pAlignRet,0,sizeof(tsCombinedTargAlignRet));
+Then = time(NULL);
+RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTVarUint8,pAlignPars,sizeof(tsCombinedTargAlignPars));
+RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pAlignPars->pTargSeq,pAlignPars->TargSeqLen);
+while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMCombinedTargAlign,0,NULL,RespDataOfs,pThreadPar->pRMIReqData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-3);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1)		// -2: parameter errors, -1: class instance no longer exists, 0: currently no available service instance 1: if job accepted
+	return(Rslt);
+
+while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
+	{
+	Now = time(NULL);
+	if((Now - Then) > Timeout)
+		return(-3);
+	CUtility::SleepMillisecs(20);
+	}
+if(Rslt < 1 || MaxResponseSize < sizeof(tsCombinedTargAlignRet))
+	return(-2);
+
+RespDataOfs = UnmarshalResp(sizeof(tsCombinedTargAlignRet),pThreadPar->pRMIRespData,&pAlignRet);
+if(RespDataOfs < sizeof(tsCombinedTargAlignRet))
+	return(-2);
+return(1);
+}
+
+
+int // -3: timeout waiting for job to complete, -2: parameter errors, -1: class instance no longer exists, 0: currently no available service instance 1: if job accepted and processed
+CPBErrCorrect::RMI_CombinedTargAlign(tsThreadPBErrCorrect *pThreadPar, UINT32 Timeout,  UINT64 ClassInstanceID,
+						UINT8 PMode,              // processing mode: 0 error correct , 1 generate consensus from previously generated multiple alignments, 2  generate overlap detail from previously generated consensus sequences
+						UINT32 NumTargSeqs,			// current probe putatively overlaying this many targets
+						UINT32 ProbeSeqLen,         // use this probe sequence length 
+						UINT8 TargFlags,		    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
+						UINT32 TargSeqLen,          // target sequence length
+						etSeqBase *pTargSeq,        // target sequence
+						UINT32 ProbeStartRelOfs,	// when aligning then start SW from this probe sequence relative offset
+						UINT32 TargStartRelOfs, 	// and SW starting from this target sequence relative offset
+						UINT32 ProbeRelLen,		    // and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
+						UINT32 TargRelLen,		    // and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
+						UINT32 OverlapFloat,		// allowing up to this much float on overlaps to account for the PacBio error profile
+						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+						UINT32 MinOverlapLen,       // minimum accepted overlap length
+						UINT32 MaxOverlapLen,      // max expected overlap length
+						UINT8 *pRetClass,			// returned overlap classification
+						tsSSWCell *pRetPeakMatchesCell, // returned peak matches cell
+						UINT32 *pRetProbeAlignLength, // probe alignment length
+						UINT32 *pRetTargAlignLength, // target alignment length
+						bool *pRetbProvOverlapping,  // probe overlapping target
+						bool *pRetbProvArtefact,	// set true if overlap classified as artefact
+						bool *pRetbProvContained,	// probe was contained
+						bool *pRetbAddedMultiAlignment) // added as a multialignment
+{
+int Rslt;
+tsCombinedTargAlignPars AlignPars;
+tsCombinedTargAlignRet AlignRet;
+memset(&AlignRet,0,sizeof(tsCombinedTargAlignRet));
+*pRetClass = 0;
+memset(pRetPeakMatchesCell,0,sizeof(tsSSWCell));
+*pRetProbeAlignLength = 0;
+*pRetTargAlignLength = 0;
+*pRetbProvOverlapping = false;
+*pRetbProvArtefact = false;
+*pRetbProvContained = false;
+*pRetbAddedMultiAlignment = false;
+
+AlignPars.PMode = PMode;
+AlignPars.NumTargSeqs = NumTargSeqs;
+AlignPars.ProbeSeqLen = ProbeSeqLen;
+AlignPars.TargFlags = TargFlags;
+AlignPars.TargSeqLen = TargSeqLen;
+AlignPars.pTargSeq = pTargSeq;
+AlignPars.ProbeStartRelOfs = ProbeStartRelOfs;
+AlignPars.TargStartRelOfs = TargStartRelOfs;
+AlignPars.ProbeRelLen = ProbeRelLen;
+AlignPars.TargRelLen = TargRelLen;
+AlignPars.OverlapFloat = OverlapFloat;
+AlignPars.MaxArtefactDev = MaxArtefactDev;
+AlignPars.MinOverlapLen = MinOverlapLen;
+AlignPars.MaxOverlapLen = MaxOverlapLen;
+
+if((Rslt = RMI_CombinedTargAlign(pThreadPar,Timeout,ClassInstanceID,&AlignPars,&AlignRet)) > 0)
+	{
+	*pRetClass = AlignRet.Class;
+	*pRetPeakMatchesCell = AlignRet.PeakMatchesCell;
+	*pRetProbeAlignLength = AlignRet.ProbeAlignLength; 
+	*pRetTargAlignLength = AlignRet.TargAlignLength;
+	*pRetbProvOverlapping = AlignRet.Flags & 0x01 ? true : false;
+	*pRetbProvArtefact = AlignRet.Flags & 0x02 ? true : false;
+	*pRetbProvContained = AlignRet.Flags & 0x04 ? true : false;
+	*pRetbAddedMultiAlignment = AlignRet.Flags & 0x08 ? true : false; 
+	}
+return(Rslt);
 }
 
 int												// attempting to determine if path is artfact resulting from aligning to a paralogous fragment

@@ -2077,7 +2077,7 @@ int CSAMfile::CSIDepth(INT64 MaxSeqLen,			// max sequence length for any alignme
 {
 INT64 s;
 int n_lvls;
-for (n_lvls = 0, s = (INT64)(1 << min_shift); MaxSeqLen > s; ++n_lvls, s <<= 3);
+for (n_lvls = 0, s = (INT64)((INT64)1 << min_shift); MaxSeqLen > s; ++n_lvls, s <<= (INT64)3);
 return(n_lvls);
 }
 

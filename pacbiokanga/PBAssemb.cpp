@@ -37,11 +37,12 @@
 
 
 int
-ProcPacBioAssemb(etPBPMode PMode,		// processing mode
+ProcPacBioAssemb(etPBPMode PMode,			// processing mode
 		int MinScaffSeqLen,					// individual scaffold sequences must be of at least this length (defaults to 5Kbp)
 		int MinScaffOverlap,				// pairs of targeted scaffold sequences must have overlapped by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 	    int Min1kScore,                     // minimum normalised 1Kbp overlap score
 		bool bAcceptOrphanSeqs,				// also report sequences which are not overlapped or overlapping any other sequence
+		bool bAnySenseOvlps,				// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
 		char *pszOverlapDetailFile,			// pregenerated sequence overlap loci details
 		int NumErrCorrectedFiles,			// number of error corrected sequence specs
 		char *pszErrCorrectedFiles[],		// input error corrected sequence files
@@ -74,6 +75,7 @@ int MinScaffSeqLen;			// individual target scaffold sequences must be of at leas
 int MinScaffOverlap;		// pairs of targeted sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 int Min1kScore;             // minimum normalised 1Kbp overlap score
 bool bAcceptOrphanSeqs;		// also report sequences which are not overlapped or overlapping any other sequence
+bool bAnySenseOvlps;			// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
 
 char szOverlapDetailFile[_MAX_PATH];	// pregenerated  overlap loci details
 int NumPacBioFiles;						// number of input pacbio file specs
@@ -94,18 +96,19 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 use pregenerated overlap loci details file and error corrected sequences, 1 generate sense/sense GEFX output format, 2 generate sense/sense GraphML output format");
+struct arg_int *pmode = arg_int0("m","pmode","<int>",				"processing mode - 0 use pregenerated overlap loci details file and error corrected sequences, 1 generate GEXF output format, 2 generate GraphML output format");
 struct arg_int *minscafflen = arg_int0("l","minscafflen","<int>",	"minimum individual sequence length (default 5000, range 500 to 100000)");
 struct arg_int *minscaffovl = arg_int0("L","minscaffovl","<int>",	"minimum overlap required to merge reads into single contig (default 5000, range 250 to 100000)");
 
 struct arg_int *min1kscore = arg_int0("s", "min1kscore", "<int>", "minimum normalised 1Kbp overlap score required (default 980, range 800 to 1000)");
 struct arg_lit  *orphanseqs = arg_lit0("S", "orphanseqs", "accept orphan sequences not overlapped by any other sequence");
 
+struct arg_lit  *anysenseovlps = arg_lit0("a", "anysenseovlps",		  "accepting any sense overlaps (default is to accept sense/sense only)");
 
 struct arg_file *pacbiosovlps = arg_file1("I","pacbiosovlps","<file>",	"input file containing pregenerated error corrected overlap detail");
 
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,	"names of input files containing error corrected sequences to be used for contigs");
-struct arg_file *outfile = arg_file1("o","out","<file>",					"output merged contig sequences (processing mode 0) or GEFX format (processing mode 1) to this file");
+struct arg_file *outfile = arg_file1("o","out","<file>",					"output merged contig sequences (processing mode 0) or GEFX or GraphML format to this file");
 
 struct arg_int *threads = arg_int0("T","threads","<int>",					"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
@@ -116,7 +119,7 @@ struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"exper
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,minscafflen,minscaffovl,min1kscore,orphanseqs,
+					pmode,minscafflen,minscaffovl,min1kscore,orphanseqs,anysenseovlps,
 					summrslts,pacbiosovlps,pacbiofiles,experimentname,experimentdescr,
 					outfile,threads,
 					end};
@@ -262,6 +265,12 @@ if (!argerrors)
 		return(1);
 		}
 
+	if(PMode == ePBPMScaffold)
+		{
+		bAnySenseOvlps = anysenseovlps->count ? true : false;
+		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Sorry, currently only supporting sense/sense overlaps, defaulting to sense only");
+		}
+	bAnySenseOvlps = false;
 
 	MinScaffSeqLen = minscafflen->count ? minscafflen->ival[0] : cDfltMinErrCorrectLen;
 	if(MinScaffSeqLen < cMinPBSeqLen || MinScaffSeqLen > cMaxMinPBSeqLen)
@@ -352,10 +361,10 @@ if (!argerrors)
 			pszMode = (char *)"Using pregenerated overlaps for scaffolding";
 			break;
 		case ePBPMToGEFX:		// converting input overlap detail into GEFX ready for graph visualisation
-			pszMode = (char *)"Converting sense/sense overlaps into GEFX ready for graph visualisation";
+			pszMode = (char *)"Converting overlaps into GEXF ready for graph visualisation";
 			break;
 		case ePBPMToGraphML:		// converting input overlap detail into GraphML ready for graph visualisation
-			pszMode = (char *)"Converting sense/sense overlaps into GraphML ready for graph visualisation";
+			pszMode = (char *)"Converting overlaps into GraphML ready for graph visualisation";
 			break;
 			}
 
@@ -363,8 +372,10 @@ if (!argerrors)
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum individual input sequence length: %dbp",MinScaffSeqLen);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum sequence overlap required to merge into single config: %d",MinScaffOverlap);
-	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Minimum 1Kbp normalised overlap score: %d", Min1kScore);
-	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Accepting orphan sequences: '%s'", bAcceptOrphanSeqs ? "Yes" : "No");
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum 1Kbp normalised overlap score: %d", Min1kScore);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Accepting orphan sequences: '%s'", bAcceptOrphanSeqs ? "Yes" : "No");
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Accepting overlaps : '%s'", bAnySenseOvlps ? "Sense/Sense and Sense/AntiSense" : "Sense/Sense");
+
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input file containing pregenerated PacBio overlap loci detail: '%s'",szOverlapDetailFile);
 
@@ -392,6 +403,7 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinScaffOverlap),"minscaffovl",&MinScaffOverlap);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTInt32, (int)sizeof(Min1kScore), "min1kscore", &Min1kScore);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTBool, (int)sizeof(bAcceptOrphanSeqs), "orphanseqs", &bAcceptOrphanSeqs);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTBool, (int)sizeof(bAcceptOrphanSeqs), "anysenseovlps", &bAnySenseOvlps);
 
 		for(Idx=0; Idx < NumPacBioFiles; Idx++)
 			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszPacBioFiles[Idx]),"pacbiofile",pszPacBioFiles[Idx]);
@@ -413,7 +425,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioAssemb((etPBPMode)PMode,MinScaffSeqLen,MinScaffOverlap, Min1kScore, bAcceptOrphanSeqs,szOverlapDetailFile,NumPacBioFiles,pszPacBioFiles,szOutFile,NumThreads);
+	Rslt = ProcPacBioAssemb((etPBPMode)PMode,MinScaffSeqLen,MinScaffOverlap, Min1kScore, bAcceptOrphanSeqs,bAnySenseOvlps,szOverlapDetailFile,NumPacBioFiles,pszPacBioFiles,szOutFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -443,6 +455,7 @@ ProcPacBioAssemb(etPBPMode PMode,		// processing mode
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 	    int Min1kScore,             // minimum normalised 1Kbp overlap score
 	    bool bAcceptOrphanSeqs,		// also report sequences which are not overlapped or overlapping any other sequence
+		bool bAnySenseOvlps,				// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
 		char *pszOverlapDetailFile,	// pregenerated sequence overlap loci details
 		int NumErrCorrectedFiles,	// number of error corrected sequence specs
 		char *pszErrCorrectedFiles[],		// input error corrected sequence files
@@ -458,7 +471,7 @@ if((pPacBioer = new CPBAssemb)==NULL)
 	return(eBSFerrObj);
 	}
 
-Rslt = pPacBioer->Process(PMode,MinScaffSeqLen,MinScaffOverlap, Min1kScore, bAcceptOrphanSeqs,
+Rslt = pPacBioer->Process(PMode,MinScaffSeqLen,MinScaffOverlap, Min1kScore, bAcceptOrphanSeqs,bAnySenseOvlps,
 								pszOverlapDetailFile,NumErrCorrectedFiles,pszErrCorrectedFiles,pszOutFile,NumThreads);
 delete pPacBioer;
 return(Rslt);
@@ -528,8 +541,12 @@ m_ScaffScoreGapOpen = cDfltScaffScoreGapOpen;
 m_ScaffScoreGapExtn = cDfltScaffScoreGapExtn;				
 m_MinScaffScoreThres = cDfltMin1kScore;
 m_bAcceptOrphanSeqs = false;
+m_bAnySenseOvlps = false;
+m_NumRejectedMinSeqLen = 0;
+m_NumRejectedMinScaffOverlap = 0;
 m_NumRejectedScoreThres = 0;
 m_NumRejectContained = 0;
+m_NumRejectAntisense = 0;
 m_NumRejectArtefact = 0;
 m_NumAcceptedOverlaps = 0;		
 
@@ -717,8 +734,10 @@ UINT32 ProbeSeqLen;
 UINT32 TargSeqLen;
 
 m_NumRejectedScoreThres = 0;
-m_NumRejectedScoreThres = 0;
+m_NumRejectedMinSeqLen = 0;
+m_NumRejectedMinScaffOverlap = 0;
 m_NumRejectContained = 0;
+m_NumRejectAntisense = 0;
 m_NumRejectArtefact = 0;
 m_NumAcceptedOverlaps = 0;
 
@@ -981,41 +1000,48 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		continue;
 		}
 
+	switch(Class) {
+		case eOLCartefact:		// slough any known previously classified as artefact
+			m_NumRejectArtefact += 1;
+			continue;
+
+		case eOLCcontained:     // slough contained or containing edges; can't extend these
+		case eOLCcontains:
+			m_NumRejectContained += 1;
+			continue;
+
+		default:
+			if(bSenseOnly && (TargSense == 'A' || TargSense == 'a'))
+				{
+				m_NumRejectAntisense += 1;
+				continue;
+				}
+			break;
+		}
+
+
 		// Score for scaffolding needs to be independent of the SW score as user may have changed the default scoring penalties when error correcting.
         // Also because scaffolding is normally with sequences which are error reduced relative to the original reads then the scoring used should be
         // more akin to that normally associated with relatively error free alignments where the InDel rate is greatly reduced compared with the original PacBio sequences.
         // Currently the default scoring is 1 for exacts, -1 for mismatches and -3 for InDels and -1 for InDel gap extensions; these may need to be exposed to the user as parameterised ....
 	ScoreAlignLen = ((1 + ProbeAlignLength + TargAlignLength)/2);
+	if(ScoreAlignLen < (int)m_MinScaffOverlap)
+		{
+		m_NumRejectedMinScaffOverlap += 1;
+		continue;
+		}
+
 	ScaffoldScore = (NumExactBases * m_ScaffScoreExact) +							// score the exacts
 				((NumAlignedBases - NumExactBases) * m_ScaffScoreMismatch) +		// score the mismatches
 				((NumProbeInserts + NumTargInserts) *  m_ScaffScoreGapOpen) +     // score the gap (InDel) openings
 				((NumProbeInsertBases - NumProbeInserts + NumTargInsertBases - NumTargInserts) *  m_ScaffScoreGapExtn); // score the gap extensions
 	Scaffold1KScore = (int)((((INT64)ScaffoldScore * 1000) + 500) / (1+ScoreAlignLen)); // rounding up
 
-	if(ScoreAlignLen < (int)m_MinScaffOverlap)
+	if(Scaffold1KScore < m_MinScaffScoreThres)
 		{
 		m_NumRejectedScoreThres += 1;
 		continue;
 		}
-
-	switch(Class) {
-		case eOLCartefact:		// slough any artefacts
-			m_NumRejectArtefact += 1;
-			continue;
-		case eOLCcontained:     // accepting contained, containing and overlapping
-		case eOLCcontains:
-		case eOLCOverlapping:   // note that extensions possible only if overlapping
-			if(Scaffold1KScore < m_MinScaffScoreThres)
-				{
-				m_NumRejectedScoreThres += 1;
-				continue;
-				}
-			m_NumAcceptedOverlaps += 1;
-			break;
-		}
-
-	if(bValidateOnly || !(TargSense == 'S' || TargSense == 's') && bSenseOnly)
-		continue;
 
 	if(szPrevProbeDescr[0] == 0 || stricmp(szPrevProbeDescr,szProbeDescr) != 0)
 		{
@@ -1061,6 +1087,17 @@ while((Rslt=pCSV->NextLine()) > 0)			// onto next line containing fields
 		return((UINT32)eBSFerrParse);
 		}
 
+	if(ProbeLen < (int)m_MinScaffSeqLen || TargLen < (int)m_MinScaffSeqLen)
+		{
+		m_NumRejectedMinSeqLen += 1;
+		continue;
+		}
+
+	m_NumAcceptedOverlaps += 1;
+
+	if(bValidateOnly)
+		continue;
+
 	// note that AddEdge() is expecting offsets to be 0 based hence substracting 1
 	if((NumEdges = m_pAssembGraph->AddEdge(ProbeNameID,TargNameID,ProbeLen,TargLen,(UINT32)Scaffold1KScore,ScoreAlignLen,ProbeStartOfs-1,ProbeEndOfs-1,TargStartOfs-1,TargEndOfs-1,(eOverlapClass)Class,TargSense == 's' || TargSense == 'S' ? false : true)) > cMaxValidID)
 		{
@@ -1080,8 +1117,8 @@ if(NumNoTargIdents)
 
 if(!bValidateOnly)
 	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted or inferred %u overlaps for further processing (rejected %u score, %u contained, %u artefact) from file '%s'",
-												m_NumAcceptedOverlaps,m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectArtefact,pszPacBioOvlps);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted or inferred %u overlaps for further processing (rejected %u min seq len, %u overlap len, %u score, %u contained, %u antisense, %u artefact) from file '%s'",
+												m_NumAcceptedOverlaps,m_NumRejectedMinSeqLen,m_NumRejectedMinScaffOverlap,m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectAntisense,m_NumRejectArtefact,pszPacBioOvlps);
 
 	m_NumAcceptedOverlaps = NumEdges;
 	}
@@ -1113,6 +1150,9 @@ int SeqID;
 int NumSeqsAccepted;
 size_t TotAcceptedLen;
 UINT32 NumSeqsUnderlength;
+
+if(MinSeqLen <= cMinSeqLen)			// set a floor of cMinSeqLen on the minimum accepted sequence length
+	MinSeqLen = cMinSeqLen;
 
 if((Rslt=Fasta.Open(pszFile,true))!=eBSFSuccess)
 	{
@@ -1303,7 +1343,7 @@ Rslt = eBSFSuccess;
 for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 	{
 		// try opening as a fasta file
-	Rslt = ProcessFastaFile(MinSeqLen,glob.File(n));
+	Rslt = ProcessFastaFile(cMinSeqLen,glob.File(n));
 	if(Rslt < eBSFSuccess)
 		{
 		Reset(false);
@@ -1313,7 +1353,7 @@ for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 	}
 if(m_pSeqStore->GetNumSeqs() < 3)		// need at least 3 sequences if attempting to error correct
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Insufficent ( < 3) sequences accepted for processing");
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Insufficient ( < 3) sequences accepted for processing");
 	Reset(false);
 	return(eBSFerrNoEntries);
 	}
@@ -1327,6 +1367,7 @@ CPBAssemb::Process(etPBPMode PMode,		// processing mode
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 	    int Min1kScore,             // minimum normalised 1Kbp overlap score
 	    bool bAcceptOrphanSeqs,		// also report sequences which are not overlapped or overlapping any other sequence
+		bool bAnySenseOvlps,		// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
 		char *pszMAFFile,			// pregenerated multialignment sequence overlap loci details
 		int NumErrCorrectedFiles,	// number of error corrected sequence specs
 		char *pszErrCorrectedFiles[],		// input error corrected sequence files
@@ -1349,21 +1390,7 @@ m_MinScaffSeqLen = MinScaffSeqLen;
 m_MinScaffOverlap = MinScaffOverlap; 
 m_MinScaffScoreThres = Min1kScore;
 m_bAcceptOrphanSeqs = bAcceptOrphanSeqs;
-
-if((UINT32)(Rslt = (int)LoadPacBioOvlps(pszMAFFile, true, PMode == ePBPMScaffold ? false : true)) > cMaxValidID)
-	{
-	Reset(false);
-	return(Rslt);
-	}
-if(Rslt = 0)
-	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadPacBioOvlps: Nothing to do, no accepted overlaps to process");
-	if(m_NumRejectedScoreThres > 0 || m_NumRejectContained > 0 || m_NumRejectArtefact > 0)
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Rejected %u score, %u contained, %u artefact) from file '%s'",
-											m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectArtefact,pszMAFFile);
-	Reset(false);
-	return(Rslt);
-	}
+m_bAnySenseOvlps = bAnySenseOvlps;
 
 memset(m_szErrCorrectedFiles,0,sizeof(m_szErrCorrectedFiles));
 if(PMode == ePBPMScaffold)
@@ -1375,7 +1402,6 @@ if(PMode == ePBPMScaffold)
 else
 	m_NumErrCorrectedFiles = 0;
 
-	
 strncpy(m_szOutFile,pszOutFile,sizeof(m_szOutFile));
 m_szOutFile[sizeof(m_szOutFile)-1] = '\0';	
 
@@ -1388,29 +1414,10 @@ if(m_pSeqStore != NULL)
 
 if((m_pSeqStore = new CSeqStore) == NULL)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CSeqStore");
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to instantiate instance of CSeqStore");
 	return(eBSFerrObj);
 	}
 m_pSeqStore->Reset();
-
-if(m_pAssembGraph != NULL)
-	{
-	delete m_pAssembGraph;
-	m_pAssembGraph = NULL;
-	}
-
-if((m_pAssembGraph = new CAssembGraph) == NULL)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to instantiate instance of CAssembGraph");
-	Reset(false);
-	return(eBSFerrObj);
-	}
-if((Rslt=m_pAssembGraph->Init(PMode == ePBPMScaffold ? false : true, m_MinScaffScoreThres, m_bAcceptOrphanSeqs,min(4,NumThreads)))!=eBSFSuccess)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadTargetSeqs: Unable to initialise CAssembGraph");
-	Reset(false);
-	return(eBSFerrObj);
-	}
 
 if((Rslt = LoadTargetSeqs(MinScaffSeqLen,NumErrCorrectedFiles,pszErrCorrectedFiles)) < eBSFSuccess)
 	{
@@ -1431,6 +1438,40 @@ if((Rslt=m_pSeqStore->GenSeqDescrIdx())!=eBSFSuccess)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to generate index over sequence descriptors in file(s)");
 	Reset(false);
 	return(Rslt);
+	}
+
+if((UINT32)(Rslt = (int)LoadPacBioOvlps(pszMAFFile, true, bAnySenseOvlps)) > cMaxValidID)
+	{
+	Reset(false);
+	return(Rslt);
+	}
+if(Rslt = 0)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"LoadPacBioOvlps: Nothing to do, no accepted overlaps to process");
+	if(m_NumRejectedMinScaffOverlap > 0 || m_NumRejectedScoreThres > 0 || m_NumRejectContained > 0 || m_NumRejectArtefact > 0 || m_NumRejectAntisense > 0)
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Rejected %u min seq len,  %u overlap len, %u score, %u contained, %u antisense, %u artifact) from file '%s'",
+											m_NumRejectedMinSeqLen,m_NumRejectedMinScaffOverlap, m_NumRejectedScoreThres,m_NumRejectContained,m_NumRejectAntisense,m_NumRejectArtefact,pszMAFFile);
+	Reset(false);
+	return(Rslt);
+	}
+
+if(m_pAssembGraph != NULL)
+	{
+	delete m_pAssembGraph;
+	m_pAssembGraph = NULL;
+	}
+
+if((m_pAssembGraph = new CAssembGraph) == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to instantiate instance of CAssembGraph");
+	Reset(false);
+	return(eBSFerrObj);
+	}
+if((Rslt=m_pAssembGraph->Init(m_bAnySenseOvlps, m_MinScaffScoreThres, m_bAcceptOrphanSeqs,min(4,NumThreads)))!=eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to initialise CAssembGraph");
+	Reset(false);
+	return(eBSFerrObj);
 	}
 
 if((m_pPBScaffNodes = new tsPBAScaffNode [NumTargSeqs + 1]) == NULL)
@@ -1492,7 +1533,7 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	}
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading previously generated overlap detail from file '%s' ...",pszMAFFile);
-if((UINT32)(Rslt = LoadPacBioOvlps(pszMAFFile, false,PMode == ePBPMScaffold ? false : true)) > cMaxValidID)
+if((UINT32)(Rslt = LoadPacBioOvlps(pszMAFFile, false,bAnySenseOvlps)) > cMaxValidID)
 	return(Rslt);
 if(m_NumAcceptedOverlaps == 0)
 	{

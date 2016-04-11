@@ -3092,6 +3092,34 @@ while(JobRslt >= 0)
 				JobRslt = JobResponse(InstanceID,ClassInstanceID, (UINT32)iRslt,RespDataOfs, pThreadPar->pRespData);
 				break;
 
+			case eSWMCombinedTargAlign:					// // method which combines the functionality of eSWMSetTarg, eSWMSetAlignRange, eSWMAlign, eSWMClassifyPath, eSWMTracebacksToAlignOps, eSWMAddMultiAlignment into a single method to reduce RMI overheads 
+				tsCombinedTargAlignPars *pCombinedTargAlignPars;
+				tsCombinedTargAlignRet CombinedTargAlignRet;
+				etSeqBase *pTargSeq;			// target sequence 
+#ifdef WIN32
+				InterlockedIncrement(&m_NumSWAlignReqs);		// users are likely to be interested in the number of SW alignments requested
+#else
+				__sync_fetch_and_add(&m_NumSWAlignReqs,1);
+#endif
+				if((pClassInstance = LocateClassInstance(ClassInstanceID))!=NULL)
+					{
+					int ReqDataOfs;
+					ReqDataOfs = UnmarshalReq(sizeof(tsCombinedTargAlignPars),pThreadPar->pReqData,&pCombinedTargAlignPars);
+					ReqDataOfs += UnmarshalReq(pCombinedTargAlignPars->TargSeqLen,&pThreadPar->pReqData[ReqDataOfs],&pTargSeq);
+					pCombinedTargAlignPars->pTargSeq = pTargSeq;
+					iRslt = pClassInstance->pClass->CombinedTargAlign(pCombinedTargAlignPars,&CombinedTargAlignRet);
+					}
+				else
+					iRslt = -1;
+				if(iRslt >= 0)
+					RespDataOfs = MarshalResp(pThreadPar->pRespData,eRMIPTVarUint8,&CombinedTargAlignRet,sizeof(tsCombinedTargAlignRet));
+				else
+					RespDataOfs = 0;	
+
+				JobRslt = JobResponse(InstanceID,ClassInstanceID, (UINT32)iRslt,RespDataOfs, pThreadPar->pRespData);
+				break;
+
+
 			case eSWMClassifyPath:			// ClassifyPath
 				if((pClassInstance = LocateClassInstance(ClassInstanceID))!=NULL)
 					{

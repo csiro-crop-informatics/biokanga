@@ -1236,12 +1236,7 @@ if(pSWAInstance->NumCoreHits >= m_MinNumCores)
 											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
 				}
 
-
-#ifdef _PEAKSCOREACCEPT_
-			pPeakMatchesCell = pSWAInstance->pSW->Align(&PeakScoreCell, min(ProbeSeqLen,m_MaxTargSeqLen));
-#else
 			pPeakMatchesCell = pSWAInstance->pSW->Align(NULL, min(ProbeSeqLen, m_MaxTargSeqLen));
-#endif
 			ProvSWchecked += 1;
 			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
 				{
