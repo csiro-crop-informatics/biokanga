@@ -625,6 +625,7 @@ public:
 						etSeqBase *pProbeSeq,			// prequalify with cores from this probe sequence
 						int QualCoreLen,				// prequalifying core length
 						int DeltaCoreOfs,				// offset core windows of QualCoreLen along the probe sequence when checking for overlaps
+						int TargLenDiffBp,				// 0 if disabled, accepted prequalified targets must have length within this differential (bp) of probe sequence length (used in transcriptome processing)
 						int MaxPreQuals,				// max number of target sequences to pre-qualify
 						tsQualTarg *pQualTargs);		// into this prequalified list
 

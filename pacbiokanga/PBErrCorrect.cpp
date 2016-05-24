@@ -61,7 +61,6 @@ typedef struct sockaddr_storage SOCKADDR_STORAGE;
 #include "./BKSRequester.h"
 #include "PBErrCorrect.h"
 
-
 int
 ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		char *pszHostName,			// listening on this host name or IPv4/IPv5 address for connections by service providers 
@@ -79,10 +78,11 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
+		int TransciptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
 		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
 		int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
-		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp)
 		int HCRelWeighting,         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
@@ -94,6 +94,7 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		char *pszHiConfFiles[],		// input hiconfidence files		
 	    char *pszErrCorFile,		// name of file into which write error corrected sequences
 		char *pszMultiAlignFile,	// name of file into which write multiple alignments
+		char *pszChkPtsFile,        // name of file used for checkpointing in case resume processing is required
 		int NumThreads);			// maximum number of worker threads to use
 
 
@@ -129,6 +130,8 @@ int SWGapOpenPenalty;		// gap opening penalty (0..50)
 int SWGapExtnPenalty;		// gap extension penalty (0..50)
 int SWProgExtnPenaltyLen;	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 
+int TranscriptomeLens;		// transcriptome assembly - overlap read lengths must match within this percentage and overlaps be full length
+
 int MinPBSeqLen;			// only accepting PacBio reads of at least this length (defaults to 15Kbp) and if
 int MaxPBSeqLen;			// no more than this length (defaults to 35Kbp)
 int MinPBSeqOverlap;		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
@@ -137,7 +140,7 @@ int MinHCSeqOverlap;		// any overlap of a hiconfidence read onto a target PacBio
 int HCRelWeighting;         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
 int MinConcScore;			// error corrected sequences trimmed until mean 50bp concensus score is at least this threshold
 int MinErrCorrectLen;		// error corrected and sequence trimmed sequences must be of at least this length
-int MaxArtefactDev;			// classify overlaps as artefactual if sliding window of 1000bp over any overlap deviates by more than this percentage from the overlap mean
+int MaxArtefactDev;			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 
 CSimpleGlob glob(SG_GLOB_FULLSORT);
 char szTempFilePath[_MAX_PATH+1];
@@ -149,7 +152,8 @@ int NumHiConfFiles;						// number of input hiconfidence file specs
 char *pszHiConfFiles[cMaxInFileSpecs+1];	// input hiconfidence files
 
 char szOutFile[_MAX_PATH+1];				// where to write (ePBPMConsensus or ePBPMErrCorrect) error corrected sequences or (ePBPMOverlapDetail) overlap detail
-char szOutMAFile[_MAX_PATH+1];			// where to write optional multialignments
+char szOutMAFile[_MAX_PATH+1];				// where to write optional multialignments
+char szChkPtsFile[_MAX_PATH+1];				// used for error correcting checkpointing
 
 int SampleRate;				// sample input sequences at this rate
 int NumberOfProcessors;		// number of installed CPUs
@@ -170,9 +174,11 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","pmode","<int>",					"processing mode - 0 error correct, 1 consensus sequence only, 2 scaffold overlap detail only");
+struct arg_int *pmode = arg_int0("m","pmode","<int>",					"processing mode - 0 error correct, 1 consensus sequence only, 2 scaffold overlap detail only, 3 consolidate transcripts into representative");
 
 struct arg_lit  *antisenseovlps    = arg_lit0("a","antisenseovlps",    "process for antisense overlaps (default is for sense overlap sense only)");
+struct arg_int  *transcriptomelens = arg_int0("t","transcriptome","<int>",	   "transcriptome assembly - overlap read lengths must match within this percentage and overlaps be full length");
+
 
 struct arg_int *minpbseqlen = arg_int0("l","minpbseqlen","<int>",		"minimum individual PacBio sequence length (default 10000, range 500 to 100000)");
 struct arg_int *maxpbseqlen = arg_int0("L", "maxpbseqlen", "<int>",		"maximum individual PacBio sequence length (default 35000, minimum minpbseqlen)");
@@ -198,7 +204,7 @@ struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",	
 
 struct arg_int *minconcscore = arg_int0("s","minconcscore","<int>",			     "error corrected sequences trimmed until mean 50bp concensus score is at least this threshold (default 3, range 0 to 9)");
 struct arg_int *minerrcorrectlen = arg_int0("S","minerrcorrectlen","<int>",		 "error corrected and trimmed sequences must be at least this minimum length (default 5000, range 500 to 20000)");
-struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 1Kbp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 70)");
+struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 500bp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 70)");
 
 struct arg_file *hiconffiles = arg_filen("I","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be used in error correcton of PacBio reads (wildcards allowed)");
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be error corrected (wildcards allowed)");
@@ -224,7 +230,7 @@ struct arg_end *end = arg_end(200);
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,antisenseovlps,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
-					minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
+					transcriptomelens,minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
 					outfile,mafile,scaffovrlapsfile,samplerate,threads,
 					end};
@@ -364,9 +370,9 @@ if (!argerrors)
 		}
 
 	PMode = (etPBPMode)(pmode->count ? pmode->ival[0] : (int)ePBPMErrCorrect);
-	if(PMode < ePBPMErrCorrect || PMode > ePBPMOverlapDetail)
+	if(PMode < ePBPMErrCorrect || PMode > ePBMConsolidate)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Processing mode '-m%d' must be in range 0..%d",PMode,ePBPMOverlapDetail);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Processing mode '-m%d' must be in range 0..%d",PMode,ePBMConsolidate);
 		return(1);
 		}
 
@@ -380,6 +386,7 @@ if (!argerrors)
 	SWGapOpenPenalty = abs(cDfltSWGapOpenPenalty);
 	SWGapExtnPenalty = abs(cDfltSWGapExtnPenalty);
 	SWProgExtnPenaltyLen = cDfltSWProgExtnLen;
+	TranscriptomeLens = 0;
 	MinPBSeqLen = cDfltMinPBSeqLen;
 	MaxPBSeqLen = cDfltMaxPBSeqLen;
 	MinPBSeqOverlap = cDfltMinErrCorrectLen; 
@@ -395,7 +402,7 @@ if (!argerrors)
 	szHostName[0] = '\0';
 	MaxRMI = 0;
 	MaxNonRMI = 0;
-	if(rmihost->count)
+	if(!(PMode == ePBMConsolidate || PMode == ePBPMConsensus) && rmihost->count)
 		{
 		strncpy(szHostName,rmihost->sval[0],sizeof(szHostName)-1);
 		szHostName[sizeof(szHostName) - 1] = '\0';
@@ -403,7 +410,7 @@ if (!argerrors)
 		}
 
 	szServiceName[0] = '\0';
-	if (rmiservice->count)
+	if (!(PMode == ePBMConsolidate || PMode == ePBPMConsensus) && rmiservice->count)
 		{
 		strncpy(szServiceName, rmiservice->sval[0], sizeof(szServiceName) - 1);
 		szServiceName[sizeof(szServiceName) - 1] = '\0';
@@ -422,68 +429,112 @@ if (!argerrors)
 		return(1);
 		}
 
-	if(PMode == ePBPMErrCorrect)
+	if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
 		{
-		MinSeedCoreLen = minseedcorelen->count ? minseedcorelen->ival[0] : cDfltSeedCoreLen;
+		if(PMode == ePBPMErrCorrect)
+			MinSeedCoreLen = minseedcorelen->count ? minseedcorelen->ival[0] : cDfltSeedCoreLen;
+		else
+			MinSeedCoreLen = minseedcorelen->count ? minseedcorelen->ival[0] : cDfltConsolidateSeedCoreLen;
 		if(MinSeedCoreLen < cMinSeedCoreLen || MinSeedCoreLen > cMaxSeedCoreLen)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: seed core length '-c%d' must be in range %d..%d",MinSeedCoreLen,cMinSeedCoreLen,cMaxSeedCoreLen);
 			return(1);
 			}
-
-		MinNumSeedCores = minseedcores->count ? minseedcores->ival[0] : cDfltNumSeedCores;
+		if(PMode == ePBPMErrCorrect)
+			MinNumSeedCores = minseedcores->count ? minseedcores->ival[0] : cDfltNumSeedCores;
+		else
+			MinNumSeedCores = minseedcores->count ? minseedcores->ival[0] : cDfltConsolidateNumSeedCores;
 		if(MinNumSeedCores < cMinNumSeedCores || MinNumSeedCores > cMaxNumSeedCores)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum number of accepted seed cores '-C%d' must be in range %d..%d",MinNumSeedCores,cMinNumSeedCores,cMaxNumSeedCores);
 			return(1);
 			}
 
-		DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : cDfltDeltaCoreOfs;
+		if(PMode == ePBPMErrCorrect)		
+			DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : cDfltDeltaCoreOfs;
+		else
+			DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : cDfltConsolidateDeltaCoreOfs;
 		if(DeltaCoreOfs < 1 || DeltaCoreOfs > 10)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..10",DeltaCoreOfs);
 			return(1);
 			}
-
-		MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxSeedCoreDepth;
-		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > 20000)
+		if(PMode == ePBPMErrCorrect)
+			MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxSeedCoreDepth;
+		else
+			MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxConsolidateSeedCoreDepth;
+		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > 100000)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..25000",MaxSeedCoreDepth);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..100000",MaxSeedCoreDepth);
 			return(1);
 			}
 
-		SWMatchScore = matchscore->count ? matchscore->ival[0] : cDfltSWMatchScore;
+		if(PMode == ePBPMErrCorrect)
+			SWMatchScore = matchscore->count ? matchscore->ival[0] : cDfltSWMatchScore;
+		else
+			SWMatchScore = matchscore->count ? matchscore->ival[0] : cDfltConsolidateSWMatchScore;
 		if(SWMatchScore < 1 || SWMatchScore > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Match score '-x%d' must be in range 1..%d",SWMatchScore,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWMismatchPenalty = mismatchpenalty->count ? mismatchpenalty->ival[0] : abs(cDfltSWMismatchPenalty);
+		if(PMode == ePBPMErrCorrect)
+			SWMismatchPenalty = mismatchpenalty->count ? mismatchpenalty->ival[0] : abs(cDfltSWMismatchPenalty);
+		else
+			SWMismatchPenalty = mismatchpenalty->count ? mismatchpenalty->ival[0] : abs(cDfltConsolidateSWMismatchPenalty);
 		if(SWMismatchPenalty < 1 || SWMismatchPenalty > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Mismatch penalty '-X%d' must be in range 1..%d",SWMismatchPenalty,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWGapOpenPenalty = gapopenpenalty->count ? gapopenpenalty->ival[0] : abs(cDfltSWGapOpenPenalty);
+
+		if(PMode == ePBPMErrCorrect)
+			SWGapOpenPenalty = gapopenpenalty->count ? gapopenpenalty->ival[0] : abs(cDfltSWGapOpenPenalty);
+		else
+			SWGapOpenPenalty = gapopenpenalty->count ? gapopenpenalty->ival[0] : abs(cDfltConsolidateSWGapOpenPenalty);
 		if(SWGapOpenPenalty < 1 || SWGapOpenPenalty > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap open penalty '-y%d' must be in range 1..%d",SWGapOpenPenalty,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWGapExtnPenalty = gapextnpenalty->count ? gapextnpenalty->ival[0] : abs(cDfltSWGapExtnPenalty);
+
+		if(PMode == ePBPMErrCorrect)
+			SWGapExtnPenalty = gapextnpenalty->count ? gapextnpenalty->ival[0] : abs(cDfltSWGapExtnPenalty);
+		else
+			SWGapExtnPenalty = gapextnpenalty->count ? gapextnpenalty->ival[0] : abs(cDfltConsolidateSWGapExtnPenalty);
 		if(SWGapExtnPenalty < 1 || SWGapExtnPenalty > cMaxAllowedSWScore)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Gap extension penalty '-Y%d' must be in range 1..%d",SWGapExtnPenalty,cMaxAllowedSWScore);
 			return(1);
 			}
-		SWProgExtnPenaltyLen = progextnpenaltylen->count ? progextnpenaltylen->ival[0] : cDfltSWProgExtnLen;
+		if(PMode == ePBPMErrCorrect)
+			SWProgExtnPenaltyLen = progextnpenaltylen->count ? progextnpenaltylen->ival[0] : cDfltSWProgExtnLen;
+		else
+			SWProgExtnPenaltyLen = progextnpenaltylen->count ? progextnpenaltylen->ival[0] : cDfltConsolidateSWProgExtnLen;
 		if(SWProgExtnPenaltyLen < 1 || SWProgExtnPenaltyLen > 63)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Apply gap extension progress penalty for gaps at least '-z%d' must be in range 1..%d",SWProgExtnPenaltyLen,63);
 			return(1);
 			}
 
-		MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : cDfltMinPBSeqLen;
+		if(PMode == ePBPMErrCorrect)
+			TranscriptomeLens = transcriptomelens->count ? transcriptomelens->ival[0] : 0;
+		else
+			{
+			TranscriptomeLens = transcriptomelens->count ? transcriptomelens->ival[0] : 5;
+			if(TranscriptomeLens == 0)
+				TranscriptomeLens = 1;
+			}
+		if(TranscriptomeLens < 0 || TranscriptomeLens > 15)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Transcript overlap read length differential percentage '-t%d' must be either 0 to disable or in range 1..15",TranscriptomeLens);
+			return(1);
+			}
+
+		if(PMode == ePBPMErrCorrect)
+			MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : cDfltMinPBSeqLen;
+		else
+			MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : cDfltMinConsolidatePBSeqLen;
 		if(MinPBSeqLen < cMinPBSeqLen || MinPBSeqLen > cMaxMinPBSeqLen)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted PacBio length '-l%d' must be in range %d..%dbp",MinPBSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
@@ -498,24 +549,33 @@ if (!argerrors)
 			}
 
 
-		MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : cDfltMinErrCorrectLen;
+		if(PMode == ePBPMErrCorrect)
+			MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : cDfltMinErrCorrectLen;
+		else
+			MinPBSeqOverlap = minpbseqovl->count ? minpbseqovl->ival[0] : cDfltMinConsolidatePBSeqLen;
+
 		if(MinPBSeqOverlap < cMinPBSeqLen || MinPBSeqOverlap > cMaxMinPBSeqLen)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum PacBio overlap required length '-b%d' must be in range %d..%dbp",MinPBSeqOverlap,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
+		if(PMode == ePBPMErrCorrect)
+			MaxArtefactDev = maxartefactdev->count ? maxartefactdev->ival[0] : cDfltMaxArtefactDev;
+		else
+			MaxArtefactDev = maxartefactdev->count ? maxartefactdev->ival[0] : cDfltMaxConsolidateArtefactDev;
 
-		MaxArtefactDev = maxartefactdev->count ? maxartefactdev->ival[0] : cDfltMaxArtefactDev;
 		if(MaxArtefactDev <= 0 || MaxArtefactDev > cMaxMaxArtefactDev)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Max overlap artefactual deviation '-a%d' must be either 0 or in range %d..%d",MaxArtefactDev,cMinMaxArtefactDev,cMaxMaxArtefactDev);
 			return(1);
 			}
-		if(MaxArtefactDev < 0)
-			MaxArtefactDev = 0;
 
-		MinHCSeqLen = minhcseqlen->count ? minhcseqlen->ival[0] : 1000;
+		if(PMode == ePBPMErrCorrect)
+			MinHCSeqLen = minhcseqlen->count ? minhcseqlen->ival[0] : 1000;
+		else
+			MinHCSeqLen = minhcseqlen->count ? minhcseqlen->ival[0] : cDfltMinConsolidatePBSeqLen;
+
 		if(MinHCSeqLen < cMinPBSeqLen || MinHCSeqLen > cMaxMinPBSeqLen)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted high confidence length '-l%d' must be in range %d..%dbp",MinHCSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
@@ -668,14 +728,21 @@ if (!argerrors)
 
 	if(PMode != ePBPMOverlapDetail)
 		{
-		MinConcScore = minconcscore->count ? minconcscore->ival[0] : 3;
+		if(PMode == ePBMConsolidate)
+			MinConcScore = minconcscore->count ? minconcscore->ival[0] : 0;
+		else
+			MinConcScore = minconcscore->count ? minconcscore->ival[0] : 3;
 		if(MinConcScore < 0 || MinConcScore > 9)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: error corrected sequences trimming threshold score '-s%d' must be in range 0..9",MinConcScore);
 			return(1);
 			}
 
-		MinErrCorrectLen = minerrcorrectlen->count ? minerrcorrectlen->ival[0] : cDfltMinErrCorrectLen;
+		if(PMode == ePBMConsolidate)
+			MinErrCorrectLen = minerrcorrectlen->count ? minerrcorrectlen->ival[0] : cDfltMinConsolidatePBSeqLen;
+		else
+			MinErrCorrectLen = minerrcorrectlen->count ? minerrcorrectlen->ival[0] : cDfltMinErrCorrectLen;
+
 		if(MinErrCorrectLen < cMinPBSeqLen || MinErrCorrectLen > cMaxMinPBSeqLen)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Error corrected and trimmed sequence minimum length '-S%d' must be in range %d..%dbp",MinErrCorrectLen,cMinPBSeqLen,cMaxMinPBSeqLen);
@@ -716,9 +783,9 @@ if (!argerrors)
 			}
 
 		MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxSeedCoreDepth;
-		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > 25000)
+		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > 100000)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..25000",MaxSeedCoreDepth);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..100000",MaxSeedCoreDepth);
 			return(1);
 			}
 
@@ -840,7 +907,9 @@ if (!argerrors)
 		szOutMAFile[0] = '\0';
 		}
 
-	if(PMode != ePBPMConsensus)
+	if(PMode == ePBMConsolidate || transcriptomelens > 0)
+		bAntisenseOvlps = true;
+	else
 		bAntisenseOvlps = antisenseovlps->count ? true : false;
 
 	if(PMode == ePBPMConsensus)
@@ -910,9 +979,9 @@ if (!argerrors)
 		MaxRMI = maxrmi->count ? maxrmi->ival[0] : (NumThreads * cRMIThreadsPerCore);
 		if(MaxRMI == 0)
 			MaxRMI = (NumThreads * cRMIThreadsPerCore);
-		if(MaxRMI < 8 || MaxRMI > 500)
+		if(MaxRMI < cRMIThreadsPerCore || MaxRMI > 500)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range 8..500",MaxRMI,NumThreads);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of RMI SW service instances '-n%d' must be in range %d..500",MaxRMI,cRMIThreadsPerCore);
 			return(1);
 			}
 		MaxNonRMI = maxnonrmi->count ? maxnonrmi->ival[0] : NumThreads;
@@ -938,10 +1007,21 @@ if (!argerrors)
 		case ePBPMOverlapDetail:		// Generate overlap detail from previously generated consensus sequences
 			pszMode = (char *)"Generate overlap detail from previously generated consensus sequences";
 			break;
+
+		case ePBMConsolidate:		// consolidate one or more error corrected sequences into single representative sequence (transcript)
+			pszMode = (char *)"Consolidate one or more error corrected sequences into a single representative sequence";
+			break;
+
 		}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: '%s'",pszMode);
 
+	if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
+		{
+		strncpy(szChkPtsFile,szOutFile,sizeof(szChkPtsFile)-5);
+		strcat(szChkPtsFile,".chk");
+		}
+	
 	if(szHostName[0] != '\0')
 		{
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Listening on this host name for RMI SW service connections: '%s'",szHostName);
@@ -967,12 +1047,18 @@ if (!argerrors)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW gap opening penalty: %d",SWGapOpenPenalty);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW gap extension penalty: %d",SWGapExtnPenalty);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"SW gap extension penalty only applied for gaps of at least this size: %d",SWProgExtnPenaltyLen);
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage: %d",MaxArtefactDev);
-		if(PMode == ePBPMErrCorrect)
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage: %d",MaxArtefactDev);
+		if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
 			{
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio sequence length: %dbp",MinPBSeqLen);
 			gDiagnostics.DiagOutMsgOnly(eDLInfo, "Maximum PacBio sequence length: %dbp", MaxPBSeqLen);
-			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio overlap required for error correction contribution: %d",MinPBSeqOverlap);
+			if(TranscriptomeLens > 0)
+				{
+				gDiagnostics.DiagOutMsgOnly(eDLInfo, "Error correcting transcriptome reads, putative overlapping reads must have max length differential: %d%%", TranscriptomeLens);
+				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio overlap required for error correction contribution: must be near full length");
+				}
+			else
+				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio overlap required for error correction contribution: %d",MinPBSeqOverlap);	
 			}
 		else
 			{
@@ -992,7 +1078,7 @@ if (!argerrors)
 
 		for(Idx=0; Idx < NumPacBioFiles; Idx++)
 			{
-			if(PMode == ePBPMErrCorrect)
+			if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
 				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input PacBio sequences file spec: '%s'",pszPacBioFiles[Idx]);
 			else
 				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input consensus sequences file spec: '%s'",pszPacBioFiles[Idx]);
@@ -1023,7 +1109,11 @@ if (!argerrors)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Input multialignment file spec: '%s'",pszPacBioFiles[ 0]);
 
 	if(PMode != ePBPMOverlapDetail)
+		{
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output error corrected sequences file: '%s'",szOutFile);
+		if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Checkpoint error corrected sequences file: '%s'",szChkPtsFile);
+		}
 	else
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Output error corrected sequences overlap detail file: '%s'",szOutFile);
 
@@ -1055,7 +1145,8 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SWProgExtnPenaltyLen),"progextnpenaltylen",&SWProgExtnPenaltyLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinNumSeedCores),"minseedcores",&MinNumSeedCores);
 
-		
+
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(TranscriptomeLens),"transcriptomelens",&TranscriptomeLens);		
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinPBSeqLen),"minpbseqlen",&MinPBSeqLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID, ePTInt32, (int)sizeof(MaxPBSeqLen), "maxpbseqlen", &MaxPBSeqLen);
 
@@ -1083,6 +1174,8 @@ if (!argerrors)
 				}
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szOutFile),"out",szOutFile);
+		if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
+			gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szChkPtsFile),"out",szChkPtsFile);
 
 		if(szHostName[0] != '\0')
 			{
@@ -1106,8 +1199,8 @@ if (!argerrors)
 #endif
 	gStopWatch.Start();
 	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleRate,bAntisenseOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
-								MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
-								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,NumThreads);
+								TranscriptomeLens,MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
+								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,szChkPtsFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -1148,10 +1241,11 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
+		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
 		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
         int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
-		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 		int HCRelWeighting,         // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
@@ -1163,6 +1257,7 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		char *pszHiConfFiles[],		// input hiconfidence files		
 	    char *pszOutFile,			// where to write error corrected sequences
 		char *pszOutMAFile,			// where to write multiple alignments
+		char *pszChkPtsFile,        // name of file used for checkpointing in case resume processing is required
 		int NumThreads)				// maximum number of worker threads to use
 {
 int Rslt;
@@ -1175,8 +1270,8 @@ if((pPBErrCorrect = new CPBErrCorrect)==NULL)
 	}
 
 Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleRate,bAntisenseOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
-								MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
-								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,NumThreads);
+								TranscriptomeLens,MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
+								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,pszChkPtsFile,NumThreads);
 delete pPBErrCorrect;
 return(Rslt);
 }
@@ -1189,13 +1284,15 @@ m_pMapEntryID2NodeIDs = NULL;
 m_pRequester = NULL;
 m_bMutexesCreated = false;
 m_hErrCorFile = -1;
+m_hChkPtsFile = -1;
 m_hMultiAlignFile = -1;
+
 Init();
 }
 
 CPBErrCorrect::~CPBErrCorrect() // relies on base classes destructor
 {
-Reset(false);
+Reset();
 }
 
 
@@ -1230,6 +1327,17 @@ if(m_hErrCorFile != -1)
 	m_hErrCorFile = -1;
 	}
 
+if(m_hChkPtsFile != -1)
+	{
+#ifdef _WIN32
+	_commit(m_hChkPtsFile);
+#else
+	fsync(m_hChkPtsFile);
+#endif
+	close(m_hChkPtsFile);
+	m_hChkPtsFile = -1;
+	}
+
 if(m_hMultiAlignFile != -1)
 	{
 #ifdef _WIN32
@@ -1251,6 +1359,10 @@ if(m_pRequester != NULL)
 m_bRMI = false;
 m_szRMIHostName[0] = '\0';
 m_szRMIServiceName[0] = '\0';
+
+m_szErrCorFile[0] = '\0';
+m_szChkPtsFile[0] = '\0';
+m_szMultiAlignFile[0] = '\0';
 
 m_NumPBScaffNodes = 0;
 m_AllocdPBScaffNodes = 0;
@@ -1276,6 +1388,7 @@ m_szScaffLineBuff[0] = '\0';
 m_ScaffLineBuffIdx = 0;
 
 m_OverlapFloat = cDfltMaxOverlapFloat;
+m_TranscriptomeLens = 0;
 m_MinPBSeqLen = cDfltMinPBSeqLen;
 m_MaxPBRdSeqLen = cDfltMaxPBSeqLen;
 m_MinPBSeqOverlap = cDfltMinErrCorrectLen;
@@ -1316,7 +1429,7 @@ m_bMutexesCreated = false;
 }
 
 void
-CPBErrCorrect::Reset(bool bSync)			// if bSync true then fsync before closing output file handles
+CPBErrCorrect::Reset(void)			// reset state back to that immediately following instantiation
 {
 Init();
 }
@@ -1806,7 +1919,7 @@ for(Idx = 0; Idx < NumTargFiles; Idx++)
 	if (glob.Add(pszTargFiles[Idx]) < SG_SUCCESS)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to glob '%s",pszTargFiles[Idx]);
-		Reset(false);
+		Reset();
 		return((INT64)eBSFerrOpnFile);
    		}
 
@@ -1826,7 +1939,7 @@ for (NumGlobs = 0; NumGlobs < glob.FileCount(); NumGlobs += 1)
 if(NumGlobs == 0)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to locate any input files");
-	Reset(false);
+	Reset();
 	return(eBSFerrOpnFile);
 	}
 
@@ -1869,7 +1982,7 @@ for(Idx = 0; Idx < NumTargFiles; Idx++)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to glob '%s",pszTargFiles[Idx]);
 		m_pSfxArray->Close(false);
-		Reset(false);
+		Reset();
 		return(eBSFerrOpnFile);
    		}
 
@@ -1891,7 +2004,7 @@ if(NumGlobs == 0)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to locate any input files");
 	m_pSfxArray->Close(false);
-	Reset(false);
+	Reset();
 	return(eBSFerrOpnFile);
 	}
 
@@ -1906,7 +2019,7 @@ for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 	if(Rslt < eBSFSuccess)
 		{
 		m_pSfxArray->Close(false);
-		Reset(false);
+		Reset();
 		return(Rslt);
 		}
 
@@ -1919,7 +2032,7 @@ for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile, duplicate sequence entry name '%s' in file '%s'",szDupEntry,glob.File(n));
 			}
 		m_pSfxArray->Close(false);
-		Reset(false);
+		Reset();
 		return(eBSFerrFastqSeqID);
 		}
 	}
@@ -1944,10 +2057,11 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
+		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
 		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if 
 		int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
-		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 		int MinHCSeqLen,			// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 		int MinHCSeqOverlap,		// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 		int HCRelWeighting,             // hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases 
@@ -1959,6 +2073,7 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		char *pszHiConfFiles[],		// input hiconfidence files		
 	    char *pszErrCorFile,		// name of file into which write error corrected sequences
 		char *pszMultiAlignFile,	// name of file into which write multiple alignments
+		char *pszChkPtsFile,        // name of file used for checkpointing in case resume processing is required
 		int NumThreads)				// maximum number of worker threads to use
 {
 int Rslt = eBSFSuccess;
@@ -1968,7 +2083,7 @@ UINT32 CurNodeID;
 UINT32 MaxSeqLen;
 tsPBEScaffNode *pCurPBScaffNode;
 
-Reset(false);
+Reset();
 
 CreateMutexes();
 
@@ -1984,21 +2099,21 @@ if(pszHostName[0] != '\0')
 	m_MaxNonRMIThreads = MaxNonRMI;
 	if((m_pRequester = new CBKSRequester)==NULL)
 		{
-		Reset(false);
+		Reset();
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to instantiate CBKSRequester");
 		return(eBSFerrObj);
 		}
 
 	if((Rslt = m_pRequester->Initialise(pszHostName, pszServiceName))!=eBSFSuccess)
 		{
-		Reset(false);
+		Reset();
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to initialise CBKSRequester instance");
 		return(cBSFNWSProtErr);
 		}
 
 	if((bRslt = m_pRequester->Run())!=true)
 		{
-		Reset(false);
+		Reset();
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: Unable to run CBKSRequester");
 		return(cBSFNWSProtErr);
 		}
@@ -2039,14 +2154,20 @@ m_MinConcScore = MinConcScore;
 m_SampleRate = SampleRate;
 m_bAntisenseOvlps = bAntisenseOvlps;
 
+m_TranscriptomeLens = TranscriptomeLens;
+
 switch(PMode) {
 	case ePBPMOverlapDetail:
 		m_OverlapFloat = cDfltScaffMaxOverlapFloat;
 		break;
 
+	case ePBMConsolidate:
+		m_OverlapFloat = cDfltConsolidateMaxOverlapFloat;
+		break;
+
 	case ePBPMConsensus:
 		Rslt = GenConsensusFromMAF(MinErrCorrectLen,MinConcScore,pszErrCorFile,pszPacBioFiles[0]);
-		Reset(false);
+		Reset();
 		return(Rslt);
 
 	default:
@@ -2076,6 +2197,17 @@ if(pszErrCorFile != NULL && pszErrCorFile[0] != '\0')
 	}
 else
 	m_szErrCorFile[0] = '\0';
+m_hErrCorFile = -1;
+m_ErrCorFileUnsyncedSize = 0;
+
+if(pszChkPtsFile != NULL && pszChkPtsFile[0] != '\0')
+	{
+	strncpy(m_szChkPtsFile,pszChkPtsFile,sizeof(m_szChkPtsFile));
+	m_szChkPtsFile[sizeof(m_szChkPtsFile)-1] = '\0';
+	}
+else
+	m_szChkPtsFile[0] = '\0';
+m_hChkPtsFile = -1;
 
 if(pszMultiAlignFile != NULL && pszMultiAlignFile[0] != '\0')
 	{
@@ -2084,6 +2216,8 @@ if(pszMultiAlignFile != NULL && pszMultiAlignFile[0] != '\0')
 	}	
 else
 	m_szMultiAlignFile[0] = '\0';
+m_hMultiAlignFile = -1;
+m_MultiAlignFileUnsyncedSize = 0;
 
 INT64 SumFileSizes;
 
@@ -2106,7 +2240,10 @@ if(NumHiConfFiles && pszHiConfFiles != NULL)
 	SumFileSizes += HiConfFileSizes;
 	}
 
-m_NumOvlpCores = NumThreads;	
+if(PMode == ePBMConsolidate)
+	m_NumOvlpCores = 1;
+else
+	m_NumOvlpCores = NumThreads;	
 if(m_pSfxArray != NULL)
 	delete m_pSfxArray;
 if((m_pSfxArray = new CSfxArrayV3) == NULL)
@@ -2126,27 +2263,27 @@ if(Rslt !=eBSFSuccess)
 	while(m_pSfxArray->NumErrMsgs())
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,m_pSfxArray->GetErrMsg());
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile, unable to create in-memory suffix array - error %d %s",Rslt,m_pSfxArray->GetErrMsg());
-	Reset(false);
+	Reset();
 	return(Rslt);
 	}
 
 if((Rslt=m_pSfxArray->SetDescription((char *)"inmem")) != eBSFSuccess)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set description 'inmem'");
-	Reset(false);
+	Reset();
 	return(Rslt);
 	}
 if((Rslt=m_pSfxArray->SetTitle((char *)"inmem")) != eBSFSuccess)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set title 'inmem'");
-	Reset(false);
+	Reset();
 	return(Rslt);
 	}
 
 if((Rslt = m_pSfxArray->SetDatasetName((char *)"inmem")) != eBSFSuccess)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateBioseqSuffixFile: Unable to set dataset name 'inmem'");
-	Reset(false);
+	Reset();
 	return(Rslt);
 	}
 m_pSfxArray->SetInitalSfxAllocEls(SumFileSizes);	// just a hint which is used for initial allocations by suffix processing
@@ -2154,7 +2291,7 @@ m_pSfxArray->SetInitalSfxAllocEls(SumFileSizes);	// just a hint which is used fo
 
 if((Rslt = LoadSeqs(m_MinPBSeqLen, m_MaxPBRdSeqLen,NumPacBioFiles,pszPacBioFiles,cFlgLCSeq)) < eBSFSuccess)
 	{
-	Reset(false);
+	Reset();
 	return(Rslt);
 	}
 	// get number of sequences BioSeqs accepted for error correction
@@ -2164,9 +2301,9 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loaded and accepted for processing a t
 
 if(NumTargSeqs < 3)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Need at least 3 PacBio sequences for errror correction accepted from file(s)");
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Need at least 3 PacBio sequences for error correction accepted from file(s)");
 	m_pSfxArray->Close(false);
-	Reset(false);
+	Reset();
 	return(eBSFerrNoEntries);
 	}
 
@@ -2176,7 +2313,7 @@ if(NumHiConfFiles && pszHiConfFiles != NULL)			// load any optional high confide
 	if((Rslt = LoadSeqs(m_MinHCSeqLen, m_MaxPBRdSeqLen, NumHiConfFiles,pszHiConfFiles,cFlgHCSeq)) < eBSFSuccess)
 		{
 		m_pSfxArray->Close(false);
-		Reset(false);
+		Reset();
 		return(Rslt);
 		}
 		// get number of high confidence sequences accepted
@@ -2200,7 +2337,7 @@ if(MinSeedCoreLen <= cMaxKmerLen)
 	if((Rslt = m_pSfxArray->InitOverOccKMers((int)MinSeedCoreLen,m_MaxSeedCoreDepth))!=eBSFSuccess)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Failed to initialise for over occurring K-mers");
-		Reset(false);
+		Reset();
 		return(Rslt);
 		}
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Initialised for over occurring K-mers");
@@ -2209,7 +2346,7 @@ if(MinSeedCoreLen <= cMaxKmerLen)
 if((m_pPBScaffNodes = new tsPBEScaffNode [NumTargSeqs + 1]) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d nodes",NumTargSeqs);
-	Reset(false);
+	Reset();
 	return(eBSFerrMem);
 	}
 memset(m_pPBScaffNodes,0,sizeof(tsPBEScaffNode) * (NumTargSeqs+1));
@@ -2217,7 +2354,7 @@ m_AllocdPBScaffNodes = NumTargSeqs;
 if((m_pMapEntryID2NodeIDs = new UINT32 [NumTargSeqs + 1]) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate for %d mapping entries nodes",NumTargSeqs);
-	Reset(false);
+	Reset();
 	return(eBSFerrMem);
 	}
 memset(m_pMapEntryID2NodeIDs,0,sizeof(UINT32) * (NumTargSeqs+1));
@@ -2255,8 +2392,258 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	pCurPBScaffNode->NodeID = CurNodeID;
 	m_pMapEntryID2NodeIDs[pCurPBScaffNode->EntryID-1] = CurNodeID;
 	}
+m_LowestCpltdProcNodeID = 0;
+m_hChkPtsFile = -1;
+m_hErrCorFile = -1;
 
-if(m_szErrCorFile[0] != '\0')
+// if checkpoints (syncpoints) points processing
+// checkpoints file doesn't exist or contains too few entries ( less than 1000) to be worth the effort of parsing etc., then truncate and error correct reads from the beginning again
+if(m_szChkPtsFile[0] != '\0' && m_szErrCorFile[0] != '\0')
+	{
+	tsECChkPt CurChkPt;
+	UINT32 NodeID;
+	UINT32 NumChkPtsExptd;
+	UINT32 NumChkPtsAccepted;
+	int ChkPtsStatRslt;
+	off_t ChkPtFileSize;
+	int ECStatRslt;
+	off_t ECFileSize;
+
+#ifdef _WIN32
+	struct _stat64 ChkPtsStat;
+	ChkPtsStatRslt = _stat64(m_szChkPtsFile, &ChkPtsStat);		// checking if exists, is a file, and if likely to contain sufficient entries (at least 5) to actually resume or if easier to restart
+	struct _stat64 ECStat;
+	ECStatRslt = _stat64(m_szErrCorFile, &ECStat);		// checking if exists, is a file, and if likely to contain sufficient entries (at least 5) to actually resume or if easier to restart
+#else
+	struct stat64 ChkPtsStat;
+	ChkPtsStatRslt = stat64(m_szChkPtsFile, &ChkPtsStat);		// checking if exists, is a file, and if likely to contain sufficient entries (at least 5) to actually resume or if easier to restart
+	struct stat64 ECStat;
+	ECStatRslt = stat64(m_szErrCorFile, &ECStat);		// checking if exists, is a file, and if likely to contain sufficient entries (at least 5) to actually resume or if easier to restart
+#endif
+	// both checkpoint and error corrected reads files must exist and not be empty
+	if(ChkPtsStatRslt >= 0 && ECStatRslt >= 0)
+		{
+		if(!(ChkPtsStat.st_mode & S_IFREG))
+			{
+			ChkPtsStatRslt = -1;
+			ECStatRslt = -1;
+			gDiagnostics.DiagOut(eDLWarn,gszProcName,"Checkpoint exists but not a regular file, restart error correction and checkpointing from 1st read");
+			}
+		else
+			{
+			ChkPtFileSize = (off_t)ChkPtsStat.st_size;
+			if(ChkPtFileSize < sizeof(tsECChkPt) * 5)
+				{
+				ChkPtsStatRslt = -1;
+				ECStatRslt =-1;
+				gDiagnostics.DiagOut(eDLWarn,gszProcName,"Checkpoint exists but less than 5 checkpoints, restart error correction and checkpointing from 1st read");
+				}
+			}
+		}
+	else
+		{
+		ChkPtsStatRslt = -1;
+		ECStatRslt =-1;
+		}
+
+	if(ECStatRslt >= 0)
+		{
+		if(!(ECStat.st_mode & S_IFREG))
+			{
+			ECStatRslt = -1;
+			ChkPtsStatRslt = -1;
+			gDiagnostics.DiagOut(eDLWarn,gszProcName,"Error corrected reads file exists but not a regular file, restart error correction and checkpointing from 1st read");
+			}
+		else
+			{
+			ECFileSize = (off_t)ECStat.st_size;
+			if(ECFileSize < 100)			// purely arbitrary!
+				{
+				ECStatRslt = -1;
+				ChkPtsStatRslt = -1;
+				gDiagnostics.DiagOut(eDLWarn,gszProcName,"Checkpoint exists but empty or too small, restart error correction and checkpointing from 1st read");
+				}
+			}
+		}
+
+
+	if(ChkPtsStatRslt >= 0)
+		{
+#ifdef _WIN32
+        m_hChkPtsFile = open(m_szChkPtsFile, _O_BINARY | _O_RDWR | _O_SEQUENTIAL, _S_IREAD | _S_IWRITE);
+#else
+        m_hChkPtsFile = open64(m_szChkPtsFile,O_RDWR,S_IREAD | S_IWRITE);
+#endif
+		if(m_hChkPtsFile < 0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to open existing checkpoint file '%s'",m_szChkPtsFile);
+			Reset();
+			return(eBSFerrOpnFile);
+			}
+
+#ifdef _WIN32
+		m_hErrCorFile = open(m_szErrCorFile,_O_BINARY | _O_RDWR | _O_SEQUENTIAL, _S_IREAD | _S_IWRITE);
+#else
+		m_hErrCorFile = open(m_szErrCorFile,O_RDWR,S_IREAD | S_IWRITE);
+#endif
+		if(m_hErrCorFile < 0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to open existing error corrected reads file '%s'",m_szErrCorFile);
+			Reset();
+			return(eBSFerrOpnFile);
+			}
+		}
+
+	if(ChkPtsStatRslt >= 0)
+		{
+		bool bRestartChkPts = false;
+		UINT32 NumOverlapProcessed = 0;
+		INT64 MaxECFileSize = 0;
+		INT64 MaxECFileSizeAccepted = 0;
+		// iterate over all checkpoint entries
+		// stop iterating if either an inconsistency between checkpointed entry and local, or if offset is after error corrected file size
+		NumChkPtsExptd = (UINT32)(ChkPtFileSize / sizeof(tsECChkPt));
+		NumChkPtsAccepted = 0;
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Checkpoint file contains approximately %d entries, now processing and validating these entries",NumChkPtsExptd);
+		while(NumChkPtsExptd && read(m_hChkPtsFile,&CurChkPt,sizeof(tsECChkPt)) == sizeof(tsECChkPt))
+			{
+			NodeID = CurChkPt.NodeID;
+			if(NodeID == 0 || NodeID > m_NumPBScaffNodes)	// any inconsistencies are treated as if checkpoint file was originally empty
+				{
+				if(NumChkPtsAccepted >= 200 && NumChkPtsExptd < 100)		// if accepted at least 200 check points and less than 100 more check points remaining when an inconsistency is identified then accept checkpoints up to and including last accepted
+					{
+					_lseeki64(m_hChkPtsFile,(off_t)((UINT64)NumChkPtsAccepted *  sizeof(tsECChkPt)),SEEK_SET);
+					break;					
+					}
+				bRestartChkPts = true;
+				gDiagnostics.DiagOut(eDLWarn,gszProcName,"Checkpoint file node inconsistency at node %u, restart error correction and checkpointing from 1st read",NodeID);
+				break;
+				}
+
+			pCurPBScaffNode = &m_pPBScaffNodes[CurChkPt.NodeID-1];
+			if(pCurPBScaffNode->EntryID != CurChkPt.EntryID ||
+				pCurPBScaffNode->flgUnderlength != CurChkPt.flgUnderlength ||
+				pCurPBScaffNode->SeqLen != CurChkPt.SeqLen ||
+				pCurPBScaffNode->flgHCseq != CurChkPt.flgHCseq)
+				{
+				if(NumChkPtsAccepted >= 200 && NumChkPtsExptd < 100)		// if accepted at least 200 check points and less than 100 more check points remaining when an inconsistency is identified then accept checkpoints up to and including last accepted
+					{
+					_lseeki64(m_hChkPtsFile,(off_t)((UINT64)NumChkPtsAccepted *  sizeof(tsECChkPt)),SEEK_SET);
+					break;					
+					}
+				bRestartChkPts = true;
+				gDiagnostics.DiagOut(eDLWarn,gszProcName,"Checkpoint file node inconsistency at node %u with read length and/or flags, restart error correction and checkpointing from 1st read",NodeID);
+				break;
+				}
+
+			if(CurChkPt.ECFileOfs > 0)  // will be < 0 if no ecread generated for this sequence
+				{
+				if(CurChkPt.ECFileOfs > ECFileSize)
+					{
+					_lseeki64(m_hChkPtsFile,(off_t)((UINT64)NumChkPtsAccepted *  sizeof(tsECChkPt)),SEEK_SET);
+					break;
+					}
+				if(CurChkPt.ECFileOfs > MaxECFileSize)
+					{
+					if((MaxECFileSize = (INT64)_lseeki64(m_hErrCorFile,(off_t)CurChkPt.ECFileOfs,SEEK_SET))!=CurChkPt.ECFileOfs)
+						{
+						if(NumChkPtsAccepted >= 200 && NumChkPtsExptd < 100)		// if accepted at least 200 check points and less than 100 more check points remaining when an inconsistency is identified then accept checkpoints up to and including last accepted
+							{
+							_lseeki64(m_hChkPtsFile,(off_t)((UINT64)NumChkPtsAccepted *  sizeof(tsECChkPt)),SEEK_SET);
+							_lseeki64(m_hErrCorFile,(off_t)MaxECFileSizeAccepted,SEEK_SET);
+							break;					
+							}
+						bRestartChkPts = true;
+						gDiagnostics.DiagOut(eDLWarn,gszProcName,"Checkpoint file node inconsistency at node %u, unable to access error corrected reads file at offset %lld, restart error correction and checkpointing from 1st read",NodeID,CurChkPt.ECFileOfs);
+						break;
+						}
+					}
+				}
+
+
+			pCurPBScaffNode->flgCpltdProc = 1;
+			pCurPBScaffNode->flgContained = CurChkPt.flgContained;
+			pCurPBScaffNode->flgContains = CurChkPt.flgContains;
+			if(CurChkPt.NodeID > NumOverlapProcessed)
+				NumOverlapProcessed = CurChkPt.NodeID;
+			NumChkPtsExptd -= 1;
+			NumChkPtsAccepted += 1;
+			MaxECFileSizeAccepted = MaxECFileSize;
+
+			pCurPBScaffNode = &m_pPBScaffNodes[m_LowestCpltdProcNodeID];
+			for(CurNodeID = m_LowestCpltdProcNodeID + 1; CurNodeID <= m_NumPBScaffNodes; CurNodeID++, pCurPBScaffNode++)
+				{
+				if(pCurPBScaffNode->flgCpltdProc == 1 ||	// completed processing
+						pCurPBScaffNode->flgHCseq	  ||	// not error correcting already assumed to be high confidence sequences 
+						pCurPBScaffNode->flgUnderlength == 1 || // must be of a user specified minimum length 
+						pCurPBScaffNode->SeqLen < m_MinPBSeqLen)
+						continue;
+				 m_LowestCpltdProcNodeID = CurNodeID - 1;
+				break;
+				 }
+			if(CurNodeID == m_NumPBScaffNodes+1)
+				m_LowestCpltdProcNodeID = CurNodeID - 1;
+			}
+
+		if(bRestartChkPts)
+			{
+			close(m_hChkPtsFile);
+			close(m_hErrCorFile);
+			m_hChkPtsFile = -1;
+			m_hErrCorFile = -1;
+			ChkPtsStatRslt = -1;
+			ECStatRslt = -1;
+			m_LowestCpltdProcNodeID = 0;
+
+			// restore nodes back to all unprocessed
+			pCurPBScaffNode = m_pPBScaffNodes;
+			for(NumChkPtsExptd = 0; NumChkPtsExptd < m_NumPBScaffNodes; NumChkPtsExptd += 1, pCurPBScaffNode++)
+				{
+				pCurPBScaffNode->flgCpltdProc = 0;
+				pCurPBScaffNode->flgContained = 0;
+				pCurPBScaffNode->flgContains = 0;
+				}
+			}
+		else
+			{
+			if(m_LowestCpltdProcNodeID == NumOverlapProcessed && NumOverlapProcessed == m_NumPBScaffNodes)
+				{
+				gDiagnostics.DiagOut(eDLWarn,gszProcName,"Completed checkpoint file processing, nothing to do; already completed error correction of %u reads", NumOverlapProcessed);
+				close(m_hChkPtsFile);
+				close(m_hErrCorFile);
+				m_hChkPtsFile = -1;
+				m_hErrCorFile = -1;
+				Reset();
+				return(eBSFSuccess);
+				}
+			gDiagnostics.DiagOut(eDLWarn,gszProcName,"Completed checkpoint file processing, resuming error correction from entry %u with highest checkpointed entry %u", m_LowestCpltdProcNodeID, NumOverlapProcessed);
+			}
+		}
+
+	if(ChkPtsStatRslt < 0)
+		{
+#ifdef _WIN32
+		m_hChkPtsFile = open(m_szChkPtsFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
+#else
+		if((m_hChkPtsFile = open(m_szChkPtsFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+			if(ftruncate(m_hChkPtsFile,0)!=0)
+				{
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",m_szChkPtsFile,strerror(errno));
+				Reset();
+				return(eBSFerrCreateFile);
+				}
+#endif
+		if(m_hChkPtsFile < 0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate checkpoints file '%s'",m_szChkPtsFile);
+			Reset();
+			return(eBSFerrCreateFile);
+			}
+		}
+	
+	}
+
+if(m_szErrCorFile[0] != '\0' && m_hErrCorFile == -1)
 	{
 #ifdef _WIN32
 	m_hErrCorFile = open(m_szErrCorFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
@@ -2265,19 +2652,17 @@ if(m_szErrCorFile[0] != '\0')
 		if(ftruncate(m_hErrCorFile,0)!=0)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",m_szErrCorFile,strerror(errno));
-			Reset(false);
+			Reset();
 			return(eBSFerrCreateFile);
 			}
 #endif
 	if(m_hErrCorFile < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output file '%s'",m_szErrCorFile);
-		Reset(false);
+		Reset();
 		return(eBSFerrCreateFile);
 		}
 	}
-else
-	m_hErrCorFile = -1;
 
 if(m_PMode == ePBPMOverlapDetail)
 	{
@@ -2295,14 +2680,14 @@ if(m_szMultiAlignFile[0] != '\0')
 		if(ftruncate(m_hMultiAlignFile,0)!=0)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",m_szMultiAlignFile,strerror(errno));
-			Reset(false);
+			Reset();
 			return(eBSFerrCreateFile);
 			}
 #endif
 	if(m_hMultiAlignFile < 0)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output file '%s'",m_szMultiAlignFile);
-		Reset(false);
+		Reset();
 		return(eBSFerrCreateFile);
 		}
 	}
@@ -2321,14 +2706,14 @@ if(m_bRMI)
 		MaxWorkerThreads += min(m_NumOvlpCores - ReqRMICores, m_MaxNonRMIThreads);
 	}
 else
-	MaxWorkerThreads = NumThreads;
+	MaxWorkerThreads = m_NumOvlpCores;
 Rslt = IdentifySequenceOverlaps(MaxSeqLen,m_NumOvlpCores,MaxWorkerThreads);
 #ifdef _DEBUG
 #ifdef _WIN32
 _ASSERTE( _CrtCheckMemory());
 #endif
 #endif
-Reset(false);
+Reset();
 return(Rslt);
 }
 
@@ -2360,7 +2745,7 @@ UINT32 NumClasses;
 UINT32 NumCommitedClasses;
 UINT32 NumUncommitedClasses;
 UINT32 CurNodeID;
-int DeltaThreads;
+int DeltaThreads;					// > 0 to enable increase in non-RMI active threads, < 0 to enable decrease in active non-RMI threads 
 tsPBEScaffNode *pCurPBScaffNode;
 time_t Now;
 
@@ -2368,52 +2753,76 @@ UINT32 TargNonRMIThreads;
 UINT32 TargRMIThreads;
 
 if(m_ProcessStatsThen == 0)
+	{
 	Now = m_ProcessStatsThen = time(NULL);
+#ifdef WIN32
+	GetSystemTimes(&m_PrevIdleTime,&m_PrevKernelTime,&m_PrevUserTime);
+#endif
+	}
 else
 	Now = time(NULL);
 
 DeltaThreads = 0;
-if(m_bRMI)
+NumClasses = 0;
+NumCommitedClasses = 0;
+NumUncommitedClasses = 0;
+
+if(m_bRMI && (Now - m_ProcessStatsThen) >= 60)
 	{
 	NumClasses = m_pRequester->GetNumClassInstances(eBKSPTSmithWaterman,&NumCommitedClasses,&NumUncommitedClasses);
+	UINT32 PercentIdle;
+
 #ifdef WIN32
-	DeltaThreads = 0;
+	UINT64 CurIdleNanoSecs;    
+	UINT64 PrevIdleNanoSecs;
+	UINT64 Norm1SecIdleNanoSecs;  // idle nanosecs per second over the preceding 60 secs
+
+	FILETIME CurIdleTime;
+	FILETIME CurKernelTime;
+	FILETIME CurUserTime;
+	GetSystemTimes(&CurIdleTime,&CurKernelTime,&CurUserTime);
+	CurIdleNanoSecs = (UINT64)CurIdleTime.dwLowDateTime;
+	CurIdleNanoSecs |= (UINT64)CurIdleTime.dwHighDateTime << 32;
+	PrevIdleNanoSecs = (UINT64)m_PrevIdleTime.dwLowDateTime;
+	PrevIdleNanoSecs |= (UINT64)m_PrevIdleTime.dwHighDateTime << 32;
+	m_PrevIdleTime = CurIdleTime;
+	Norm1SecIdleNanoSecs = (CurIdleNanoSecs - PrevIdleNanoSecs) / (UINT64)(Now - m_ProcessStatsThen);
+	PercentIdle = min(100,(UINT32)(Norm1SecIdleNanoSecs / 1000000));
 #else
 	double Loadavgs[3];
 	getloadavg(Loadavgs,3);
-	if((Loadavgs[0] + 0.5) > (double)m_NumOvlpCores)    // using the last 60 sec average
-		{
-		// try to reduce number of non_RMI threads
-		DeltaThreads = (1 + m_NumOvlpCores - (int)Loadavgs[0])/2;
-		}
-	else
-		if(Loadavgs[0] < (double)m_NumOvlpCores)
-			{
-			// try to increase number of non_RMI threads
-			DeltaThreads = (1 + (int)Loadavgs[0] - m_NumOvlpCores)/2; 
-			}
+
+	PercentIdle = (UINT32)max(0.0,100.0 - (100.0 * (Loadavgs[0] / m_NumOvlpCores)));
+
 #endif
+	if(PercentIdle < 3)
+		DeltaThreads = max(-3,-1 * (int)(3 - PercentIdle));
+	else
+		if(PercentIdle > 5)
+			DeltaThreads = min(5,(int)(PercentIdle - 5));
+
+	AcquireCASSerialise();
+
+	m_RMINumCommitedClasses = NumCommitedClasses;
+	m_RMINumUncommitedClasses = NumUncommitedClasses;
+
+	TargRMIThreads = min(NumClasses,m_MaxRMIInstances);	
+	TargNonRMIThreads = m_CurActiveNonRMIThreads;
+	if(DeltaThreads < 0)		// needing to reduce non-RMI threads
+		TargNonRMIThreads = (UINT32)max(0,(int)m_CurActiveNonRMIThreads + DeltaThreads);
+	else
+		if(DeltaThreads > 0)		// wanting to increase non-RMI threads
+			TargNonRMIThreads = (UINT32)min(m_MaxNonRMIThreads,m_CurActiveNonRMIThreads + DeltaThreads); 
+ 
+	if(TargNonRMIThreads < m_CurActiveNonRMIThreads)
+		m_ReduceNonRMIThreads = min(m_CurActiveNonRMIThreads - TargNonRMIThreads,cRMIThreadsPerCore);
+	else
+		m_ReduceNonRMIThreads = 0;
+	m_CurAllowedActiveOvlpThreads = min(TargRMIThreads + TargNonRMIThreads,m_MaxActiveOvlpThreads);
 	}
 else
-	{
-	NumClasses = 0;
-	NumCommitedClasses = 0;
-	NumUncommitedClasses = 0;
-	}
+	AcquireCASSerialise();
 
-AcquireCASSerialise();
-
-m_RMINumCommitedClasses = NumCommitedClasses;
-m_RMINumUncommitedClasses = NumUncommitedClasses;
-
-TargRMIThreads = min(NumClasses,m_MaxRMIInstances);	
-TargNonRMIThreads = (m_NumOvlpCores + DeltaThreads) - min(m_NumOvlpCores, (TargRMIThreads + cRMIThreadsPerCore - 1) / cRMIThreadsPerCore);
-
-if(TargNonRMIThreads < m_CurActiveNonRMIThreads)
-	m_ReduceNonRMIThreads = max(m_CurActiveNonRMIThreads - TargNonRMIThreads,cRMIThreadsPerCore);
-else
-	m_ReduceNonRMIThreads = 0;
-m_CurAllowedActiveOvlpThreads = min(TargRMIThreads + TargNonRMIThreads,m_MaxActiveOvlpThreads);
 
 if((Now - m_ProcessStatsThen) >= 60)
 	{
@@ -2614,7 +3023,7 @@ if(ThreadIdx != NumOvlpThreads)	// any errors whilst allocating memory for core 
 		}
 	while(ThreadIdx >= 0);
 	delete pThreadPutOvlps;
-	Reset(false);
+	Reset();
 	return((INT64)eBSFerrMem);
 	}
 
@@ -2630,12 +3039,11 @@ else
 	m_RMINumCommitedClasses = 0;
 	m_RMINumUncommitedClasses = 0;
 	}
-m_LowestCpltdProcNodeID = 0;
 
 m_NumOvlpCores = NumOvlpCores;
 m_ReduceNonRMIThreads = 0;
 m_MaxActiveOvlpThreads = NumOvlpThreads;
-m_CurAllowedActiveOvlpThreads = 0;
+m_CurAllowedActiveOvlpThreads = m_MaxNonRMIThreads;
 m_CurActiveRMIThreads = 0;
 m_CurActiveNonRMIThreads = 0;
 UpdateProcessStats();
@@ -2790,6 +3198,7 @@ UINT32 ProvContained;
 UINT32 ProvArtefact;
 UINT32 ProvSWchecked;
 UINT32 MinOverlapLen;
+UINT32 MinTranscriptOverlapLen;
 sPBECoreHitCnts *pSummaryCnts;
 UINT32 CurNodeID;
 UINT32 LowestCpltdProcNodeID;
@@ -2806,13 +3215,7 @@ int iRMIRslt;
 bool bNonRMIRslt;
 int iNonRMIRslt;
 
-#ifdef USESEPARATEMETHODS
-int Rslt;
-UINT32 ProbeAlignLength;
-UINT32 TargAlignLength;
-int Class;
-tsSSWCell RMIPeakMatchesCell;
-#endif
+tsECChkPt CurChkPt;
 
 tsPBEScaffNode *pCurPBScaffNode;
 UINT32 RMINumUncommitedClasses;
@@ -2876,7 +3279,7 @@ while(1)
 		{
 		ReleaseCASSerialise();
 		ReleaseCASThreadPBErrCorrect();
-		CUtility::SleepMillisecs(60000);
+		CUtility::SleepMillisecs(15000);
 		continue;
 		}
 	RMINumUncommitedClasses = m_RMINumUncommitedClasses;
@@ -2894,7 +3297,7 @@ while(1)
 			break;
 			}
 		ReleaseCASThreadPBErrCorrect();
-		CUtility::SleepMillisecs(15000);
+		CUtility::SleepMillisecs(10000);
 		continue;
 		}
 	else											// not using RMI classes or if using RMI then there are no RMI uncommitted class instances remaining
@@ -2904,7 +3307,7 @@ while(1)
 			{
 			ReleaseCASSerialise();
 			ReleaseCASThreadPBErrCorrect();
-			CUtility::SleepMillisecs(30000);
+			CUtility::SleepMillisecs(15000);
 			continue;
 			}
 		m_CurActiveNonRMIThreads += 1;
@@ -2915,9 +3318,7 @@ while(1)
 	}
 
 NumInMultiAlignment = 0;
-AdjOverlapFloat = m_OverlapFloat + pThreadPar->CoreSeqLen;
-if (pThreadPar->CoreSeqLen < cMaxPacBioSeedExtn)
-	AdjOverlapFloat += 120;
+AdjOverlapFloat = m_OverlapFloat + pThreadPar->CoreSeqLen + 120;
 
 for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNodeID++)
 	{
@@ -2938,14 +3339,30 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			pCurPBScaffNode->flgHCseq ||			// not error correcting already assumed to be high confidence sequences 
 		    pCurPBScaffNode->flgUnderlength == 1 || // must be of a user specified minimum length 
 			pCurPBScaffNode->SeqLen < (UINT32)pThreadPar->MinPBSeqLen) 
-       	{
+		{
 		ReleaseCASLock();
 		continue;
 		}
 
-	pCurPBScaffNode->flgCurProc = 1;
+	if(m_PMode != ePBMConsolidate)
+		pCurPBScaffNode->flgCurProc = 1;
 	pCurPBScaffNode->flgCpltdProc = 0;
 	ReleaseCASLock();
+
+	CurChkPt.ECFileOfs = -1;
+	CurChkPt.EntryID = pCurPBScaffNode->EntryID;
+	CurChkPt.flgContained = pCurPBScaffNode->flgContained;
+	CurChkPt.flgContains = pCurPBScaffNode->flgContains;
+	CurChkPt.flgCpltdProc = 0;
+	CurChkPt.flgHCseq = pCurPBScaffNode->flgHCseq;
+	CurChkPt.flgUnderlength = pCurPBScaffNode->flgUnderlength;
+	CurChkPt.NodeID = pCurPBScaffNode->NodeID;
+	CurChkPt.SeqLen = pCurPBScaffNode->SeqLen;
+
+	if(m_TranscriptomeLens > 0)
+		MinTranscriptOverlapLen =  (pCurPBScaffNode->SeqLen * (100 - m_TranscriptomeLens)) / 100;
+	else
+		MinTranscriptOverlapLen = 0;
 
 	pThreadPar->bRevCpl = false;
 	IdentifyCoreHits(CurNodeID,pThreadPar);
@@ -2974,258 +3391,267 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 		for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++, pCoreHit++)
 			pCoreHit->flgMulti = 0;
 
-	// with large target sequences then can have many artifactual core hits
-	// process and mark these probable artifact hits by identifying the most spatially related cluster of hits; hits outside of
-	// the most spatially related cluster are marked as being artefactual 
+		// with large target sequences then can have many artifactual core hits
+		// process and mark these probable artifact hits by identifying the most spatially related cluster of hits; hits outside of
+		// the most spatially related cluster are marked as being artefactual 
 
-	UINT32 CurTargSeqID;
-	UINT32 MaxWinSize;
-	UINT32 RelWinSize;
-	bool bFirstHitNewTargSeq;
-	UINT32 PrevAcceptedProbeOfs;
-	UINT32 PrevAcceptedTargOfs;
-	UINT32 MaxNoHitGapLen;
-	UINT32 NumNoHitGaps;
-	UINT32 SumNoHitGapLens;
-	tsPBECoreHit *pFirstCoreHit;
-	tsPBECoreHit *pMaxCoreHit;
+		UINT32 CurTargSeqID;
+		UINT32 MaxWinSize;
+		UINT32 RelWinSize;
+		bool bFirstHitNewTargSeq;
+		UINT32 PrevAcceptedProbeOfs;
+		UINT32 PrevAcceptedTargOfs;
+		UINT32 MaxNoHitGapLen;
+		UINT32 NumNoHitGaps;
+		UINT32 SumNoHitGapLens;
+		tsPBECoreHit *pFirstCoreHit;
+		tsPBECoreHit *pMaxCoreHit;
 
-	MaxNoHitGapLen = 1000;                 // expecting cores to be distributed such that there shouldn't be many separated by more than this intercore bp gap
-	CurTargSeqID = 0;
-	pFirstCoreHit = NULL;
-	ProbeSeqLen = pCurPBScaffNode->SeqLen;
-	MaxWinSize = (ProbeSeqLen * 115) / 100;
-	pCoreHit = pThreadPar->pCoreHits;
-	pMaxCoreHit = NULL;
-	for (HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++, pCoreHit++)
-		{
-		if (CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
+		if(m_PMode != ePBMConsolidate)
+			MaxNoHitGapLen = 1000;                 // expecting cores to be distributed such that there shouldn't be many separated by more than this intercore bp gap
+		else
+			MaxNoHitGapLen = 500;
+		CurTargSeqID = 0;
+		pFirstCoreHit = NULL;
+		ProbeSeqLen = pCurPBScaffNode->SeqLen;
+		MaxWinSize = (ProbeSeqLen * 115) / 100;
+		pCoreHit = pThreadPar->pCoreHits;
+		pMaxCoreHit = NULL;
+		for (HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++, pCoreHit++)
 			{
-			pMaxCoreHit = NULL;
-			pFirstCoreHit = pCoreHit;
-			CurTargSeqID = pCoreHit->TargNodeID;
-			TargSeqLen = m_pPBScaffNodes[CurTargSeqID-1].SeqLen;
-			}
-
-		// if just checked last core hit for the current target ...
-		if (HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargSeqID)
-			{
-			while (pFirstCoreHit <= pCoreHit)
+			if (CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
 				{
-				pFirstCoreHit->WinHits = 0;
-				pFirstCoreHit->flgClustered = 0;
-				pNxtCoreHit = pFirstCoreHit;
-				RelWinSize = 0;
-				PrevAcceptedProbeOfs = 0;
-				PrevAcceptedTargOfs = 0;
-				SumNoHitGapLens = 0;
-				NumNoHitGaps = 0;
+				pMaxCoreHit = NULL;
+				pFirstCoreHit = pCoreHit;
+				CurTargSeqID = pCoreHit->TargNodeID;
+				TargSeqLen = m_pPBScaffNodes[CurTargSeqID-1].SeqLen;
+				}
 
-				if(pFirstCoreHit->ProbeOfs > MaxNoHitGapLen && pFirstCoreHit->TargOfs > MaxNoHitGapLen)
+			// if just checked last core hit for the current target ...
+			if (HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargSeqID)
+				{
+				while (pFirstCoreHit <= pCoreHit)
 					{
-					pFirstCoreHit += 1;
-					continue;
-					}
-					
-				while (pNxtCoreHit <= pCoreHit)
-					{
-					RelWinSize = pNxtCoreHit->TargOfs - pFirstCoreHit->TargOfs;
-					if (RelWinSize > MaxWinSize)
-						break;
-					if (pNxtCoreHit->flgRevCpl == pFirstCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
+					pFirstCoreHit->WinHits = 0;
+					pFirstCoreHit->flgClustered = 0;
+					pNxtCoreHit = pFirstCoreHit;
+					RelWinSize = 0;
+					PrevAcceptedProbeOfs = 0;
+					PrevAcceptedTargOfs = 0;
+					SumNoHitGapLens = 0;
+					NumNoHitGaps = 0;
+
+					if(pFirstCoreHit->ProbeOfs > MaxNoHitGapLen && pFirstCoreHit->TargOfs > MaxNoHitGapLen)
 						{
-						if(PrevAcceptedProbeOfs == 0 || pNxtCoreHit->ProbeOfs >= PrevAcceptedProbeOfs + pThreadPar->CoreSeqLen) // a single matched seed core extension may have resulted in multiple hits, reduce counts by requiring a differential of at least m_SeedCoreLen
-							{
-							if((pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs) >= MaxNoHitGapLen)
-								{
-								NumNoHitGaps += 1;
-								SumNoHitGapLens += pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs;
-								}
-							PrevAcceptedProbeOfs = pNxtCoreHit->ProbeOfs;
-							PrevAcceptedTargOfs = pNxtCoreHit->TargOfs;
-							pFirstCoreHit->WinHits += 1;
-							}
-						}
-					pNxtCoreHit += 1;
-					}
-
-				if(pFirstCoreHit->WinHits >= pThreadPar->MinNumCores && ((PrevAcceptedProbeOfs + MaxNoHitGapLen) > ProbeSeqLen || (PrevAcceptedTargOfs + MaxNoHitGapLen) > TargSeqLen))
-					{
-					UINT32 PutativeOverlapLen = PrevAcceptedProbeOfs - pFirstCoreHit->ProbeOfs;
-					if(((SumNoHitGapLens * 100) / PutativeOverlapLen) <= 20)		// only accepting if no more than 20% of alignment sums to gaps > MaxNoHitGapLen
-						{
-						if (pMaxCoreHit == NULL || pFirstCoreHit->WinHits > pMaxCoreHit->WinHits)
-							pMaxCoreHit = pFirstCoreHit;
-						}
-					}
-				pFirstCoreHit += 1;
-				}
-
-			if (pMaxCoreHit != NULL)
-			{
-				RelWinSize = 0;
-				pNxtCoreHit = pMaxCoreHit;
-				while (pNxtCoreHit <= pCoreHit)
-				{
-					RelWinSize = pNxtCoreHit->TargOfs - pMaxCoreHit->TargOfs;
-					if (RelWinSize > MaxWinSize)
-						break;
-					if (pNxtCoreHit->flgRevCpl == pMaxCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
-						pNxtCoreHit->flgClustered = 1;
-					pNxtCoreHit->flgMulti = 0;
-					pNxtCoreHit += 1;
-				}
-			}
-			CurTargSeqID = 0;  // looking for cores on a new target
-		}
-	}
-
-	// iterate and count hits for each TargNodeID whilst recording the loci of the first and last hit so can determine if overlap is a likely artefact
-	CurSEntryIDHits = 0;
-	CurAEntryIDHits = 0;
-	CurTargSeqID = 0;
-	CurTargHitOfs = 0;
-	CurProbeHitOfs = 0;
-	CurSTargStartOfs = 0;
-	CurSTargEndOfs = 0;
-	CurATargStartOfs = 0;
-	CurATargEndOfs = 0;
-	CurSProbeStartOfs = 0;
-	CurSProbeEndOfs = 0;
-	CurAProbeStartOfs = 0;
-	CurAProbeEndOfs = 0;
-
-	bFirstHitNewTargSeq = false;
-	pCoreHit = pThreadPar->pCoreHits;
-	for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
-		{
-		if(CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
-			{
-			bFirstHitNewTargSeq = true;
-			CurTargSeqID = pCoreHit->TargNodeID;
-			CurSEntryIDHits = 0;
-			CurAEntryIDHits = 0;
-			CurSTargStartOfs = 0;
-			CurSTargEndOfs = 0;
-			CurATargStartOfs = 0;
-			CurATargEndOfs = 0;
-			CurSProbeStartOfs = 0;
-			CurSProbeEndOfs = 0;
-			CurAProbeStartOfs = 0;
-			CurAProbeEndOfs = 0;
-			}
-
-		if(pCoreHit->flgClustered && pCoreHit->TargNodeID == CurTargSeqID) // same target sequence so check for starting/ending offsets and accumulate hit counts 
-			{
-			CurTargHitOfs = pCoreHit->TargOfs;
-			CurProbeHitOfs = pCoreHit->ProbeOfs;
-			if(pCoreHit->flgRevCpl == 0)
-				{
-				if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurSTargStartOfs)
-					CurSTargStartOfs = CurTargHitOfs;
-				if(CurTargHitOfs > CurSTargEndOfs)
-					CurSTargEndOfs = CurTargHitOfs;	
-				if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurSProbeStartOfs)
-					CurSProbeStartOfs = CurProbeHitOfs;
-				if(CurProbeHitOfs > CurSProbeEndOfs)
-					CurSProbeEndOfs = CurProbeHitOfs;
-				}
-			else
-				{
-				if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurATargStartOfs)
-					CurATargStartOfs = CurTargHitOfs;
-				if(CurTargHitOfs > CurATargEndOfs)
-					CurATargEndOfs = CurTargHitOfs;	
-				if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurAProbeStartOfs)
-					CurAProbeStartOfs = CurProbeHitOfs;
-				if(CurProbeHitOfs > CurAProbeEndOfs)
-					CurAProbeEndOfs = CurProbeHitOfs;
-				}
-			bFirstHitNewTargSeq = false;
-			if(pCoreHit->flgMulti != 1)
-				{
-				if(pCoreHit->flgRevCpl == 0)
-					CurSEntryIDHits += 1;
-				else
-					CurAEntryIDHits += 1;
-				}
-			}
-
-		// if just processed last core hit for the current target ...
-		if(HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargSeqID)
-			{
-			// checking here that the first and last hit are consistent with either a completely contained or overlapped
-			TargSeqLen = m_pPBScaffNodes[pCoreHit->TargNodeID-1].SeqLen;
-			if(CurSEntryIDHits >= pThreadPar->MinNumCores) 
-				{
-				if((CurSProbeStartOfs >= m_OverlapFloat &&  CurSTargStartOfs >= m_OverlapFloat) ||
-						((TargSeqLen - CurSTargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurSProbeEndOfs) >= AdjOverlapFloat))
-					CurSEntryIDHits = 0;
-				}
-			else
-				CurSEntryIDHits = 0;
-
-			if(CurAEntryIDHits >= pThreadPar->MinNumCores)
-				{
-				if((CurAProbeStartOfs >= m_OverlapFloat && CurATargStartOfs >= m_OverlapFloat) ||
-					((TargSeqLen - CurATargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurAProbeEndOfs) >= AdjOverlapFloat))
-					CurAEntryIDHits = 0;
-				}
-			else
-				CurAEntryIDHits = 0;
-
-			if(CurSEntryIDHits >= pThreadPar->MinNumCores || CurAEntryIDHits >= pThreadPar->MinNumCores)
-				{
-				if(pThreadPar->NumTargCoreHitCnts == cSummaryTargCoreHitCnts)
-					{
-					LowestSummaryHitCnts = 0;
-					pLowestSummaryHitCnts = NULL;
-					pSummaryCnts = pThreadPar->TargCoreHitCnts; 
-					for(Idx = 0; Idx < cSummaryTargCoreHitCnts; Idx++, pSummaryCnts++)
-						{
-						CurSummaryHitCnts = pSummaryCnts->NumSHits + pSummaryCnts->NumAHits;
-						if(LowestSummaryHitCnts == 0 || CurSummaryHitCnts < LowestSummaryHitCnts)
-							{
-							LowestSummaryHitCnts = CurSummaryHitCnts;
-							pLowestSummaryHitCnts = pSummaryCnts;
-							}
-						}
-
-					if((CurSEntryIDHits + CurAEntryIDHits) <= LowestSummaryHitCnts)
-						{
-						CurTargSeqID = 0; 
+						pFirstCoreHit += 1;
 						continue;
 						}
-					pSummaryCnts = pLowestSummaryHitCnts;
+					
+					while (pNxtCoreHit <= pCoreHit)
+						{
+						RelWinSize = pNxtCoreHit->TargOfs - pFirstCoreHit->TargOfs;
+						if (RelWinSize > MaxWinSize)
+							break;
+						if (pNxtCoreHit->flgRevCpl == pFirstCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
+							{
+							if(PrevAcceptedProbeOfs == 0 || pNxtCoreHit->ProbeOfs >= PrevAcceptedProbeOfs + pThreadPar->CoreSeqLen) // a single matched seed core extension may have resulted in multiple hits, reduce counts by requiring a differential of at least m_SeedCoreLen
+								{
+								if((pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs) >= MaxNoHitGapLen)
+									{
+									NumNoHitGaps += 1;
+									SumNoHitGapLens += pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs;
+									}
+								PrevAcceptedProbeOfs = pNxtCoreHit->ProbeOfs;
+								PrevAcceptedTargOfs = pNxtCoreHit->TargOfs;
+								pFirstCoreHit->WinHits += 1;
+								}
+							}
+						pNxtCoreHit += 1;
+						}
+
+					if(pFirstCoreHit->WinHits >= pThreadPar->MinNumCores && ((PrevAcceptedProbeOfs + MaxNoHitGapLen) > ProbeSeqLen || (PrevAcceptedTargOfs + MaxNoHitGapLen) > TargSeqLen))
+						{
+						UINT32 PutativeOverlapLen = 1 + PrevAcceptedProbeOfs - pFirstCoreHit->ProbeOfs;
+						if(((SumNoHitGapLens * 100) / PutativeOverlapLen) <= 20)		// only accepting if no more than 20% of alignment sums to gaps > MaxNoHitGapLen
+							{
+							if (pMaxCoreHit == NULL || pFirstCoreHit->WinHits > pMaxCoreHit->WinHits)
+								pMaxCoreHit = pFirstCoreHit;
+							}
+						}
+					pFirstCoreHit += 1;
+					}
+
+				if (pMaxCoreHit != NULL)
+					{
+					RelWinSize = 0;
+					pNxtCoreHit = pMaxCoreHit;
+					while (pNxtCoreHit <= pCoreHit)
+						{
+						RelWinSize = pNxtCoreHit->TargOfs - pMaxCoreHit->TargOfs;
+						if (RelWinSize > MaxWinSize)
+							break;
+						if (pNxtCoreHit->flgRevCpl == pMaxCoreHit->flgRevCpl)	// only interested in hits which are same sense as the first hit in window
+							pNxtCoreHit->flgClustered = 1;
+						pNxtCoreHit->flgMulti = 0;
+						pNxtCoreHit += 1;
+						}
+					}
+				CurTargSeqID = 0;  // looking for cores on a new target
+				}
+			}
+
+		// iterate and count hits for each TargNodeID whilst recording the loci of the first and last hit so can determine if overlap is a likely artefact
+		CurSEntryIDHits = 0;
+		CurAEntryIDHits = 0;
+		CurTargSeqID = 0;
+		CurTargHitOfs = 0;
+		CurProbeHitOfs = 0;
+		CurSTargStartOfs = 0;
+		CurSTargEndOfs = 0;
+		CurATargStartOfs = 0;
+		CurATargEndOfs = 0;
+		CurSProbeStartOfs = 0;
+		CurSProbeEndOfs = 0;
+		CurAProbeStartOfs = 0;
+		CurAProbeEndOfs = 0;
+
+		bFirstHitNewTargSeq = false;
+		pCoreHit = pThreadPar->pCoreHits;
+		for(HitIdx = 0; HitIdx < pThreadPar->NumCoreHits; HitIdx++,pCoreHit++)
+			{
+			if(CurTargSeqID == 0)    // 0 if 1st hit about to be processed for a new target sequence
+				{
+				bFirstHitNewTargSeq = true;
+				CurTargSeqID = pCoreHit->TargNodeID;
+				CurSEntryIDHits = 0;
+				CurAEntryIDHits = 0;
+				CurSTargStartOfs = 0;
+				CurSTargEndOfs = 0;
+				CurATargStartOfs = 0;
+				CurATargEndOfs = 0;
+				CurSProbeStartOfs = 0;
+				CurSProbeEndOfs = 0;
+				CurAProbeStartOfs = 0;
+				CurAProbeEndOfs = 0;
+				}
+
+			if(pCoreHit->flgClustered && pCoreHit->TargNodeID == CurTargSeqID) // same target sequence so check for starting/ending offsets and accumulate hit counts 
+				{
+				CurTargHitOfs = pCoreHit->TargOfs;
+				CurProbeHitOfs = pCoreHit->ProbeOfs;
+				if(pCoreHit->flgRevCpl == 0)
+					{
+					if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurSTargStartOfs)
+						CurSTargStartOfs = CurTargHitOfs;
+					if(CurTargHitOfs > CurSTargEndOfs)
+						CurSTargEndOfs = CurTargHitOfs;	
+					if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurSProbeStartOfs)
+						CurSProbeStartOfs = CurProbeHitOfs;
+					if(CurProbeHitOfs > CurSProbeEndOfs)
+						CurSProbeEndOfs = CurProbeHitOfs;
 					}
 				else
-					pSummaryCnts = &pThreadPar->TargCoreHitCnts[pThreadPar->NumTargCoreHitCnts++];
-				pSummaryCnts->TargNodeID = CurTargSeqID;
-				pSummaryCnts->STargStartOfs = CurSTargStartOfs;
-				pSummaryCnts->STargEndOfs = CurSTargEndOfs;
-				pSummaryCnts->ATargStartOfs = CurATargStartOfs;
-				pSummaryCnts->ATargEndOfs = CurATargEndOfs;
-				pSummaryCnts->SProbeStartOfs = CurSProbeStartOfs;
-				pSummaryCnts->SProbeEndOfs = CurSProbeEndOfs;
-				pSummaryCnts->AProbeStartOfs = CurAProbeStartOfs;
-				pSummaryCnts->AProbeEndOfs = CurAProbeEndOfs;
-				pSummaryCnts->NumSHits = CurSEntryIDHits;
-				pSummaryCnts->NumAHits = CurAEntryIDHits;
-				pSummaryCnts->flgProbeHCseq = m_pPBScaffNodes[pCoreHit->ProbeNodeID-1].flgHCseq;
-				pSummaryCnts->flgTargHCseq = m_pPBScaffNodes[pCoreHit->TargNodeID-1].flgHCseq;
+					{
+					if(bFirstHitNewTargSeq == true || CurTargHitOfs < CurATargStartOfs)
+						CurATargStartOfs = CurTargHitOfs;
+					if(CurTargHitOfs > CurATargEndOfs)
+						CurATargEndOfs = CurTargHitOfs;	
+					if(bFirstHitNewTargSeq == true || CurProbeHitOfs < CurAProbeStartOfs)
+						CurAProbeStartOfs = CurProbeHitOfs;
+					if(CurProbeHitOfs > CurAProbeEndOfs)
+						CurAProbeEndOfs = CurProbeHitOfs;
+					}
+				bFirstHitNewTargSeq = false;
+				if(pCoreHit->flgMulti != 1)
+					{
+					if(pCoreHit->flgRevCpl == 0)
+						CurSEntryIDHits += 1;
+					else
+						CurAEntryIDHits += 1;
+					}
 				}
-			CurTargSeqID = 0; 
+
+			// if just processed last core hit for the current target ...
+			if(HitIdx + 1 == pThreadPar->NumCoreHits || pCoreHit[1].TargNodeID != CurTargSeqID)
+				{
+				// checking here that the first and last hit are consistent with either a completely contained or overlapped
+				TargSeqLen = m_pPBScaffNodes[pCoreHit->TargNodeID-1].SeqLen;
+				if(CurSEntryIDHits >= pThreadPar->MinNumCores) 
+					{
+					if((CurSProbeStartOfs >= m_OverlapFloat &&  CurSTargStartOfs >= m_OverlapFloat) ||
+							((TargSeqLen - CurSTargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurSProbeEndOfs) >= AdjOverlapFloat))
+						CurSEntryIDHits = 0;
+					}
+				else
+					CurSEntryIDHits = 0;
+
+				if(CurAEntryIDHits >= pThreadPar->MinNumCores)
+					{
+					if((CurAProbeStartOfs >= m_OverlapFloat && CurATargStartOfs >= m_OverlapFloat) ||
+						((TargSeqLen - CurATargEndOfs) >= AdjOverlapFloat && (ProbeSeqLen - CurAProbeEndOfs) >= AdjOverlapFloat))
+						CurAEntryIDHits = 0;
+					}
+				else
+					CurAEntryIDHits = 0;
+
+				if(CurSEntryIDHits >= pThreadPar->MinNumCores || CurAEntryIDHits >= pThreadPar->MinNumCores)
+					{
+					if(pThreadPar->NumTargCoreHitCnts == cSummaryTargCoreHitCnts)
+						{
+						LowestSummaryHitCnts = 0;
+						pLowestSummaryHitCnts = NULL;
+						pSummaryCnts = pThreadPar->TargCoreHitCnts; 
+						for(Idx = 0; Idx < cSummaryTargCoreHitCnts; Idx++, pSummaryCnts++)
+							{
+							CurSummaryHitCnts = pSummaryCnts->NumSHits + pSummaryCnts->NumAHits;
+							if(LowestSummaryHitCnts == 0 || CurSummaryHitCnts < LowestSummaryHitCnts)
+								{
+								LowestSummaryHitCnts = CurSummaryHitCnts;
+								pLowestSummaryHitCnts = pSummaryCnts;
+								}
+							}
+
+						if((CurSEntryIDHits + CurAEntryIDHits) <= LowestSummaryHitCnts)
+							{
+							CurTargSeqID = 0; 
+							continue;
+							}
+						pSummaryCnts = pLowestSummaryHitCnts;
+						}
+					else
+						pSummaryCnts = &pThreadPar->TargCoreHitCnts[pThreadPar->NumTargCoreHitCnts++];
+					pSummaryCnts->TargNodeID = CurTargSeqID;
+					pSummaryCnts->STargStartOfs = CurSTargStartOfs;
+					pSummaryCnts->STargEndOfs = CurSTargEndOfs;
+					pSummaryCnts->ATargStartOfs = CurATargStartOfs;
+					pSummaryCnts->ATargEndOfs = CurATargEndOfs;
+					pSummaryCnts->SProbeStartOfs = CurSProbeStartOfs;
+					pSummaryCnts->SProbeEndOfs = CurSProbeEndOfs;
+					pSummaryCnts->AProbeStartOfs = CurAProbeStartOfs;
+					pSummaryCnts->AProbeEndOfs = CurAProbeEndOfs;
+					pSummaryCnts->NumSHits = CurSEntryIDHits;
+					pSummaryCnts->NumAHits = CurAEntryIDHits;
+					pSummaryCnts->flgProbeHCseq = m_pPBScaffNodes[pCoreHit->ProbeNodeID-1].flgHCseq;
+					pSummaryCnts->flgTargHCseq = m_pPBScaffNodes[pCoreHit->TargNodeID-1].flgHCseq;
+					}
+				CurTargSeqID = 0; 
+				}
 			}
 		}
-	}
 
 
 	// can't process, SW over all would be too resource intensive, all targets which meet the minimum number of core hits requested so choose the top cMaxProbeSWs as ranked by the number of core hits
 	if(pThreadPar->NumTargCoreHitCnts > 1)
 		{
 		pThreadPar->pmtqsort->qsort(pThreadPar->TargCoreHitCnts,pThreadPar->NumTargCoreHitCnts,sizeof(sPBECoreHitCnts),SortCoreHitsDescending);
-		if(pThreadPar->NumTargCoreHitCnts > cMaxProbeSWs)		// clamp to no more than this many SW alignments
-			pThreadPar->NumTargCoreHitCnts = cMaxProbeSWs;
+		if(m_PMode == ePBMConsolidate)
+			{
+			if(pThreadPar->NumTargCoreHitCnts > cMaxConsolidateProbeSWs)		// when consolidating (usually when generating consensus transcripts) then allow for large depth even though at most cMaxProbeSWs will be used to generate the consensus bases
+				pThreadPar->NumTargCoreHitCnts = cMaxConsolidateProbeSWs;
+			}
+		else
+			if(pThreadPar->NumTargCoreHitCnts > cMaxProbeSWs)		// if not consolidating then clamp to no more than this many SW alignments
+				pThreadPar->NumTargCoreHitCnts = cMaxProbeSWs;
 		}
 
 	NumInMultiAlignment = 0;
@@ -3266,7 +3692,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			bRMIInitialised = true;
 			}		
 
-		if(m_PMode == ePBPMErrCorrect && pThreadPar->NumTargCoreHitCnts >= 2)
+		if((m_PMode == ePBPMErrCorrect || m_PMode == ePBMConsolidate) && pThreadPar->NumTargCoreHitCnts >= 2)
 			{
 			if(!pThreadPar->bRMI)
 				{
@@ -3298,18 +3724,43 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			if(bRMIRslt == false)
 				goto RMIRestartThread;
 			}
+
+		// iterate over all putative targets and SW these
+		UINT64 ReqSummCoverage;
+		UINT64 CurSummCoverage;
+
+		ReqSummCoverage = (UINT64)pCurPBScaffNode->SeqLen * cReqConsensusCoverage;
+		CurSummCoverage = 0;
+
 		pSummaryCnts = &pThreadPar->TargCoreHitCnts[0];
 		NumInMultiAlignment = 0;
-		for(CurTargCoreHitCnts = 0; CurTargCoreHitCnts < pThreadPar->NumTargCoreHitCnts; CurTargCoreHitCnts++,pSummaryCnts++)
+		for(CurTargCoreHitCnts = 0; CurTargCoreHitCnts < pThreadPar->NumTargCoreHitCnts && CurSummCoverage < ReqSummCoverage; CurTargCoreHitCnts++,pSummaryCnts++)
 			{
 			if(pSummaryCnts->NumSHits < pThreadPar->MinNumCores && pSummaryCnts->NumAHits < pThreadPar->MinNumCores)
+				{
+				pSummaryCnts->NumSHits = 0;
+				pSummaryCnts->NumAHits = 0;
 				continue;
+				}
 			bTargSense = pSummaryCnts->NumSHits >= pSummaryCnts->NumAHits ? true :  false;
 			pTargNode = &m_pPBScaffNodes[pSummaryCnts->TargNodeID-1];
-			if(pTargNode->flgHCseq == 1)
-				MinOverlapLen = m_MinHCSeqOverlap;
+
+			if(m_PMode == ePBMConsolidate && pTargNode->flgCpltdProc == 1)
+				{
+				pSummaryCnts->NumSHits = 0;
+				pSummaryCnts->NumAHits = 0;
+				continue;
+				}
+			if(MinTranscriptOverlapLen == 0)
+				{
+				if(pTargNode->flgHCseq == 1)
+					MinOverlapLen = m_MinHCSeqOverlap;
+				else
+					MinOverlapLen = pThreadPar->MinOverlapLen;
+				}
 			else
-				MinOverlapLen = pThreadPar->MinOverlapLen;
+				MinOverlapLen = MinTranscriptOverlapLen;
+
 
 			TargSeqLen = pTargNode->SeqLen; 
 			if(TargSeqLen + 10 > (UINT32)pThreadPar->AllocdTargSeqSize)
@@ -3328,39 +3779,21 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 							TargSeqLen,m_MaxPBSeqLen);
 
 
-// start combined from here!
-
-
-#ifdef USESEPARATEMETHODS
-			if(!pThreadPar->bRMI)
-				{
-				bNonRMIRslt = pThreadPar->pSW->SetTarg(TargSeqLen,pThreadPar->pTargSeq);
-				if(bNonRMIRslt == false)
-					goto RMIRestartThread;
-				}
-			else
-				{
-				bRMIRslt = RMI_SetTarg(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,TargSeqLen,pThreadPar->pTargSeq);
-				if(bRMIRslt == false)
-					goto RMIRestartThread;
-				}
-#else
-tsCombinedTargAlignPars CombinedTargAlignPars;
-tsCombinedTargAlignRet TargAlignRet;
-memset(&CombinedTargAlignPars,0,sizeof(tsCombinedTargAlignPars));
-memset(&TargAlignRet,0,sizeof(tsCombinedTargAlignRet));
-CombinedTargAlignPars.PMode = m_PMode;
-CombinedTargAlignPars.NumTargSeqs = pThreadPar->NumTargCoreHitCnts;
-CombinedTargAlignPars.MinOverlapLen = MinOverlapLen;
-CombinedTargAlignPars.MaxOverlapLen = m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen;
-CombinedTargAlignPars.ProbeSeqLen = pCurPBScaffNode->SeqLen;
-CombinedTargAlignPars.TargSeqLen = TargSeqLen;
-CombinedTargAlignPars.pTargSeq = pThreadPar->pTargSeq;
-CombinedTargAlignPars.OverlapFloat = m_OverlapFloat;
-CombinedTargAlignPars.MaxArtefactDev = m_MaxArtefactDev;
-CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor;
-
-#endif
+			// start combined from here!
+			tsCombinedTargAlignPars CombinedTargAlignPars;
+			tsCombinedTargAlignRet TargAlignRet;
+			memset(&CombinedTargAlignPars,0,sizeof(tsCombinedTargAlignPars));
+			memset(&TargAlignRet,0,sizeof(tsCombinedTargAlignRet));
+			CombinedTargAlignPars.PMode = m_PMode;
+			CombinedTargAlignPars.NumTargSeqs = pThreadPar->NumTargCoreHitCnts;
+			CombinedTargAlignPars.MinOverlapLen = MinOverlapLen;
+			CombinedTargAlignPars.MaxOverlapLen = m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen;
+			CombinedTargAlignPars.ProbeSeqLen = pCurPBScaffNode->SeqLen;
+			CombinedTargAlignPars.TargSeqLen = TargSeqLen;
+			CombinedTargAlignPars.pTargSeq = pThreadPar->pTargSeq;
+			CombinedTargAlignPars.OverlapFloat = m_OverlapFloat;
+			CombinedTargAlignPars.MaxArtefactDev = m_MaxArtefactDev;
+			CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor;
 
 			// restrict the range over which the SW will be processed to that of the overlap +/- m_OverlapFloat
 
@@ -3383,30 +3816,10 @@ CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HC
 				else
 					pSummaryCnts->STargEndOfs += AdjOverlapFloat;
 
-#ifdef USESEPARATEMETHODS
-				if(!pThreadPar->bRMI)
-					{
-					iNonRMIRslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
-											pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs);
-					if(iNonRMIRslt < 0)
-						goto RMIRestartThread;
-					}
-				else
-					{
-					iRMIRslt = Rslt = RMI_SetAlignRange(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargStartOfs,
-											pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs,pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs);
-					if(iRMIRslt < 0)
-						goto RMIRestartThread;
-					}
-
-#else
-
 				CombinedTargAlignPars.ProbeStartRelOfs = pSummaryCnts->SProbeStartOfs;
 				CombinedTargAlignPars.TargStartRelOfs = pSummaryCnts->STargStartOfs;
 				CombinedTargAlignPars.ProbeRelLen = pSummaryCnts->SProbeEndOfs + 1 - pSummaryCnts->SProbeStartOfs;
 				CombinedTargAlignPars.TargRelLen = pSummaryCnts->STargEndOfs + 1 - pSummaryCnts->STargStartOfs;
-
-#endif
 				}
 			else
 				{
@@ -3435,168 +3848,15 @@ CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HC
 				else
 					pSummaryCnts->ATargEndOfs += AdjOverlapFloat;
 
-#ifdef USESEPARATEMETHODS
-				if(!pThreadPar->bRMI)
-					{
-					iNonRMIRslt = pThreadPar->pSW->SetAlignRange(pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
-											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
-					if(iNonRMIRslt < 0)
-						goto RMIRestartThread;
-					}
-				else
-					{
-					iRMIRslt = Rslt = RMI_SetAlignRange(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargStartOfs,
-											pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs,pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs);
-					if(iRMIRslt < 0)
-						goto RMIRestartThread;
-					}
-#else
-
 				CombinedTargAlignPars.ProbeStartRelOfs = pSummaryCnts->AProbeStartOfs;
 				CombinedTargAlignPars.TargStartRelOfs = pSummaryCnts->ATargStartOfs;
 				CombinedTargAlignPars.ProbeRelLen = pSummaryCnts->AProbeEndOfs + 1 - pSummaryCnts->AProbeStartOfs;
 				CombinedTargAlignPars.TargRelLen = pSummaryCnts->ATargEndOfs + 1 - pSummaryCnts->ATargStartOfs;
-#endif
 				}
 
+			if(CombinedTargAlignPars.ProbeRelLen < MinOverlapLen || CombinedTargAlignPars.TargRelLen < MinOverlapLen)
+				continue;
 
-#ifdef USESEPARATEMETHODS
-			if(!pThreadPar->bRMI)
-				pPeakMatchesCell = pThreadPar->pSW->Align(NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
-			else
-				{
-				pPeakMatchesCell = RMI_Align(pThreadPar,cRMI_AlignSecsTimeout ,ClassInstanceID,NULL,m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
-				if(pPeakMatchesCell != NULL)
-					{
-					RMIPeakMatchesCell = *pPeakMatchesCell;
-					pPeakMatchesCell = &RMIPeakMatchesCell;
-					}
-				else
-					goto RMIRestartThread;
-				}
-
-			ProvSWchecked += 1;
-			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
-				{
-				PeakMatchesCell = *pPeakMatchesCell;
-				ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;
-				TargAlignLength = PeakMatchesCell.EndTOfs - PeakMatchesCell.StartTOfs + 1;
-				}
-			else
-				{
-				memset(&PeakMatchesCell,0,sizeof(PeakMatchesCell));
-				ProbeAlignLength = 0;
-				TargAlignLength = 0;
-				}
-
-			if(((1+ ProbeAlignLength + TargAlignLength) / 2) >= MinOverlapLen)
-				{
-				ProvOverlapping += 1;
-
-				// characterise the overlapped target
-				// eOLCOverlapping if probe accepted as overlapping, either 5' or 3'
-				// eOLCcontaining if both ends of target completely contained within probe
-                // eOLCartefact if target is only partially contained
-				int PathClass;
-				Class = (int)eOLCOverlapping;		
-				if((PeakMatchesCell.StartTOfs >= m_OverlapFloat &&  PeakMatchesCell.StartPOfs >= m_OverlapFloat) ||
-					 ((TargSeqLen - PeakMatchesCell.EndTOfs) >= m_OverlapFloat && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) >= m_OverlapFloat))
-					{
-					Class = (int)eOLCartefact;
-					ProvArtefact += 1;
-					}
-
-				if(m_PMode != ePBPMConsensus && Class == eOLCOverlapping)
-					{
-					if(!pThreadPar->bRMI)
-						PathClass = pThreadPar->pSW->ClassifyPath(m_MaxArtefactDev,	PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-																					PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
-					else
-						{
-						PathClass = iRMIRslt = RMI_ClassifyPath(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,m_MaxArtefactDev,	PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-																					PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
-						if(iRMIRslt < 0)
-							goto RMIRestartThread;
-						}
-					if(PathClass > 0)
-						{
-						Class = (int)eOLCartefact;
-						ProvArtefact += 1;
-						}
-					}
-
-				if(Class == eOLCOverlapping)
-					{
-					if(PeakMatchesCell.StartTOfs < m_OverlapFloat && (TargSeqLen - PeakMatchesCell.EndTOfs) < m_OverlapFloat) // is target completely contained by probe?
-						Class = (int)eOLCcontains;
-					else
-						if(PeakMatchesCell.StartPOfs < m_OverlapFloat && (pCurPBScaffNode->SeqLen - PeakMatchesCell.EndPOfs) < m_OverlapFloat) // or is probe completely contained within target?
-							Class = (int)eOLCcontained;
-					if(Class != eOLCOverlapping)
-						{
-						AcquireCASLock();
-						if(Class == (int)eOLCcontains)
-							pTargNode->flgContains = 1;
-						else
-							pTargNode->flgContained = 1;
-						ReleaseCASLock();	
-						ProvContained += 1;
-						}
-					}
-
-	
-				if(m_PMode == ePBPMErrCorrect && Class != (int)eOLCartefact && pThreadPar->NumTargCoreHitCnts >= 2)
-					{
-					if(!pThreadPar->bRMI)
-						pThreadPar->pSW->TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
-					else
-						{
-						iRMIRslt = RMI_TracebacksToAlignOps(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
-						if(iRMIRslt < 0)
-							goto RMIRestartThread;
-						}		
-
-					if(!pThreadPar->bRMI)
-						pThreadPar->pSW->AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq,pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor);
-					else
-						{
-						iRMIRslt = RMI_AddMultiAlignment(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pThreadPar->pTargSeq,pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HCRelWeighting) : cLCWeightingFactor);
-						if(iRMIRslt < 0)
-							goto RMIRestartThread;
-						}
-					NumInMultiAlignment += 1;
-					}
-
-
-
-				if(m_PMode == ePBPMOverlapDetail && m_hErrCorFile != -1)
-					{
-					m_pSfxArray->GetIdentName(pTargNode->EntryID,sizeof(szTargSeqName)-1,szTargSeqName);
-					AcquireCASSerialise();
-					if(m_ScaffLineBuffIdx > (sizeof(m_szScaffLineBuff) - 1000))
-						{
-						CUtility::SafeWrite(m_hErrCorFile,m_szScaffLineBuff,m_ScaffLineBuffIdx);
-						m_ScaffLineBuffIdx = 0;
-						}
-
-					m_ScaffLineBuffIdx += sprintf(&m_szScaffLineBuff[m_ScaffLineBuffIdx], "\n%d,%d,\"%s\",%d,\"%s\",%d,\"%c\",\"%c\",%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d,%1.5d",
-																			Class,pCurPBScaffNode->EntryID,szProbeSeqName,pTargNode->EntryID,szTargSeqName,
-																			bTargSense ? pSummaryCnts->NumSHits : pSummaryCnts->NumAHits, 'S', bTargSense ? 'S' : 'A',
-																			pCurPBScaffNode->SeqLen,TargSeqLen,
-																			ProbeAlignLength, TargAlignLength, PeakMatchesCell.PeakScore, PeakMatchesCell.CurScore, PeakMatchesCell.NumMatches, PeakMatchesCell.NumExacts,
-																			PeakMatchesCell.NumGapsIns, PeakMatchesCell.NumBasesIns, PeakMatchesCell.NumGapsDel, PeakMatchesCell.NumBasesDel,
-																			PeakMatchesCell.StartPOfs, PeakMatchesCell.StartTOfs, PeakMatchesCell.EndPOfs, PeakMatchesCell.EndTOfs,
-																			PeakMatchesCell.PFirstAnchorStartOfs, PeakMatchesCell.TFirstAnchorStartOfs, PeakMatchesCell.PLastAnchorEndOfs, PeakMatchesCell.TLastAnchorEndOfs);
-
-					ReleaseCASSerialise();
-					}
-				ProvOverlapped += 1;
-				}
-#else
 
 			if(!pThreadPar->bRMI)
 				{
@@ -3623,13 +3883,30 @@ CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HC
 			if(TargAlignRet.ProcPhase == 4)
 				{
 				if(TargAlignRet.Flags & 0x08)		// set if alignment was accepted and added as a multialignment
+					{
 					NumInMultiAlignment += 1;
-				if(TargAlignRet.Flags & 0x04)		// set if alignment classified as contained
-					ProvContained += 1;
+					if(m_PMode == ePBMConsolidate)
+						{
+						pTargNode->flgCpltdProc = 1;
+						CurSummCoverage = 0;
+						}
+					else
+						{
+						UINT64 OvlpLen =  (UINT64)(TargAlignRet.ProbeAlignLength + TargAlignRet.TargAlignLength + 1) / 2;
+						if(pSummaryCnts->flgTargHCseq == 1)
+							CurSummCoverage += OvlpLen * 3 / 2;  // if alignment was onto a high confidence sequence then less coverage depth required for consensus confidence 
+						else
+							CurSummCoverage += OvlpLen;
+						}
 
-				if(TargAlignRet.Flags & 0x01)		// set if alignment was classified as overlapping 
-					ProvOverlapping += 1;
-				ProvOverlapped += 1;
+					if(TargAlignRet.Flags & 0x04)		// set if alignment classified as contained
+						ProvContained += 1;
+
+					if(TargAlignRet.Flags & 0x01)		// set if alignment was classified as overlapping 
+						ProvOverlapping += 1;
+					ProvOverlapped += 1;
+					}
+
 				if(m_PMode == ePBPMOverlapDetail && m_hErrCorFile != -1)
 					{
 					m_pSfxArray->GetIdentName(pTargNode->EntryID,sizeof(szTargSeqName)-1,szTargSeqName);
@@ -3656,89 +3933,182 @@ CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HC
 					ReleaseCASSerialise();
 					}
 				}
-#endif
 			}
 		}
 
-	if(m_PMode == ePBPMErrCorrect && (pThreadPar->pSW != NULL || pThreadPar->bRMI) && NumInMultiAlignment >= 1 &&  (m_hMultiAlignFile != -1 || m_hErrCorFile != -1))
+	if((m_PMode == ePBPMErrCorrect || m_PMode == ePBMConsolidate))
 		{
-		if(!pThreadPar->bRMI)
-			pThreadPar->pSW->GenMultialignConcensus();
-		else
-			{
-			iRMIRslt = RMI_GenMultialignConcensus(pThreadPar,cRMI_SecsTimeout,ClassInstanceID);
-			if(iRMIRslt < 0)
-				goto RMIRestartThread;
-			}
-
-		if(m_hErrCorFile != -1)
+		if((pThreadPar->pSW != NULL || pThreadPar->bRMI) && NumInMultiAlignment >= 1 &&  (m_hMultiAlignFile != -1 || m_hErrCorFile != -1))
 			{
 			if(!pThreadPar->bRMI)
-				pThreadPar->ErrCorBuffIdx=pThreadPar->pSW->MAlignCols2fasta(pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff);
+				pThreadPar->pSW->GenMultialignConcensus();
 			else
 				{
-				pThreadPar->ErrCorBuffIdx = iRMIRslt = RMI_MAlignCols2fasta(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff);
+				iRMIRslt = RMI_GenMultialignConcensus(pThreadPar,cRMI_SecsTimeout,ClassInstanceID);
 				if(iRMIRslt < 0)
 					goto RMIRestartThread;
 				}
-			if(pThreadPar->ErrCorBuffIdx > 0)
+
+			if(m_hErrCorFile != -1)
 				{
-				AcquireCASSerialise();
-				if(!CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx))
+				if(!pThreadPar->bRMI)
+					pThreadPar->ErrCorBuffIdx=pThreadPar->pSW->MAlignCols2fasta(pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff);
+				else
 					{
-					gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to error corrected reads file",pThreadPar->ErrCorBuffIdx);
-					ReleaseCASSerialise();
-					goto CompletedNodeProcessing;
+					pThreadPar->ErrCorBuffIdx = iRMIRslt = RMI_MAlignCols2fasta(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->EntryID,m_MinConcScore,m_MinErrCorrectLen,pThreadPar->AllocdErrCorLineBuff,pThreadPar->pszErrCorLineBuff);
+					if(iRMIRslt < 0)
+						goto RMIRestartThread;
 					}
-				m_ErrCorFileUnsyncedSize += pThreadPar->ErrCorBuffIdx;
+				if(pThreadPar->ErrCorBuffIdx > 0)
+					{
+					AcquireCASSerialise();
+					if(!CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx))
+						{
+						gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to error corrected reads file",pThreadPar->ErrCorBuffIdx);
+						ReleaseCASSerialise();
+						goto CompletedNodeProcessing;
+						}
+					m_ErrCorFileUnsyncedSize += pThreadPar->ErrCorBuffIdx;
+					if(m_ErrCorFileUnsyncedSize > 50000)
+						{
+	#ifdef _WIN32
+						_commit(m_hErrCorFile);
+	#else
+						fsync(m_hErrCorFile);
+	#endif
+						m_ErrCorFileUnsyncedSize = 0;
+						}
+
+					if(m_hChkPtsFile != -1)
+						{
+						CurChkPt.ECFileOfs = (INT64)_lseeki64(m_hErrCorFile,(off_t)0,SEEK_CUR);
+						CurChkPt.flgContained = pCurPBScaffNode->flgContained;
+						CurChkPt.flgContains = pCurPBScaffNode->flgContains;
+						CurChkPt.flgCpltdProc = 1;
+						if(!CUtility::SafeWrite(m_hChkPtsFile,&CurChkPt,sizeof(tsECChkPt)))
+							{
+							gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing to checkpoint file");
+							ReleaseCASSerialise();
+							goto CompletedNodeProcessing;
+							}
+	#ifdef _WIN32
+						_commit(m_hChkPtsFile);
+	#else
+						fsync(m_hChkPtsFile);
+	#endif
+						}
+					ReleaseCASSerialise();
+					pThreadPar->ErrCorBuffIdx = 0;
+					}
+				}
+
+			if(m_hMultiAlignFile != -1)
+				{
+				if(!pThreadPar->bRMI)
+					pThreadPar->MultiAlignBuffIdx=pThreadPar->pSW->MAlignCols2MFA(pCurPBScaffNode->EntryID,pThreadPar->AllocdMultiAlignLineBuff,pThreadPar->pszMultiAlignLineBuff);
+				else
+					{
+					pThreadPar->MultiAlignBuffIdx = iRMIRslt = RMI_MAlignCols2MFA(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->EntryID,pThreadPar->AllocdMultiAlignLineBuff,pThreadPar->pszMultiAlignLineBuff);
+					if(iRMIRslt < 0)
+						goto RMIRestartThread;
+					}
+				if(pThreadPar->MultiAlignBuffIdx > 0)
+					{
+					pThreadPar->pszMultiAlignLineBuff[pThreadPar->MultiAlignBuffIdx++] = '\n';
+					AcquireCASSerialise();
+					if(!CUtility::SafeWrite(m_hMultiAlignFile,pThreadPar->pszMultiAlignLineBuff,pThreadPar->MultiAlignBuffIdx))
+						{
+						gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to multialignment file",pThreadPar->MultiAlignBuffIdx);
+						ReleaseCASSerialise();
+						goto CompletedNodeProcessing;
+						}
+					m_MultiAlignFileUnsyncedSize += pThreadPar->MultiAlignBuffIdx;
+					if(m_MultiAlignFileUnsyncedSize > 100000)
+						{
+	#ifdef _WIN32
+						_commit(m_hMultiAlignFile);
+	#else
+						fsync(m_hMultiAlignFile);
+	#endif
+						m_MultiAlignFileUnsyncedSize = 0;
+						}
+					ReleaseCASSerialise();
+					pThreadPar->MultiAlignBuffIdx = 0;
+					}
+				}
+			}
+		else
+			if(m_PMode == ePBMConsolidate &&  m_hErrCorFile != -1)
+				{
+				// asciify the consensus and report to m_hErrCorFile
+				UINT32 BaseIdx = 0;
+				int BasesLine = 0;
+
+				pThreadPar->ErrCorBuffIdx += sprintf(&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx],">ecseq%u_1 %d|%d\n",pCurPBScaffNode->NodeID,pCurPBScaffNode->SeqLen,1);
+				while(BaseIdx < pCurPBScaffNode->SeqLen)
+					{
+					BasesLine = pCurPBScaffNode->SeqLen - BaseIdx > 80 ? 80 : pCurPBScaffNode->SeqLen - BaseIdx;
+					CSeqTrans::MapSeq2Ascii(&pThreadPar->pProbeSeq[BaseIdx],BasesLine,&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx]);
+					BaseIdx += BasesLine;
+					pThreadPar->ErrCorBuffIdx += BasesLine;
+					pThreadPar->ErrCorBuffIdx += sprintf(&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx],"\n");
+					if(pThreadPar->ErrCorBuffIdx + 100 > pThreadPar->AllocdErrCorLineBuff)
+						{
+						if(!CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx))
+							{
+							gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to error corrected reads file",pThreadPar->ErrCorBuffIdx);
+							ReleaseCASSerialise();
+							goto CompletedNodeProcessing;
+							}		
+						m_ErrCorFileUnsyncedSize += pThreadPar->ErrCorBuffIdx;				
+						pThreadPar->ErrCorBuffIdx = 0;
+						}
+					}
+				if(pThreadPar->ErrCorBuffIdx > 0)
+					{
+					AcquireCASSerialise();
+					if(!CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx))
+						{
+						gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to error corrected reads file",pThreadPar->ErrCorBuffIdx);
+						ReleaseCASSerialise();
+						goto CompletedNodeProcessing;
+						}
+					m_ErrCorFileUnsyncedSize += pThreadPar->ErrCorBuffIdx;
+					pThreadPar->ErrCorBuffIdx = 0;
+					}
+
 				if(m_ErrCorFileUnsyncedSize > 50000)
 					{
-#ifdef _WIN32
+		#ifdef _WIN32
 					_commit(m_hErrCorFile);
-#else
+		#else
 					fsync(m_hErrCorFile);
-#endif
+		#endif
 					m_ErrCorFileUnsyncedSize = 0;
 					}
-				ReleaseCASSerialise();
-				pThreadPar->ErrCorBuffIdx = 0;
-				}
-			}
 
-		if(m_hMultiAlignFile != -1)
-			{
-			if(!pThreadPar->bRMI)
-				pThreadPar->MultiAlignBuffIdx=pThreadPar->pSW->MAlignCols2MFA(pCurPBScaffNode->EntryID,pThreadPar->AllocdMultiAlignLineBuff,pThreadPar->pszMultiAlignLineBuff);
-			else
-				{
-				pThreadPar->MultiAlignBuffIdx = iRMIRslt = RMI_MAlignCols2MFA(pThreadPar,cRMI_SecsTimeout,ClassInstanceID,pCurPBScaffNode->EntryID,pThreadPar->AllocdMultiAlignLineBuff,pThreadPar->pszMultiAlignLineBuff);
-				if(iRMIRslt < 0)
-					goto RMIRestartThread;
-				}
-			if(pThreadPar->MultiAlignBuffIdx > 0)
-				{
-				pThreadPar->pszMultiAlignLineBuff[pThreadPar->MultiAlignBuffIdx++] = '\n';
-				AcquireCASSerialise();
-				if(!CUtility::SafeWrite(m_hMultiAlignFile,pThreadPar->pszMultiAlignLineBuff,pThreadPar->MultiAlignBuffIdx))
+				if(m_hChkPtsFile != -1)
 					{
-					gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing %u chars to multialignment file",pThreadPar->MultiAlignBuffIdx);
-					ReleaseCASSerialise();
-					goto CompletedNodeProcessing;
-					}
-				m_MultiAlignFileUnsyncedSize += pThreadPar->MultiAlignBuffIdx;
-				if(m_MultiAlignFileUnsyncedSize > 100000)
-					{
-#ifdef _WIN32
-					_commit(m_hMultiAlignFile);
-#else
-					fsync(m_hMultiAlignFile);
-#endif
-					m_MultiAlignFileUnsyncedSize = 0;
+					CurChkPt.ECFileOfs = (INT64)_lseeki64(m_hErrCorFile,(off_t)0,SEEK_CUR);
+					CurChkPt.flgContained = pCurPBScaffNode->flgContained;
+					CurChkPt.flgContains = pCurPBScaffNode->flgContains;
+					CurChkPt.flgCpltdProc = 1;
+					if(!CUtility::SafeWrite(m_hChkPtsFile,&CurChkPt,sizeof(tsECChkPt)))
+						{
+						gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing to checkpoint file");
+						ReleaseCASSerialise();
+						goto CompletedNodeProcessing;
+						}
+		#ifdef _WIN32
+					_commit(m_hChkPtsFile);
+		#else
+					fsync(m_hChkPtsFile);
+		#endif
 					}
 				ReleaseCASSerialise();
-				pThreadPar->MultiAlignBuffIdx = 0;
 				}
-			}
+		if(m_PMode == ePBMConsolidate)
+			pCurPBScaffNode->flgCpltdProc = 1;
 		}
 
 	AcquireCASSerialise();
@@ -3753,6 +4123,28 @@ CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HC
 	if(ProvSWchecked > 0)
 		m_ProvSWchecked += ProvSWchecked;
 	m_NumOverlapProcessed += 1;
+	if(m_PMode == ePBMConsolidate)
+		m_NumOverlapProcessed += NumInMultiAlignment;
+
+	if(m_hChkPtsFile != -1 && CurChkPt.flgCpltdProc == 0)
+		{
+		CurChkPt.ECFileOfs = -1;
+		CurChkPt.flgContained = pCurPBScaffNode->flgContained;
+		CurChkPt.flgContains = pCurPBScaffNode->flgContains;
+		CurChkPt.flgCpltdProc = 1;
+		if(!CUtility::SafeWrite(m_hChkPtsFile,&CurChkPt,sizeof(tsECChkPt)))
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"SafeWrite() failed writing to checkpoint file");
+			ReleaseCASSerialise();
+			goto CompletedNodeProcessing;
+			}
+#ifdef _WIN32
+		_commit(m_hChkPtsFile);
+#else
+		fsync(m_hChkPtsFile);
+#endif
+		}
+
 	ReleaseCASSerialise();
 	AcquireCASLock();
 	pCurPBScaffNode->flgCpltdProc = 1;
@@ -3769,20 +4161,38 @@ CombinedTargAlignPars.TargFlags = pSummaryCnts->flgTargHCseq == 1 ? (0x80 | m_HC
 
 CompletedNodeProcessing:     // when no more nodes requiring processing then goto is used to branch here for thread cleanup
 AcquireCASSerialise();
-if(m_PMode == ePBPMErrCorrect && m_hErrCorFile != -1 && pThreadPar->ErrCorBuffIdx > 0)
+if((m_PMode == ePBPMErrCorrect  || m_PMode == ePBMConsolidate) && m_hErrCorFile != -1 && pThreadPar->ErrCorBuffIdx > 0)
 	{
 	CUtility::SafeWrite(m_hErrCorFile,pThreadPar->pszErrCorLineBuff,pThreadPar->ErrCorBuffIdx);
 	pThreadPar->ErrCorBuffIdx = 0;
+#ifdef _WIN32
+	_commit(m_hErrCorFile);
+#else
+	fsync(m_hErrCorFile);
+#endif
+	m_ErrCorFileUnsyncedSize = 0;
 	}
 if(m_hMultiAlignFile != -1 && pThreadPar->MultiAlignBuffIdx > 0)
 	{
 	CUtility::SafeWrite(m_hMultiAlignFile,pThreadPar->pszMultiAlignLineBuff,pThreadPar->MultiAlignBuffIdx);
 	pThreadPar->MultiAlignBuffIdx = 0;
+#ifdef _WIN32
+	_commit(m_hMultiAlignFile);
+#else
+	fsync(m_hMultiAlignFile);
+#endif
+	m_MultiAlignFileUnsyncedSize = 0;
 	}
 if(m_PMode == ePBPMOverlapDetail && m_ScaffLineBuffIdx > 0)
 	{
 	CUtility::SafeWrite(m_hErrCorFile,m_szScaffLineBuff,m_ScaffLineBuffIdx);
 	m_ScaffLineBuffIdx = 0;
+#ifdef _WIN32
+	_commit(m_hErrCorFile);
+#else
+	fsync(m_hErrCorFile);
+	m_ErrCorFileUnsyncedSize = 0;
+#endif
 	}
 ReleaseCASSerialise();
 
@@ -3800,7 +4210,7 @@ return(0);
 }
 
 
-int					// returns index 1..N of just added core hit or -1 if errors
+int					// returns 0 if core overlapped (uses a non-exhaustive search) a previously added core, index 1..N of just added core hit or -1 if errors
 CPBErrCorrect::AddCoreHit(UINT32 ProbeNodeID,			// core hit was from this probe scaffold node 
 			   bool bRevCpl,					// true if core sequence was revcpl'd before matching
 			   UINT32 ProbeOfs,                 // hit started at this probe offset
@@ -3809,7 +4219,10 @@ CPBErrCorrect::AddCoreHit(UINT32 ProbeNodeID,			// core hit was from this probe 
 			   UINT32 HitLen,					// hit was of this length
                tsThreadPBErrCorrect *pPars)			// thread specific
 {
-tsPBECoreHit *pCoreHit;
+UINT32 ExpdHitLen;
+UINT32 NumHits2Chk;
+UINT32 HitsChkd;
+tsPBECoreHit *pCurCoreHit;
 
 if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory to hold additional cores?
 	{
@@ -3830,7 +4243,7 @@ if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory t
 		if(pAllocd == NULL)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"SavePartialSeqs: Memory re-allocation to %d bytes - %s",memreq,strerror(errno));
-			Reset(false);
+			Reset();
 			return(eBSFerrMem);
 			}
 
@@ -3838,17 +4251,36 @@ if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory t
 		pPars->AllocdCoreHitsSize = memreq;
 		pPars->AllocdCoreHits = coresreq; 
 		}
-		
-pCoreHit = &pPars->pCoreHits[pPars->NumCoreHits++];
 
-pCoreHit->ProbeNodeID = ProbeNodeID;
-pCoreHit->flgRevCpl = bRevCpl ? 1 : 0;
-pCoreHit->flgMulti = 0;
-pCoreHit->ProbeOfs = ProbeOfs;
-pCoreHit->TargNodeID = TargNodeID;
-pCoreHit->HitLen = HitLen;
-pCoreHit->TargOfs = TargOfs;
-memset(&pCoreHit[1],0,sizeof(tsPBECoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
+// non-exhaustive check to see if core is overlapping a previously added core
+// search back over at most 2000 recently added cores for overlaps
+ExpdHitLen = min(50,HitLen * 3); // allowing for some float on the overlap loci and length
+if(pPars->NumCoreHits > 0)
+	{
+	NumHits2Chk = min(2000,pPars->NumCoreHits);
+	pCurCoreHit=&pPars->pCoreHits[pPars->NumCoreHits-1];
+	for(HitsChkd = 0; HitsChkd < NumHits2Chk; HitsChkd+=1, pCurCoreHit-=1)
+		{
+		if(pCurCoreHit->TargNodeID == TargNodeID &&
+		  pCurCoreHit->ProbeNodeID == ProbeNodeID &&
+			pCurCoreHit->flgRevCpl == (bRevCpl ? 1 : 0) &&
+			(pCurCoreHit->ProbeOfs >= (ProbeOfs < ExpdHitLen ? 0 : ProbeOfs - ExpdHitLen) && pCurCoreHit->ProbeOfs <= (ProbeOfs + ExpdHitLen)) &&
+			(pCurCoreHit->TargOfs >= (TargOfs < ExpdHitLen ? 0 : TargOfs - ExpdHitLen) && pCurCoreHit->TargOfs <= (TargOfs + ExpdHitLen)))
+			return(0);
+		}	
+	}
+ 
+		
+pCurCoreHit = &pPars->pCoreHits[pPars->NumCoreHits++];
+
+pCurCoreHit->ProbeNodeID = ProbeNodeID;
+pCurCoreHit->flgRevCpl = bRevCpl ? 1 : 0;
+pCurCoreHit->flgMulti = 0;
+pCurCoreHit->ProbeOfs = ProbeOfs;
+pCurCoreHit->TargNodeID = TargNodeID;
+pCurCoreHit->HitLen = HitLen;
+pCurCoreHit->TargOfs = TargOfs;
+memset(&pCurCoreHit[1],0,sizeof(tsPBECoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
 return(pPars->NumCoreHits);
 }
 
@@ -3878,6 +4310,7 @@ UINT32 HitsThisCore;
 UINT32 HighHitsThisCore;
 UINT32 TotHitsAllCores;
 UINT32 HitSeqLen;
+UINT32 TargOvlpLenDiffbp;
 UINT32 ProbeOfs;
 UINT32 LastProbeOfs;
 
@@ -3929,9 +4362,10 @@ LastProbeOfs = 1 + pProbeNode->SeqLen - pPars->CoreSeqLen;
 if(pPars->CoreSeqLen < cMaxPacBioSeedExtn)
 	LastProbeOfs -= 120;
 
+TargOvlpLenDiffbp = m_TranscriptomeLens == 0 ? 0 : ((pProbeNode->SeqLen * m_TranscriptomeLens) / 100);
 memset(QualTargs,0,sizeof(QualTargs));
 QualCoreLen = pPars->CoreSeqLen + 5;
-NumQualSeqs = m_pSfxArray->PreQualTargs(pProbeNode->EntryID,pProbeNode->SeqLen,	pPars->pProbeSeq, QualCoreLen,(int)pPars->DeltaCoreOfs,cMaxQualTargs,QualTargs);
+NumQualSeqs = m_pSfxArray->PreQualTargs(pProbeNode->EntryID,pProbeNode->SeqLen,pPars->pProbeSeq, QualCoreLen,(int)pPars->DeltaCoreOfs, TargOvlpLenDiffbp, cMaxQualTargs,QualTargs);
 
 if(NumQualSeqs > 0)
 	{
@@ -3959,16 +4393,20 @@ if(NumQualSeqs > 0)
 			pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
 			HitSeqLen = pTargNode->SeqLen; 
 
+			if(TargOvlpLenDiffbp > 0 && ((pProbeNode->SeqLen + TargOvlpLenDiffbp) < HitSeqLen  || pProbeNode->SeqLen > (HitSeqLen + TargOvlpLenDiffbp)))
+				continue;
+
 			if((pPars->bSelfHits ? pTargNode->NodeID != pProbeNode->NodeID : pTargNode->NodeID == pProbeNode->NodeID) || 
 					 pTargNode->flgUnderlength == 1 ||	// not interested in selfhits or under length targets
 								HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
 				continue;
 
-  			AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
-			HitsThisCore += 1;
-			if(HitsThisCore > pPars->MaxAcceptHitsPerSeedCore)
-				break;
-
+  			if(AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars)>0)
+				{
+				HitsThisCore += 1;
+				if(HitsThisCore > pPars->MaxAcceptHitsPerSeedCore)
+					break;
+				}
 			}
 		if(HitsThisCore)	// if at least one hit from this core
 			{
@@ -4118,24 +4556,31 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
 
+SleepTime = 50;
 Then = time(NULL);
 while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,0,eSWMConstruct,0,NULL,0,NULL, SessionID))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return((UINT64)0);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)
 	return(0);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return((UINT64)0);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, service provider session terminated??
 	return((UINT64)0);	
@@ -4153,23 +4598,31 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMDestruct,0,NULL,0,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return;
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, service provider session terminated??
 	return;
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return;
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;	
 	}
 if(Rslt < 1)
 #ifdef WIN32
@@ -4198,6 +4651,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MatchScore,sizeof(MatchScore));
@@ -4212,17 +4668,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, service provider session terminated??
 	return(false);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+		CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return((JobRslt == 0 || Rslt < 1) ? false : true);
 }
@@ -4242,6 +4703,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MatchScore,sizeof(MatchScore));
@@ -4253,17 +4717,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+		CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(false);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+		CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return((JobRslt == 0 || Rslt < 1) ? false : true);
 }
@@ -4281,6 +4750,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MaxInitiatePathOfs,sizeof(MaxInitiatePathOfs));
@@ -4289,17 +4761,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+		CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(false);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return((JobRslt == 0 || Rslt < 1) ? false : true);
 }
@@ -4317,6 +4794,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&MaxTargLen,sizeof(MaxTargLen));
@@ -4326,17 +4806,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+		CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(false);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+		CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return((JobRslt == 0 || Rslt < 1) ? false : true);
 }
@@ -4356,6 +4841,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&SeqLen,sizeof(SeqLen));
@@ -4367,17 +4855,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return(Rslt < 1 ? -1 : (int)JobRslt);
 }
@@ -4394,6 +4887,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&Len,sizeof(Len));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pSeq,Len);
@@ -4402,17 +4898,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(false);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return((JobRslt == 0 || Rslt < 1) ? false : true);
 }
@@ -4429,6 +4930,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&Len,sizeof(Len));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTVarUint8,pSeq,Len);
@@ -4437,11 +4941,14 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(false);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(false);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
@@ -4467,6 +4974,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&m_ProbeStartRelOfs,sizeof(m_ProbeStartRelOfs));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&m_TargStartRelOfs,sizeof(m_TargStartRelOfs));
@@ -4477,17 +4987,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return(Rslt < 1 ? -1 : (int)JobRslt);
 }
@@ -4506,8 +5021,11 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = (sizeof(tsSSWCell) + 20) * 2;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
 bool bPeakScoreCell;
 tsSSWCell *pCell;
+
+SleepTime = 50;
 Then = time(NULL);
 if(pPeakScoreCell != NULL)
 	bPeakScoreCell = true;
@@ -4523,17 +5041,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(NULL);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(NULL);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(NULL);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1 || JobRslt != 0 || MaxResponseSize < sizeof(tsSSWCell))
 	return(NULL);
@@ -4563,9 +5086,12 @@ UINT32 JobRslt;
 tJobIDEx JobID;
 UINT32 ClassMethodID;
 UINT32	MaxResponseSize = (sizeof(tsCombinedTargAlignRet) + 20) * 2;
+tsCombinedTargAlignRet *pTmpAlignRet;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
 
+SleepTime = 50;
 memset(pAlignRet,0,sizeof(tsCombinedTargAlignRet));
 Then = time(NULL);
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTVarUint8,pAlignPars,sizeof(tsCombinedTargAlignPars));
@@ -4575,24 +5101,31 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-3);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// -2: parameter errors, -1: class instance no longer exists, 0: currently no available service instance 1: if job accepted
 	return(Rslt);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-3);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1 || MaxResponseSize < sizeof(tsCombinedTargAlignRet))
 	return(-2);
 
-RespDataOfs = UnmarshalResp(sizeof(tsCombinedTargAlignRet),pThreadPar->pRMIRespData,&pAlignRet);
-if(RespDataOfs < sizeof(tsCombinedTargAlignRet))
+pTmpAlignRet = NULL;
+RespDataOfs = UnmarshalResp(sizeof(tsCombinedTargAlignRet),pThreadPar->pRMIRespData,&pTmpAlignRet);
+if(pTmpAlignRet == NULL || RespDataOfs < sizeof(tsCombinedTargAlignRet))
 	return(-2);
+*pAlignRet = *pTmpAlignRet;
 return(1);
 }
 
@@ -4680,7 +5213,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
 
+SleepTime = 50;
 Then = time(NULL);
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTInt32,&MaxArtefactDev,sizeof(MaxArtefactDev));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&ProbeStartOfs,sizeof(ProbeStartOfs));
@@ -4692,17 +5227,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return(Rslt < 1 ? -1 : (int)JobRslt);
 }
@@ -4723,7 +5263,10 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
 bool bAlignOps;
+
+SleepTime = 50;
 if(ppAlignOps != NULL)
 	{
 	MaxResponseSize = 1000000;
@@ -4745,17 +5288,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1 || (bAlignOps && MaxResponseSize < 1))
 	return(-1);
@@ -4785,6 +5333,9 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 RespDataOfs = MarshalReq(pThreadPar->pRMIReqData,eRMIPTUint32,&ProbeStartOfs,sizeof(ProbeStartOfs));
 RespDataOfs += MarshalReq(&pThreadPar->pRMIReqData[RespDataOfs],eRMIPTUint32,&ProbeEndOfs,sizeof(ProbeEndOfs));
@@ -4798,17 +5349,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return(Rslt < 1 ? -1 : (int)JobRslt);
 }
@@ -4823,23 +5379,31 @@ UINT32 ClassMethodID;
 UINT32	MaxResponseSize = 0;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 Then = time(NULL);
 while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceType,ClassInstanceID,eSWMGenMultialignConcensus,0,NULL,0,NULL))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 return(Rslt < 1 ? -1 : (int)JobRslt);
 }
@@ -4861,6 +5425,9 @@ UINT32	MaxResponseSize;
 char *pszAlignRow;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 if(BuffSize > pThreadPar->RMIBufferSize)
 	BuffSize = pThreadPar->RMIBufferSize;
 MaxResponseSize = BuffSize;
@@ -4875,17 +5442,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)
 	return(-1);
@@ -4913,6 +5485,9 @@ UINT32	MaxResponseSize;
 char *pszAlignRow;
 time_t Then;
 time_t Now;
+UINT32 SleepTime;
+
+SleepTime = 50;
 if(BuffSize > pThreadPar->RMIBufferSize)
 	{
 	BuffSize = pThreadPar->RMIBufferSize;
@@ -4927,17 +5502,22 @@ while((Rslt = pThreadPar->pRequester->AddJobRequest(&JobID,pThreadPar->ServiceTy
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)		// JobID not accepted, no service provider available, service provider session terminated??
 	return(-1);
 
+SleepTime = 50;
 while((Rslt = pThreadPar->pRequester->GetJobResponse(JobID,&ClassInstanceID,&ClassMethodID,&JobRslt,&MaxResponseSize,pThreadPar->pRMIRespData))==0)
 	{
 	Now = time(NULL);
 	if((Now - Then) > Timeout)
 		return(-1);
-	CUtility::SleepMillisecs(20);
+	CUtility::SleepMillisecs(SleepTime);
+	if(SleepTime < 1000)
+		SleepTime += 50;
 	}
 if(Rslt < 1)
 	return(-1);

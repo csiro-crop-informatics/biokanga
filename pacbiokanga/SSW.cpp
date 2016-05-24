@@ -421,10 +421,14 @@ pAlignRet->Class = Class;
 pAlignRet->PeakMatchesCell = PeakMatchesCell;
 pAlignRet->ProbeAlignLength = ProbeAlignLength;
 pAlignRet->TargAlignLength = TargAlignLength;
-pAlignRet->Flags = bProvOverlapping ? 0x01 : 0x00;
-pAlignRet->Flags |= bProvArtefact ? 0x02 : 0x00;
-pAlignRet->Flags |= bProvContained ? 0x04 : 0x00;
-pAlignRet->Flags |= bAddedMultiAlignment ? 0x08 : 0x00;
+if(bProvArtefact)
+	pAlignRet->Flags = 0x02;
+else
+	{ 
+	pAlignRet->Flags = bProvOverlapping ? 0x01 : 0x00;
+	pAlignRet->Flags |= bProvContained ? 0x04 : 0x00;
+	pAlignRet->Flags |= bAddedMultiAlignment ? 0x08 : 0x00;
+	}
 return(bRslt);
 }
 
@@ -441,7 +445,7 @@ CSSW::CombinedTargAlign(UINT8 PMode,              // processing mode: 0 error co
 						UINT32 ProbeRelLen,		    // and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
 						UINT32 TargRelLen,		    // and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
 						UINT32 OverlapFloat,		// allowing up to this much float on overlaps to account for the PacBio error profile
-						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 						UINT32 MinOverlapLen,       // minimum accepted overlap length
 						UINT32 MaxOverlapLen,      // max expected overlap length
 						UINT8 *pRetProcPhase,			// processing phase completed
@@ -503,7 +507,9 @@ if((Rslt = SetAlignRange(ProbeStartRelOfs,TargStartRelOfs,ProbeRelLen,TargRelLen
 
 pPeakMatchesCell = Align(NULL,MaxOverlapLen);
 
-if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
+if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2) &&
+	pPeakMatchesCell->PFirstAnchorStartOfs > 0 && pPeakMatchesCell->PFirstAnchorStartOfs < pPeakMatchesCell->PLastAnchorEndOfs &&
+	pPeakMatchesCell->TFirstAnchorStartOfs > 0 && pPeakMatchesCell->TFirstAnchorStartOfs < pPeakMatchesCell->TLastAnchorEndOfs)
 	{
 	PeakMatchesCell = *pPeakMatchesCell;
 	ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;
@@ -536,16 +542,16 @@ if(((1+ ProbeAlignLength + TargAlignLength) / 2) >= MinOverlapLen)
 
 	if(PMode != 1 && Class == eSWOLCOverlapping)
 		{
-		PathClass = ClassifyPath(MaxArtefactDev,	PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+		PathClass = ClassifyPath(MaxArtefactDev,PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
 																		PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
-		if(PathClass < 0)
+		if(PathClass < 0)			// < 0 if internal error
 			{
 			*pRetProcPhase = 3;
 			*pErrRslt = PathClass;
 			return(false);
 			}
 
-		if(PathClass > 0)
+		if(PathClass > 0)			// > 0 if determined as being most likely an artifact overlap
 			{
 			Class = (int)eSWOLCartefact;
 			bProvArtefact = true;
@@ -563,13 +569,34 @@ if(((1+ ProbeAlignLength + TargAlignLength) / 2) >= MinOverlapLen)
 			bProvContained = true;
 		}
 
-	if(PMode == 0 && Class != (int)eSWOLCartefact && NumTargSeqs >= 2)
+	if((PMode == 0 || PMode == 3) && Class != (int)eSWOLCartefact && NumTargSeqs >= 2)
 		{
-		TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs);
-		AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
-															PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pTargSeq,TargFlags);
-		bAddedMultiAlignment = true;
+		if(m_MACoverage < m_MADepth)
+			{
+			if((TracebacksToAlignOps(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+																PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs)) < 0)
+				{
+				Class = (int)eSWOLCartefact;
+				bProvArtefact = true;
+				bProvContained = false;
+				bProvOverlapping = false;
+				}
+			else
+				{
+				if(AddMultiAlignment(PeakMatchesCell.PFirstAnchorStartOfs,PeakMatchesCell.PLastAnchorEndOfs,
+																PeakMatchesCell.TFirstAnchorStartOfs,PeakMatchesCell.TLastAnchorEndOfs,TargSeqLen,pTargSeq,TargFlags) < 1)
+					{
+					Class = (int)eSWOLCartefact;
+					bProvArtefact = true;
+					bProvContained = false;
+					bProvOverlapping = false;
+					}
+				else
+					bAddedMultiAlignment = true;
+				}
+			}
+		else
+			bAddedMultiAlignment = true; // never actually added as a multialignment but report as if added; after all there are already m_MADepth sequences in the multialignment for consensus base calling ....
 		}
 	}
 
@@ -979,7 +1006,6 @@ bool bMatchNxt3;
 UINT32 StartIdxT;
 UINT32 NumCellsSkipped;
 UINT32 NumCellsChecked;
-UINT32 NumCellsProcessed;
 UINT32 NxtMinIdxT;
 UINT32 CurMinIdxT;
 UINT32 CurMaxIdxT;
@@ -1073,7 +1099,6 @@ memset(&DiagCell,0,sizeof(tsSSWCell));
 
 NumCellsSkipped = 0;
 NumCellsChecked = 0;
-NumCellsProcessed = 0;
 LastCheckedIdxT = m_MaxInitiatePathOfs + 10;
 m_UsedTracebacks = 0;
 NxtMinIdxT = 0;
@@ -1175,7 +1200,6 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 			NumCellsChecked += 1;
 			}
 
-		NumCellsProcessed += 1;
 		LastCheckedIdxT = IdxT;
 		TargBase = *pTarg++ & ~cRptMskFlg;
 
@@ -1488,6 +1512,8 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 if(pPeakScoreCell != NULL)
 	*pPeakScoreCell = m_PeakScoreCell;
 #endif
+if(m_PeakMatchesCell.PFirstAnchorStartOfs == 0 || (m_PeakMatchesCell.PFirstAnchorStartOfs + 10) > m_PeakMatchesCell.PLastAnchorEndOfs)
+	memset(&m_PeakMatchesCell,0,sizeof(m_PeakMatchesCell));
 return(&m_PeakMatchesCell);
 } 
 
@@ -1645,9 +1671,9 @@ if(CurSeqLen > 0)
 		{
 		m_ErrCorSeqID += 1;
 		if(m_ErrCorSeqID == 1)
-			DescrLen = sprintf(szDescrLine,">ecseq%u_%d %d|%d\n",ProbeID,m_ErrCorSeqID,CurSeqLen,MinConf);
+			DescrLen = sprintf(szDescrLine,">ecseq%u_%d %d|%d\n",ProbeID,m_ErrCorSeqID,CurSeqLen,m_MACoverage);
 		else
-			DescrLen = sprintf(szDescrLine,"\n>ecseq%u_%d %d|%d\n",ProbeID,m_ErrCorSeqID,CurSeqLen,MinConf);
+			DescrLen = sprintf(szDescrLine,"\n>ecseq%u_%d %d|%d\n",ProbeID,m_ErrCorSeqID,CurSeqLen,m_MACoverage);
 		pBuff = &pszBuffer[NewSeqStartOfs];
 		memmove(pBuff + DescrLen,pBuff,BuffOfs - NewSeqStartOfs);	// make room for an inserted fasta descriptor line
 		memcpy(pBuff,szDescrLine,DescrLen);
@@ -2366,7 +2392,7 @@ for(DepthIdx = 0; DepthIdx < m_MACoverage; DepthIdx++)
 	pBuff = &pszBuffer[BuffOfs];
 	if((BuffSize - BuffOfs) < m_MACols + 100)
 		{
-		BuffOfs += sprintf(pBuff,"Truncated, insufficent buffering for any additional rows\n");
+		BuffOfs += sprintf(pBuff,"Truncated, insufficient buffering for any additional rows\n");
 		pBuff = &pszBuffer[BuffOfs];
 		*pBuff = '\0';
 		return(BuffOfs);
@@ -2430,8 +2456,11 @@ m_MACols = 0;
 m_MADepth = 0;
 m_MACoverage = 0;
 
-if(Alignments < 2 || Alignments > 200 || SeqLen < 50 || pProbeSeq == NULL)
+if(Alignments < 2 || SeqLen < 50 || pProbeSeq == NULL)
 	return(eBSFerrParams);
+
+if(Alignments > 200)	// clamp alignments in the multialignment for consensus base calling to be no more than 200
+	Alignments = 200;	// if there are actually more than 200 then the additional alignments are reported as aligned but not used for consensus base calling
 
 m_MAProbeSeqLen = SeqLen;
 m_MAColSize = (sizeof(tsMAlignCol) + Alignments + 1);
@@ -2517,13 +2546,19 @@ if(MaxKMer < 1 || pKMerCnts == NULL)
 
 memset(pKMerCnts,0,sizeof(UINT32) * MaxKMer);
 
+if(ProbeStartOfs == 0 || ProbeEndOfs <= ProbeStartOfs ||
+	TargStartOfs == 0 || TargEndOfs <= TargStartOfs)
+	return(0);
+
 if((ProbeEndOfs - ProbeStartOfs) < cTraceBackWin) 
 	return(0);
 
 bGapOpened = false;
 CurKMerLen = 0;
 TotKMers = 0;
-pTraceBack = InitiateTraceback(ProbeEndOfs,TargEndOfs);
+if((pTraceBack = InitiateTraceback(ProbeEndOfs,TargEndOfs))==NULL)
+	return(0);
+	
 do {
 	switch(TrcBkOp = (pTraceBack->IdxP & cTrBkFlgsMsk)) {
 		case cTrBkFlgStart:							// start of alignment path; process as if cTrBkFlgMatch
@@ -2574,7 +2609,7 @@ return(TotKMers);
 }
 
 int												// attempting to determine if path is artfact resulting from aligning to a paralogous fragment
-CSSW::ClassifyPath(int MaxArtefactDev,			// classify path as artefactual if sliding window (currently 1Kbp) over any overlap deviates by more than this percentage from the overlap mean
+CSSW::ClassifyPath(int MaxArtefactDev,			// classify path as artefactual if sliding window (currently 500bp) over any overlap deviates by more than this percentage from the overlap mean
 				    UINT32 ProbeStartOfs,		// alignment starts at this probe sequence offset (1..n)
 					UINT32 ProbeEndOfs,			// alignment ends at this probe sequence offset
 					UINT32 TargStartOfs,		// alignment starts at this target sequence offset (1..n)
@@ -2594,8 +2629,14 @@ tsSSWTraceback *pTraceBack;
 
 if(MaxArtefactDev < 1)							// <= 0 to disable path classification
 	return(0);
-if((ProbeEndOfs - ProbeStartOfs) < cTraceBackWin) // need sufficent overlap to check for window deviations
-	return(0);
+
+if(ProbeStartOfs == 0 || ProbeEndOfs <= ProbeStartOfs ||
+	TargStartOfs == 0 || TargEndOfs <= TargStartOfs)
+	return(1);
+
+if((ProbeEndOfs - ProbeStartOfs) < cTraceBackWin || // need sufficient overlap to check for window deviations
+	(TargEndOfs - TargStartOfs) < cTraceBackWin)
+	return(1);
 
 if(m_pAllWinScores == NULL)
 	{
@@ -2611,7 +2652,7 @@ if(MaxArtefactDev > 50)			// clamp to be in range 1 to 50
 
 // calculate a score over the path using path classification scoring
 // then check for localised significant deviations from the overall rate along the target
-// using a window of 1Kbp and expecting the peak deviation from overall mean to be less than MaxArtefactDev
+// using a window of cTraceBackWin (currently 500bp) and expecting the peak deviation from overall mean to be less than MaxArtefactDev
 Score = 0;
 bGapOpened = false;
 ProbeOfs = 0;
@@ -2691,7 +2732,7 @@ for(WinScoreIdx = 1; WinScoreIdx < m_NumWinScores; WinScoreIdx+=1,pWinScore+=1 )
 MeanWinScore = (int)(SumWinScores / (1+m_NumWinScores));
 
 if(MaxWinScore > (MeanWinScore * (MaxArtefactDev + 100))/100 || ((MinWinScore * (MaxArtefactDev + 100))/100) < MeanWinScore)	
-	return(1);			// classify as being artefact
+	return(1);			// classify as being artifact
 
 
 return(0);
@@ -2718,9 +2759,22 @@ if(ppAlignOps != NULL)
 m_MAAlignOps = 0;
 NumOps = 0;
 pOps = m_pMAAlignOps;
-pTraceBack = InitiateTraceback(ProbeEndOfs,TargEndOfs);
+
+if(ProbeStartOfs == 0 || ProbeEndOfs <= ProbeStartOfs || 
+   TargStartOfs == 0 || TargEndOfs <= TargStartOfs)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"TracebacksToAlignOps: parameterisation errors");
+	return(eBSFerrInternal);
+	}
+
+if((pTraceBack = InitiateTraceback(ProbeEndOfs,TargEndOfs))==NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"TracebacksToAlignOps: InitiateTraceback failed");
+	return(eBSFerrInternal);
+	}
+
 do {
-	if((m_MAAlignOps + 10) > m_AllocdMAAlignOpsSize)	// realloc as may be required
+	if((m_MAAlignOps + 100) > m_AllocdMAAlignOpsSize)	// realloc as may be required
 		{
 		size_t memreq;
 		void *pAllocd;

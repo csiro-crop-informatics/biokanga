@@ -32,9 +32,11 @@ const UINT8 cHCDfltWeightingFactor = (0x83);   // if a high confidence sequence 
 
 const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
 const int cDfltMaxArtefactDev = 50;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
-const int cDfltScaffMaxArtefactDev = 15;		// but when scaffolding with error corrected reads there should a much smaller percentage deviation from the mean
+const int cDfltMaxConsolidateArtefactDev = 20;	// default percentage deviation from the mean allowed when classing overlaps as being artefactual if consolidating
+const int cDfltScaffMaxArtefactDev = 20;		// but when scaffolding with error corrected reads there should a much smaller percentage deviation from the mean
 const int cMaxMaxArtefactDev = 70;			// user can specify up to this maximum 
 
+const int cReqConsensusCoverage = 20;   // targeting this mean probe sequence coverage to have confidence in consensus error correction
 
 const int cMaxPacBioErrCorLen = cMaxSWQuerySeqLen;			// allowing for error corrected read sequences of up to this length
 const int cMaxPacBioMAFLen    = cMaxSWMAFBuffSize;			// allowing for multialignment format buffering of up to this length
@@ -46,13 +48,14 @@ const int cDfltRMIBufferSize =   cMaxSWMAFBuffSize;			// each worker thread defa
 
 const UINT32 cRMI_SecsTimeout = 180;				// allowing for most RMI SW requests to take at most this many seconds to complete (request plus response)
 const UINT32 cRMI_AlignSecsTimeout = 600;			// allowing for a RMI SW alignment request to take at most this many seconds to complete (request plus response)
-const UINT32 cRMIThreadsPerCore = 5;				// current guestimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
+const UINT32 cRMIThreadsPerCore = 8;				// current guesstimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
                                                     // predicated on assuming that the qualifying of read pairs for SW requires around 20% of per core time, the other 80% is spent on SW
 
 typedef enum TAG_ePBPMode {								// processing mode
 	ePBPMErrCorrect,									// error correct
 	ePBPMConsensus,										// generate consensus from previously generated multiple alignments
-	ePBPMOverlapDetail									// generate overlap detail from previously generated consensus sequences
+	ePBPMOverlapDetail,									// generate overlap detail from previously generated consensus sequences
+	ePBMConsolidate										// consolidate error corrected sequences into representative sequences (usually used to generate representative transcripts) 
 	} etPBPMode;
 
 
@@ -83,6 +86,19 @@ typedef struct TAG_sPBEScaffNode {
 	UINT8 flgUnderlength:1;         // sequence is under length
 	UINT8 flgHCseq:1;				// loaded as a high confidence (non-PacBio) sequence
 } tsPBEScaffNode;
+
+typedef struct TAG_sECChkPt {
+	UINT32 NodeID;					// uniquely identifies this node
+	UINT32 EntryID;					// suffix array entry identifier for indexed sequence
+	UINT32 SeqLen;					// length in bp of this scaffolding node sequence
+	INT64  ECFileOfs;				// error corrected reads file offset post write of error corrected sequences for this node
+	UINT8 flgCpltdProc:1;			// sequence processing completed
+	UINT8 flgContained:1;			// sequence is fully contained within at least one other sequence
+	UINT8 flgContains:1;			// sequence fully contains at least one other sequence
+	UINT8 flgUnderlength:1;         // sequence is under length
+	UINT8 flgHCseq:1;				// loaded as a high confidence (non-PacBio) sequence	
+	} tsECChkPt;
+
 
 typedef struct TAG_sPBECoreHitCnts {
 	UINT32 TargNodeID;				// node identifier for hit target sequence	
@@ -178,6 +194,12 @@ class CPBErrCorrect
 
 	bool m_bRMI;							// set true if using RMI SW methods
 
+#ifdef WIN32
+	FILETIME m_PrevIdleTime;				// used to load balance between RMI and non-RMI threads
+	FILETIME m_PrevKernelTime;				// by checking overall process times every 60 secs and adjusting number of non-RMI threads to minimise idle time yet ensure there is at least 1 sec idle per 60 secs elapsed 
+	FILETIME m_PrevUserTime;
+#endif
+
 	char m_szRMIHostName[cMaxHostNameLen];	// listening on this host name if RMI SW methods utilised
 	char m_szRMIServiceName[cMaxServiceNameLen];	// listening on this service/port name for RMI SW service providers
 	CBKSRequester *m_pRequester;			// if using RMI SW methods then will be initialised to pt to an instance of CBKSRequester
@@ -206,10 +228,12 @@ class CPBErrCorrect
 	UINT32 m_TotAlignSeqs;					// between this number of sequence pairs
 
 	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
+
+	UINT32 m_TranscriptomeLens;				// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
 	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences must be of at least this length
 	UINT32 m_MaxPBRdSeqLen;					// and no longer than this length
 	UINT32 m_MinPBSeqOverlap;				// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
-	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 	UINT32 m_MinHCSeqLen;					// only accepting hiconfidence reads of at least this length (defaults to 1Kbp)
 	UINT32 m_MinHCSeqOverlap;				// any overlap of a hiconfidence read onto a target PacBio read must be of at least this many bp to be considered for contributing towards error correction (defaults to 1Kbp) 
 	UINT8 m_HCRelWeighting;					// hiconfidence read overlaps are usually weighted higher than normal lesser confidence read overlaps when calling consensus bases  
@@ -229,6 +253,10 @@ class CPBErrCorrect
 	char m_szErrCorFile[_MAX_PATH];			// name of file into which write error corrected and scored sequences
 	int m_hErrCorFile;						// file handle for writing error corrected and scored sequences
 	UINT32 m_ErrCorFileUnsyncedSize;		// count of chars which have been written to file handle m_hErrCorFile but may not be on disk
+
+	char m_szChkPtsFile[_MAX_PATH];			// name of file used for checkpointing in case resume processing is required
+	int m_hChkPtsFile;						// opened file handle for checkpointing
+
 
 	int ErrCorBuffIdx;						// index into m_szErrCorLineBuff at which to next copy a corrected sequence
 	int AllocdErrCorLineBuff;				// allocation size for m_pszErrCorLineBuff
@@ -254,7 +282,7 @@ class CPBErrCorrect
 	CSfxArrayV3 *m_pSfxArray;					// suffix array file (m_szTargFile) is loaded into this
 
 	void Init(void);							// initialise state to that immediately following construction
-	void Reset(bool bSync);						// reset state, if bSync true then fsync before closing output file handles
+	void Reset(void);						// reset state
 
 	INT64 EstSumSeqLens(int NumTargFiles,char **pszTargFiles);		// guestimate and return total sequence length by simply summing the lengths of each file - likely to grossly over estimate
 
@@ -286,14 +314,14 @@ class CPBErrCorrect
 	int IdentifyCoreHits(UINT32 ProbeNodeID,	// identify all overlaps of this probe sequence PBScaffNodeID onto target sequences
 				tsThreadPBErrCorrect *pPars);		// thread specific
 
-	int					// returns index 1..N of just added core hit or -1 if errors
+	int					// returns 0 if core overlapped (uses a non-exhaustive search) a previously added core, index 1..N of just added core hit or -1 if errors
 		AddCoreHit(UINT32 ProbeNodeID,			// core hit was from this probe scaffold node 
 			   bool bRevCpl,					// true if core sequence was revcpl'd before matching
 			   UINT32 ProbeOfs,                 // hit started at this probe offset
 			   UINT32 TargNodeID,               // probe core matched onto this target scaffold node
 			   UINT32 TargOfs,                  // probe core matched starting at this target loci
 			   UINT32 HitLen,					// hit was of this length
-               tsThreadPBErrCorrect *pPars);		// thread specific
+               tsThreadPBErrCorrect *pPars);	// thread specific
 
 	UINT32										// returned tsPBScaffNode node identifier
 		MapEntryID2NodeID(UINT32 EntryID);		// suffix array entry identifier
@@ -435,7 +463,7 @@ static int SortCoreHitsDescending(const void *arg1, const void *arg2);
 						UINT32 ProbeRelLen,		    // and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
 						UINT32 TargRelLen,		    // and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
 						UINT32 OverlapFloat,		// allowing up to this much float on overlaps to account for the PacBio error profile
-						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 						UINT32 MinOverlapLen,       // minimum accepted overlap length
 						UINT32 MaxOverlapLen,      // max expected overlap length
 						UINT8 *pRetClass,			// returned overlap classification
@@ -515,6 +543,7 @@ public:
 		int SWGapOpenPenalty,		// gap opening penalty (-50..0)
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
+		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
 		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
 		int MaxPBSeqLen,			// no more than this length (defaults to 30Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
@@ -530,6 +559,7 @@ public:
 		char *pszHiConfFiles[],		// input hiconfidence files		
 	    char *pszErrCorFile,		// name of file into which write error corrected sequences
 		char *pszMultiAlignFile,	// name of file into which write multiple alignments
+		char *pszChkPtsFile,        // name of file used for checkpointing in case resume processing is required
 		int NumThreads);			// maximum number of worker threads to use
 
 		int

@@ -557,44 +557,81 @@ CBKSRequester::UnpackFromJobIDEx(tJobIDEx JobIDEx,				// unpack from this extend
 				UINT32 *pTypeID,				// returned service TypeID, will be in the range 1..15
 				UINT32 *pTypeSessionID)			// returned index of this session in the service type, will be in the range 1..511
 {
-UINT32 Unpacked;
-if(JobIDEx <= 0)
+tJobIDEx OrigJobIDEx;
+UINT32 ReqID;
+UINT32 SessionID;
+UINT32 InstanceID;
+UINT32 TypeID;
+UINT32 TypeSessionID;
+tsBKSType *pType;
+tsBKSRegSessionEx *pSession;
+UINT32 ReqRespInstOfs;
+tsReqRespInst *pReqRespInst;
+
+if(pReqID != NULL)
+	*pReqID = 0;
+if(pSessionID != NULL)
+	*pSessionID = 0;
+if(pInstanceID != NULL)
+	*pInstanceID = 0;
+if(pTypeID != NULL)
+	*pTypeID = 0;
+if(pTypeSessionID != NULL)
+	*pTypeSessionID = 0;
+
+if((OrigJobIDEx = JobIDEx) <= 0)
 	return(false);
 
-Unpacked = JobIDEx & 0x0ffffff;
-if(Unpacked == 0)
+ReqID = JobIDEx & 0x0ffffff;
+if(ReqID == 0)
 	return(false);
 if(pReqID != NULL)
-	*pReqID = Unpacked;
+	*pReqID = ReqID;
 JobIDEx >>= 24;
 
-Unpacked = JobIDEx & 0x01ffff;
-if (Unpacked == 0)
+SessionID = JobIDEx & 0x01ffff;
+if (SessionID == 0)
 	return(false);
 if (pSessionID != NULL)
-	*pSessionID = Unpacked;
+	*pSessionID = SessionID;
 JobIDEx >>= 17;
 
-Unpacked = JobIDEx & 0x01ff;
-if (Unpacked == 0)
+InstanceID = JobIDEx & 0x01ff;
+if (InstanceID == 0)
 	return(false);
 if (pInstanceID != NULL)
-	*pInstanceID = Unpacked;
+	*pInstanceID = InstanceID;
 JobIDEx >>= 9;
 
-Unpacked = JobIDEx & 0x0f;
-if (Unpacked == 0)
+TypeID = JobIDEx & 0x0f;
+if(TypeID == eBKSPTUndefined || TypeID >= eBKSPTPlaceHolder)
 	return(false);
 if (pTypeID != NULL)
-	*pTypeID = Unpacked;
+	*pTypeID = TypeID;
 JobIDEx >>= 4;
 
-Unpacked = JobIDEx & 0x01ff;
-if (Unpacked == 0)
+TypeSessionID = JobIDEx & 0x01ff;
+if (TypeSessionID == 0)
 	return(false);
 if (pTypeSessionID != NULL)
-	*pTypeSessionID = Unpacked;
+	*pTypeSessionID = TypeSessionID;
 
+pType = &m_pBKSTypes[TypeID - 1];
+if(pType->Detail.BKSPType != TypeID || TypeSessionID > pType->MaxSessions)
+	return(false);
+
+pSession = pType->pSessions[TypeSessionID-1];
+if(pSession == NULL || pSession->Session.SessionID != SessionID || pSession->Session.BKSPState >= eBKSPSRegisteredTerm)
+	return(false);
+
+if(pSession->Session.MaxInstances < InstanceID)
+	return(false);
+
+ReqRespInstOfs = pType->ReqRespInstSize;
+ReqRespInstOfs *= (InstanceID-1);
+pReqRespInst = (tsReqRespInst *)&pSession->pReqResp[ReqRespInstOfs];
+if(pReqRespInst->JobIDEx != OrigJobIDEx)
+	return(false);
 return(true);
 }
 
@@ -695,7 +732,7 @@ AcquireLock(true);
 if(pType->NumSessions == 0)			// need at least one service provider to continue exploring if job can be accepted
 	{
 	ReleaseLock(true);
-	return(0);
+	return(-1);
 	}
 
 pLeastBusy = NULL;
@@ -1020,8 +1057,13 @@ if(JobID < 1)					// job identifier must be supplied and it must be valid
 if(pJobRslt != NULL)
 	*pJobRslt = 0;
 
+AcquireLock(false);
 if(!UnpackFromJobIDEx(JobID,&ReqID,&SessionID,&InstanceID,&TypeID,&TypeSessionID))
+	{
+	ReleaseLock(false);
 	return(-1);
+	}
+ReleaseLock(false);
 
 if(TypeID == eBKSPTUndefined || TypeID >= eBKSPTPlaceHolder)
 	return(-1);
@@ -1092,7 +1134,7 @@ if(pReqRespInst->FlgCpltd)		// set if job has completed
 		pSession->Session.NumCpltd -= 1;
 
 #ifdef WIN32
-		InterlockedDecrement(&m_TotRespsAvail);	  // letting TCP session handling thread there is at least one worker thread wanting to check for a job response	
+		InterlockedDecrement(&m_TotRespsAvail);	  // letting TCP session handling thread know there is at least one worker thread wanting to check for a job response	
 #else
 		__sync_fetch_and_sub(&m_TotRespsAvail,1);
 #endif

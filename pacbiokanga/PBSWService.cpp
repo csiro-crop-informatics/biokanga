@@ -177,6 +177,16 @@ ProcSWService(int argc, char** argv)
 			gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
 #endif
 
+		int MaxAvailServMemGB;
+#ifdef _WIN32
+		MEMORYSTATUSEX MemStatus;
+		MemStatus.dwLength = sizeof (MemStatus);
+		GlobalMemoryStatusEx(&MemStatus);
+		MaxAvailServMemGB = (int)(((MemStatus.ullAvailPhys + 0x01fffffff)*(UINT64)75) / ((UINT64)100 * 0x03fffffff)); 
+#else
+		MaxAvailServMemGB = (int)(((((UINT64)sysconf(_SC_PHYS_PAGES) * (UINT64)sysconf(_SC_PAGESIZE)) + 0x01fffffff)*(UINT64)75) / ((UINT64)100 * 0x03fffffff));
+#endif
+
 		if(MaxServInsts == 0 || MaxServMemGB == 0)
 			{
 #ifdef _WIN32
@@ -187,26 +197,28 @@ ProcSWService(int argc, char** argv)
 				MaxServInsts = SystemInfo.dwNumberOfProcessors;
 				}
 			if(MaxServMemGB == 0)
-				{
-				MEMORYSTATUSEX MemStatus;
-				MemStatus.dwLength = sizeof (MemStatus);
-				GlobalMemoryStatusEx(&MemStatus);
-				MaxServMemGB = (int)(((MemStatus.ullAvailPhys + 0x01fffffff)*(UINT64)75) / ((UINT64)100 * 0x03fffffff)); 
-				}
+				MaxServMemGB = MaxAvailServMemGB; 
 #else
 			if(MaxServInsts == 0)
 				MaxServInsts = sysconf(_SC_NPROCESSORS_CONF);
 			if(MaxServMemGB == 0)
-				MaxServMemGB = (int)(((((UINT64)sysconf(_SC_PHYS_PAGES) * (UINT64)sysconf(_SC_PAGESIZE)) + 0x01fffffff)*(UINT64)75) / ((UINT64)100 * 0x03fffffff));
+				MaxServMemGB = MaxAvailServMemGB;
 #endif
-			if(MaxServMemGB < 1)
+			if(MaxAvailServMemGB < 12)
 				{
 				gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: Insufficent physical memory on this host");
 				exit(1);
 				}
 			}
 
-
+		// clamp service instances according to available physical memory
+		// allow at most 6GB per service instance
+		int ClampedServInsts = min(MaxServInsts,(MaxAvailServMemGB + 3)/6);
+		if(ClampedServInsts < MaxServInsts)
+			{
+			gDiagnostics.DiagOut(eDLWarn, gszProcName, "Warning: Insufficient physical memory on this host, clamping service instances from %d to be a maximum of %d",MaxServInsts, ClampedServInsts);
+			MaxServInsts = ClampedServInsts;
+			}
 
 		szHostName[0] = '\0';
 		if (host->count)

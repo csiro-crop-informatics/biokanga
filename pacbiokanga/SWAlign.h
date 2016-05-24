@@ -127,7 +127,7 @@ class CSWAlign
 	UINT32 m_MaxTargSeqLen;				// longest target sequence length loaded
 	CSfxArrayV3 *m_pSfxArray;			// targeted sequences are loaded/indexed into this suffix array
 
-	int					// returns index 1..N of just added core hit or -1 if errors
+	int					// returns 0 if core overlapped (uses a non-exhaustive search) a previously added core, index 1..N of just added core hit or -1 if errors
 	AddCoreHit(tsPBSSWInstance *pInstance,		// using this instance
 				bool bRevCpl,					// true if core sequence was revcpl'd before matching
 			   UINT32 ProbeOfs,                 // hit started at this probe offset

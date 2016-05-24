@@ -221,7 +221,7 @@ class CPBECContigs
 	int IdentifyCoreHits(UINT32 HiConfSeqID,	// identify all overlaps of this probe sequence HiConfSeqID onto target sequences
 				tsThreadPBECContigs *pPars);		// thread specific
 
-	int					// returns index 1..N of just added core hit or -1 if errors
+	int					// returns 0 if core overlapped (uses a non-exhaustive search) a previously added core, index 1..N of just added core hit or -1 if errors
 		AddCoreHit(UINT32 HiConfSeqID,			// core hit was from this probe  
 			   bool bRevCpl,					// true if core sequence was revcpl'd before matching
 			   UINT32 ProbeOfs,                 // hit started at this probe offset

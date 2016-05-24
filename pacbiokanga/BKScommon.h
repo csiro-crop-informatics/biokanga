@@ -44,7 +44,7 @@ const UINT32 cAbsMaxRespPayloadSize = 0x03ffffff;	// response payloads from the 
 const UINT32 cAbsMaxQuerySeqLen = 0x01ffffff;       // maximum length of any query sequence
 const UINT32 cAbsMaxTargSeqLen = 0x01ffffff;		// maximum length of any target sequence
 const UINT32 cAbsMaxParamLen = 50000;				// maximum length of any parameterisation set
-const UINT32 cAbsMinProcSecs = 60;					// allowing at least this many seconds for a service providers to process and return response for any individual request
+const UINT32 cAbsMinProcSecs = 120;					// allowing at least this many seconds for a service providers to process and return response for any individual request
 const UINT32 cAbsMaxProcSecs = 36000;				// service providers expected to take less than this number of seconds to process and return response for any individual request
 
 
@@ -57,7 +57,7 @@ const UINT32 cMaxSWReqPayloadSize = (cMaxSWQuerySeqLen + cMaxSWTargSeqLen + cMax
 const UINT32 cMaxSWMAFBuffSize = (cTypicalSWSeqLen * 200 * 10); // allowing for MAFs to be returned with up to 200x coverage, 10x to allow for InDels, over typically sized reads 
 const UINT32 cMaxSWRespPayloadSize = (cMaxSWMAFBuffSize + 0x0fff);	// maximal length response payloads from the service provider, including framing
 
-const UINT32 cMaxSWProcSecs = 600;				  // service providers expected to take less than this number of seconds to process and return response for any individual request
+const UINT32 cMaxSWProcSecs = 1200;				  // service providers expected to take less than this number of seconds to process and return response for any individual request
 
 
 // Endpoint service providers are classified as providing one of the following exclusive service types

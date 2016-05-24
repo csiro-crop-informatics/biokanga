@@ -43,6 +43,7 @@ const UINT32 cMaxMAFBlockErrCorLen = cSSWMaxProbeOrTargLen/50;	// allowing for e
 const UINT32 cMaxMAFBlockLen = (cMaxMAFBlockErrCorLen * 100);	// allowing for multialignment format block buffering of up to this length
 
 const int cMaxProbeSWs = 200;							// explore with SW at most this many probe alignments against target sequences
+const int cMaxConsolidateProbeSWs = 10000;				// when processing for transcripts then allow for many more probe alignments
 
 // following are the method enumerations used when service providers are utilised
 typedef enum TAG_eSWMethod {
@@ -182,7 +183,7 @@ typedef struct TAG_sConfBase {   // associating consensus base with correspondin
 } tsConfBase;
 
 
-const int cTraceBackWin = 1000;					// maintaining traceback window of this size when attempting to classify paths
+const int cTraceBackWin = 500;					// maintaining traceback window of this size when attempting to classify paths
 typedef struct TAG_sTraceBackScore {
 	int ProbeOfs;								// at this probe sequence alignment start relative offset
 	int Score;									// was this accumulated score
@@ -197,7 +198,7 @@ typedef struct TAG_sCombinedTargAlignPars {
 	UINT32 ProbeRelLen;			// and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
 	UINT32 TargRelLen;			// and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
 	UINT32 OverlapFloat;		// allowing up to this much float on overlaps to account for the PacBio error profile
-	UINT32 MaxArtefactDev;		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+	UINT32 MaxArtefactDev;		// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 	UINT32 MinOverlapLen;       // minimum accepted overlap length
 	UINT32 MaxOverlapLen;       // max expected overlap length
 	UINT8 TargFlags;		    // bit 7 set if target loaded as a high confidence sequence, bits 0..3 is weighting factor to apply when generating consensus bases
@@ -459,7 +460,7 @@ public:
 						UINT32 ProbeRelLen,		    // and SW with this probe relative length starting from m_ProbeStartRelOfs - if 0 then until end of probe sequence
 						UINT32 TargRelLen,		    // and SW with this target relative length starting from m_TargStartRelOfs - if 0 then until end of target sequence
 						UINT32 OverlapFloat,		// allowing up to this much float on overlaps to account for the PacBio error profile
-						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 1Kbp over any overlap deviates by more than this percentage from the overlap mean
+						UINT32 MaxArtefactDev,		// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
 						UINT32 MinOverlapLen,       // minimum accepted overlap length
 						UINT32 MaxOverlapLen,      // max expected overlap length
 						UINT8 *pRetProcPhase,			// processing phase completed

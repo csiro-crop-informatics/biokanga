@@ -1221,14 +1221,17 @@ if((Rslt = LoadSeqs(m_MinContigLen,1,&pszContigFile,false,cFlgLCSeq)) < eBSFSucc
 	}
 
 	// get number of contig sequences accepted for error correction
-if((NumTargSeqs = m_pSfxArray->GetNumEntries()) < 1)
+if((int)(NumTargSeqs = m_pSfxArray->GetNumEntries()) < 1)
 	{
 	NumTargSeqs = 0;
 	TotTargSeqLen = 0;
 	}
 else
 	TotTargSeqLen = m_pSfxArray->GetTotSeqsLen();
-MaxTargSeqLen = m_pSfxArray->GetMaxSeqLen();
+if(NumTargSeqs > 0)
+	MaxTargSeqLen = m_pSfxArray->GetMaxSeqLen();
+else
+	MaxTargSeqLen = 0;
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loaded for error correcting %d assembled contig sequences totaling %lldbp",NumTargSeqs,TotTargSeqLen);
 
@@ -1242,7 +1245,7 @@ if(MaxTargSeqLen > cMaxRefSeqLen)
 
 if(NumTargSeqs < 1)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Need at least 1 contig sequences for errror correction accepted from file");
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Need at least 1 contig sequences for error correction accepted from file");
 	m_pSfxArray->Close(false);
 	Reset(false);
 	return(eBSFerrNoEntries);
@@ -2190,7 +2193,7 @@ return(0);
 }
 
 
-int					// returns index 1..N of just added core hit or -1 if errors
+int					// returns 0 if core overlapped (uses a non-exhaustive search) a previously added core, index 1..N of just added core hit or -1 if errors
 CPBECContigs::AddCoreHit(UINT32 ProbeNodeID,			// core hit was from this probe scaffold node 
 			   bool bRevCpl,					// true if core sequence was revcpl'd before matching
 			   UINT32 ProbeOfs,                 // hit started at this probe offset
@@ -2199,7 +2202,10 @@ CPBECContigs::AddCoreHit(UINT32 ProbeNodeID,			// core hit was from this probe s
 			   UINT32 HitLen,					// hit was of this length
                tsThreadPBECContigs *pPars)			// thread specific
 {
-tsPBECCCoreHit *pCoreHit;
+UINT32 ExpdHitLen;
+UINT32 NumHits2Chk; 
+UINT32 HitsChkd;
+tsPBECCCoreHit *pCurCoreHit;
 
 if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory to hold additional cores?
 	{
@@ -2229,16 +2235,35 @@ if((pPars->NumCoreHits + 5) > pPars->AllocdCoreHits)	// need to realloc memory t
 		pPars->AllocdCoreHits = coresreq; 
 		}
 		
-pCoreHit = &pPars->pCoreHits[pPars->NumCoreHits++];
 
-pCoreHit->ProbeNodeID = ProbeNodeID;
-pCoreHit->flgRevCpl = bRevCpl ? 1 : 0;
-pCoreHit->flgMulti = 0;
-pCoreHit->ProbeOfs = ProbeOfs;
-pCoreHit->TargNodeID = TargNodeID;
-pCoreHit->HitLen = HitLen;
-pCoreHit->TargOfs = TargOfs;
-memset(&pCoreHit[1],0,sizeof(tsPBECCCoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
+// non-exhaustive check to see if core is overlapping a previously added core
+// search back over at most 2000 recently added cores for overlaps
+ExpdHitLen = min(50,HitLen * 3); // allowing for some float on the overlap loci and length
+if(pPars->NumCoreHits > 0)
+	{
+	NumHits2Chk = min(2000,pPars->NumCoreHits);
+	pCurCoreHit=&pPars->pCoreHits[pPars->NumCoreHits-1];
+	for(HitsChkd = 0; HitsChkd < NumHits2Chk; HitsChkd+=1, pCurCoreHit-=1)
+		{
+		if(pCurCoreHit->TargNodeID == TargNodeID &&
+		  pCurCoreHit->ProbeNodeID == ProbeNodeID &&
+			pCurCoreHit->flgRevCpl == (bRevCpl ? 1 : 0) &&
+			(pCurCoreHit->ProbeOfs >= (ProbeOfs < ExpdHitLen ? 0 : ProbeOfs - ExpdHitLen) && pCurCoreHit->ProbeOfs <= (ProbeOfs + ExpdHitLen)) &&
+			(pCurCoreHit->TargOfs >= (TargOfs < ExpdHitLen ? 0 : TargOfs - ExpdHitLen) && pCurCoreHit->TargOfs <= (TargOfs + ExpdHitLen)))
+			return(0);
+		}	
+	}
+ 
+pCurCoreHit = &pPars->pCoreHits[pPars->NumCoreHits++];
+
+pCurCoreHit->ProbeNodeID = ProbeNodeID;
+pCurCoreHit->flgRevCpl = bRevCpl ? 1 : 0;
+pCurCoreHit->flgMulti = 0;
+pCurCoreHit->ProbeOfs = ProbeOfs;
+pCurCoreHit->TargNodeID = TargNodeID;
+pCurCoreHit->HitLen = HitLen;
+pCurCoreHit->TargOfs = TargOfs;
+memset(&pCurCoreHit[1],0,sizeof(tsPBECCCoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
 return(pPars->NumCoreHits);
 }
 
@@ -2322,11 +2347,12 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=pPars->DeltaCoreOfs,pCoreSe
 							HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
 			continue;
 
-  		AddCoreHit(HiConfSeqID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars);
-		HitsThisCore += 1;
-		if(HitsThisCore > pPars->MaxAcceptHitsPerSeedCore)
-			break;
-
+  		if(AddCoreHit(HiConfSeqID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars)>0)
+			{
+			HitsThisCore += 1;
+			if(HitsThisCore > pPars->MaxAcceptHitsPerSeedCore)
+				break;
+			}
 		}
 	if(HitsThisCore)	// if at least one hit from this core
 		{

@@ -639,7 +639,7 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - %d parsed, %d accep
 return(Rslt);
 }
 
-int					// returns index 1..N of just added core hit or -1 if errors
+int					// returns 0 if core overlapped (uses a non-exhaustive search) a previously added core, index 1..N of just added core hit or -1 if errors
 CSWAlign::AddCoreHit(tsPBSSWInstance *pInstance,		// using this instance
 				bool bRevCpl,					// true if core sequence was revcpl'd before matching
 			   UINT32 ProbeOfs,                 // hit started at this probe offset
@@ -647,7 +647,10 @@ CSWAlign::AddCoreHit(tsPBSSWInstance *pInstance,		// using this instance
 			   UINT32 TargOfs,                  // probe core matched starting at this target loci
 			   UINT32 HitLen)					// hit was of this length
 {
-tsPBSSWACoreHit *pCoreHit;
+UINT32 ExpdHitLen;
+UINT32 NumHits2Chk;
+UINT32 HitsChkd;
+tsPBSSWACoreHit *pCurCoreHit;
 
 if((pInstance->NumCoreHits + 5) > pInstance->AllocdCoreHits)	// need to realloc memory to hold additional cores?
 	{
@@ -676,14 +679,33 @@ if((pInstance->NumCoreHits + 5) > pInstance->AllocdCoreHits)	// need to realloc 
 		pInstance->AllocdCoreHits = coresreq; 
 		}
 		
-pCoreHit = &pInstance->pCoreHits[pInstance->NumCoreHits++];
-pCoreHit->flgRevCpl = bRevCpl ? 1 : 0;
-pCoreHit->flgMulti = 0;
-pCoreHit->ProbeOfs = ProbeOfs;
-pCoreHit->TargSeqID = TargSeqID;
-pCoreHit->HitLen = HitLen;
-pCoreHit->TargOfs = TargOfs;
-memset(&pCoreHit[1],0,sizeof(tsPBSSWACoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
+
+// non-exhaustive check to see if core is overlapping a previously added core
+// search back over at most 2000 recently added cores for overlaps
+ExpdHitLen = min(50,HitLen * 3); // allowing for some float on the overlap loci and length
+if(pInstance->NumCoreHits > 0)
+	{
+	NumHits2Chk = min(2000,pInstance->NumCoreHits);
+	pCurCoreHit=&pInstance->pCoreHits[pInstance->NumCoreHits-1];
+	for(HitsChkd = 0; HitsChkd < NumHits2Chk; HitsChkd+=1, pCurCoreHit-=1)
+		{
+		if(pCurCoreHit->TargSeqID == TargSeqID &&
+			pCurCoreHit->flgRevCpl == (bRevCpl ? 1 : 0) &&
+			(pCurCoreHit->ProbeOfs >= (ProbeOfs < ExpdHitLen ? 0 : ProbeOfs - ExpdHitLen) && pCurCoreHit->ProbeOfs <= (ProbeOfs + ExpdHitLen)) &&
+			(pCurCoreHit->TargOfs >= (TargOfs < ExpdHitLen ? 0 : TargOfs - ExpdHitLen) && pCurCoreHit->TargOfs <= (TargOfs + ExpdHitLen)))
+			return(0);
+		}	
+	}
+ 
+
+pCurCoreHit = &pInstance->pCoreHits[pInstance->NumCoreHits++];
+pCurCoreHit->flgRevCpl = bRevCpl ? 1 : 0;
+pCurCoreHit->flgMulti = 0;
+pCurCoreHit->ProbeOfs = ProbeOfs;
+pCurCoreHit->TargSeqID = TargSeqID;
+pCurCoreHit->HitLen = HitLen;
+pCurCoreHit->TargOfs = TargOfs;
+memset(&pCurCoreHit[1],0,sizeof(tsPBSSWACoreHit));	// ensuring that used cores are always terminated with a marker end of cores initialised to 0
 return(pInstance->NumCoreHits);
 }
 
@@ -747,16 +769,17 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=m_DeltaCoreOfs,pCoreSeq+=m_
     while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pInstance->ProbeSeqLen - ProbeOfs,m_SeedCoreLen,0,1,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
 		{
 		PrevHitIdx = NextHitIdx;
-  		AddCoreHit(pInstance,bRevCpl,ProbeOfs,HitEntryID,HitLoci,m_SeedCoreLen);
-		HitsThisCore += 1;
-		if(HitsThisCore > m_MaxAcceptHitsPerSeedCore)
+  		if(AddCoreHit(pInstance,bRevCpl,ProbeOfs,HitEntryID,HitLoci,m_SeedCoreLen) > 0)
 			{
-			TooManyHits += 1;
-			RemoveAddedCoreHits(pInstance,HitsThisCore);
-			HitsThisCore = 0;
-			break;
+			HitsThisCore += 1;
+			if(HitsThisCore > m_MaxAcceptHitsPerSeedCore)
+				{
+				TooManyHits += 1;
+				RemoveAddedCoreHits(pInstance,HitsThisCore);
+				HitsThisCore = 0;
+				break;
+				}
 			}
-
 		}
 	if(HitsThisCore)	// if at least one hit from this core
 		{
@@ -1238,7 +1261,9 @@ if(pSWAInstance->NumCoreHits >= m_MinNumCores)
 
 			pPeakMatchesCell = pSWAInstance->pSW->Align(NULL, min(ProbeSeqLen, m_MaxTargSeqLen));
 			ProvSWchecked += 1;
-			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2))
+			if(pPeakMatchesCell != NULL && pPeakMatchesCell->NumMatches >= (MinOverlapLen/2) &&
+				pPeakMatchesCell->PFirstAnchorStartOfs > 0 && pPeakMatchesCell->PFirstAnchorStartOfs < pPeakMatchesCell->PLastAnchorEndOfs &&
+				pPeakMatchesCell->TFirstAnchorStartOfs > 0 && pPeakMatchesCell->TFirstAnchorStartOfs < pPeakMatchesCell->TLastAnchorEndOfs)
 				{
 				PeakMatchesCell = *pPeakMatchesCell;
 				ProbeAlignLength = PeakMatchesCell.EndPOfs - PeakMatchesCell.StartPOfs + 1;

@@ -3162,6 +3162,7 @@ CSfxArrayV3::PreQualTargs(UINT32 ProbeEntryID,	// probe sequence entry identifie
 			etSeqBase *pProbeSeq,			// prequalify with cores from this probe sequence
 			int QualCoreLen,				// prequalifying core lengths
 			 int DeltaCoreOfs,				// offset core windows of QualCoreLen along the probe sequence when checking for overlaps
+			int TargLenDiffBp,				// 0 if disabled, accepted prequalified targets must have length within this differential (bp) of probe sequence length (used in transcriptome processing)
 			int MaxPreQuals,				// max number of target sequences to pre-qualify
 			tsQualTarg *pQualTargs)			// into this prequalified list
 {
@@ -3210,6 +3211,8 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=DeltaCoreOfs, pCoreSeq+=Del
 		PrevHitIdx = NxtHitIdx;
 		if(ProbeEntryID == TargEntryID)
 			continue;
+		if((UINT32)TargLenDiffBp > 0 && ((TargSeqLen > (ProbeSeqLen + (UINT32)TargLenDiffBp)) || (TargSeqLen < (ProbeSeqLen - (UINT32)TargLenDiffBp))))
+			continue;
 
 	   TargScoreLen = min(150, TargSeqLen - HitLoci); // attempting to quick SW score over up to 200bp with a minimum of 100bp, this range including the QualCoreLen exactly matching core
 	   if(TargScoreLen < 100)
@@ -3234,8 +3237,6 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=DeltaCoreOfs, pCoreSeq+=Del
 		if(OverlapIdentity < 60) // if able to get at least 60% of the TargScoreLen exactly matching then not worth the overhead of quickscore processing - just accept!
 			{
 			QuickScore = QuickScoreOverlap(TargScoreLen - MatchBaseLen,pQAnchor,pTAnchor);
-
-//			QuickScore = QuickScoreOverlap(min(10,MatchBaseLen),TargScoreLen - MatchBaseLen,pQAnchor,pTAnchor);
 			OverlapIdentity = ((MatchBaseLen + ((TargScoreLen - MatchBaseLen) * QuickScore)/100)*100)/TargScoreLen;
 			}
 		else
@@ -3563,10 +3564,26 @@ if(!PrevHitIdx)	// if locate first exact match using SeedCoreLen
 
 	if(!(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen))
 		{
-		HitLoci = (UINT32)(TargLoci - pEntry->StartOfs);
-
-		pEl2 = &pTarg[TargLoci];
-		bFirst = true;
+		if(NumPreQuals != 0 && pQualTargs != NULL)
+			{
+			bFirst = false;
+			pQualTarg = pQualTargs;
+			for(PreQualIdx = 0; PreQualIdx < NumPreQuals; PreQualIdx+=1, pQualTarg+=1)
+				{
+				if(pQualTarg->TargEntryID == *pTargEntryID)
+					{
+					bFirst = true;
+					break;
+					}
+				}
+			}
+		else
+			bFirst = true;
+		if(bFirst)
+			{
+			HitLoci = (UINT32)(TargLoci - pEntry->StartOfs);
+			pEl2 = &pTarg[TargLoci];
+			}
 		}
 	else
 		bFirst = false;
@@ -3585,6 +3602,7 @@ while(1)
 		
 		if((Cmp = CmpProbeTarg(pProbeSeq,pEl2,SeedCoreLen)) != 0)	// only 0 if still matching on the seed core
 			return(0);
+
 		if(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen)
 			{
 			PrevHitIdx+=1;
