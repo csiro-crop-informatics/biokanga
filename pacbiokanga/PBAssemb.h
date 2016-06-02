@@ -89,7 +89,7 @@ class CPBAssemb
 	UINT32 m_NumAcceptedOverlaps;			// this number of overlaps accepted for scaffolding
 
 	bool m_bAcceptOrphanSeqs;				// if true then report also report sequences which have no overlap with any other sequence
-	bool m_bAnySenseOvlps;		    		// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
+	bool m_bSenseOnlyOvlps;					// if false then both sense/sense and sense/antisense overlaps will be accepted and processed, otherwise sense/sense only overlaps accepted and processed
 
 	int m_NumErrCorrectedFiles;					// number of input error corrected file specs
 	char m_szErrCorrectedFiles[cMaxInFileSpecs][_MAX_PATH];		// input error corrected files
@@ -154,7 +154,7 @@ public:
 		int MinScaffOverlap,		// pairs of targeted scaffold sequences must overlap by at least this many bp to be considered for merging into a longer scaffold sequence (defaults to 5Kbp) 
 		int Min1kScore,             // minimum normalised 1Kbp overlap score
 		bool bAcceptOrphanSeqs,		// also accepting sequences which are not overlapped or overlapping any other sequence
-		bool bAnySenseOvlps,		// if false only sense/sense overlaps processed, if true then both sense/sense and sense/antisense overlaps will be accepted and processed
+		bool bSenseOnlyOvlps,		// if false then both sense/sense and sense/antisense overlaps will be accepted and processed, otherwise sense/sense only overlaps accepted and processed
 		char *pszMAFFile,			// pregenerated multialignment sequence overlap loci details
 		int NumErrCorrectedFiles,	// number of error corrected sequence specs
 		char *pszErrCorrectedFiles[],		// input error corrected sequence files
@@ -164,7 +164,8 @@ public:
 	UINT32   //  returns number of overlaps loaded and accepted, if > cMaxValidID then cast to teBSFrsltCodes for actual error 
 		LoadPacBioOvlps(char *pszPacBioOvlps,			// parse and load pregenerated PacBio sequence overlap loci CSV file 
 						bool bValidateOnly = false,		// true if parse and validate only
-						bool bSenseOnly = false);		// true if to only accept sense overlapping sense
+						bool bSenseOnlyOvlps = false);				// if false then both sense/sense and sense/antisense overlaps will be accepted and processed, otherwise sense/sense only overlaps accepted and processed
+
 };
 
 

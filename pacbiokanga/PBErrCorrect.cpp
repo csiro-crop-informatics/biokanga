@@ -67,8 +67,10 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		char *pszServiceName,		// Listen on this service name or port for for connections by service providers
 		int MaxRMI,					// max number of RMI service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads
-		int SampleRate,				// sample input sequences at this rate (1..100)
-		bool bAntisenseOvlps,		// true if to process for both sense/sense and sense/antisense overlaps
+		int SampleInRate,			// sample input sequences at this rate per 100
+		int SampleAcceptRate,		// sample accepted input sequences at this rate per 1000
+		int FiltMinHomoLen,			// filter PacBio reads for homopolymer runs >= this length (0 to disable filtering) 
+		bool bSenseOnlyOvlps,		// process for sense only overlaps (default is for sense/sense and sense/antisense overlaps)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -118,7 +120,8 @@ int Idx;                    // file index
 int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failure
 
 int PMode;					// processing mode
-bool bAntisenseOvlps;		// also process for antisense overlaps (default is for sense/sense overlaps only)
+bool bSenseOnlyOvlps;		// process for sense only overlaps (default is for sense/sense and sense/antisense overlaps)
+int FiltMinHomoLen;			// filter PacBio reads for homopolymer runs >= this length (0 to disable filtering) 
 int MinSeedCoreLen;			// use seed cores of this length when identifying putative overlapping sequences
 int MinNumSeedCores;        // require at least this many seed cores between overlapping sequences before attempting SW
 int DeltaCoreOfs;			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
@@ -155,9 +158,11 @@ char szOutFile[_MAX_PATH+1];				// where to write (ePBPMConsensus or ePBPMErrCor
 char szOutMAFile[_MAX_PATH+1];				// where to write optional multialignments
 char szChkPtsFile[_MAX_PATH+1];				// used for error correcting checkpointing
 
-int SampleRate;				// sample input sequences at this rate
-int NumberOfProcessors;		// number of installed CPUs
-int NumThreads;				// number of threads (0 defaults to number of CPUs)
+int SampleInRate;							// sample input sequences at this rate per 100
+int SampleAcceptRate;						// sample accepted input sequences at this rate per 1000
+
+int NumberOfProcessors;						// number of installed CPUs
+int NumThreads;								// number of threads (0 defaults to number of CPUs)
 
 int MaxNonRMI;								// max number of non-RMI SW threads
 int MaxRMI;									// max number of RMI service provider instances supported
@@ -176,7 +181,7 @@ struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file"
 
 struct arg_int *pmode = arg_int0("m","pmode","<int>",					"processing mode - 0 error correct, 1 consensus sequence only, 2 scaffold overlap detail only, 3 consolidate transcripts into representative");
 
-struct arg_lit  *antisenseovlps    = arg_lit0("a","antisenseovlps",    "process for antisense overlaps (default is for sense overlap sense only)");
+struct arg_lit  *senseonlyovlps    = arg_lit0("a","senseonlyovlps",    "process for sense only overlaps (default is for sense and antisense overlaps)");
 struct arg_int  *transcriptomelens = arg_int0("t","transcriptome","<int>",	   "transcriptome assembly - overlap read lengths must match within this percentage and overlaps be full length");
 
 
@@ -188,6 +193,8 @@ struct arg_int *minpbseqovl = arg_int0("b","minpbseqovl","<int>",		"minimum PacB
 struct arg_int *minhcseqlen = arg_int0("p","minhcseqlen","<int>",		"minimum individual high confidence sequence length (default 1000, range 250 to 100000)");
 struct arg_int *minhcseqovl = arg_int0("P","minhcseqovl","<int>",		"minimum high confidence sequence overlap onto PacBio length required (default 500, range 250 to 100000)");
 struct arg_int *hcrelweighting = arg_int0("r","hcrelweighting","<int>",	"high confidence sequence relative weighting when consensus base calling (default 3, range 1 to 10)");
+
+struct arg_int *minfilthomolen = arg_int0("H","minfilthomolen","<int>",			"filtering for near homopolymer runs of at least this length (default 10, 0 to disable, range 8 to 25)");
 
 
 struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 14, range 12 to 50)");
@@ -204,7 +211,7 @@ struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",	
 
 struct arg_int *minconcscore = arg_int0("s","minconcscore","<int>",			     "error corrected sequences trimmed until mean 50bp concensus score is at least this threshold (default 3, range 0 to 9)");
 struct arg_int *minerrcorrectlen = arg_int0("S","minerrcorrectlen","<int>",		 "error corrected and trimmed sequences must be at least this minimum length (default 5000, range 500 to 20000)");
-struct arg_int *maxartefactdev = arg_int0("a","artefactdev","<int>",			 "classify overlaps as artefactual if 500bp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 70)");
+struct arg_int *maxartefactdev = arg_int0("A","artefactdev","<int>",			 "classify overlaps as artefactual if 500bp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 70)");
 
 struct arg_file *hiconffiles = arg_filen("I","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be used in error correcton of PacBio reads (wildcards allowed)");
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be error corrected (wildcards allowed)");
@@ -212,7 +219,8 @@ struct arg_file *outfile = arg_file1("o","out","<file>",									"output error c
 struct arg_file *mafile = arg_file0("O","mafile","<file>",						"optional, output multialignments to this file, caution can grow very large");
 struct arg_file *scaffovrlapsfile = arg_file0("e","scaffovrlapsfile","<file>",	"optional, output scaffolding overlap detail to this file");
 
-struct arg_int *samplerate = arg_int0("R","samplerate","<int>",					"sample input sequences at this rate (default 100, range 1 to 100)");
+struct arg_int *sampleinrate = arg_int0("R","sampleinrate","<int>",					"accept input sequences at this rate per 100 (default 100, range 1 to 100)");
+struct arg_int *sampleacceptrate = arg_int0("Z","sampleacceptrate","<int>",			"sample accepted input sequences at this rate per 1000 (default 1000, range 1 to 1000)");
 
 struct arg_int *threads = arg_int0("T","threads","<int>",						"number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)");
 
@@ -228,11 +236,11 @@ struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"exper
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,antisenseovlps,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
+					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,minfilthomolen,senseonlyovlps,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
 					transcriptomelens,minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
-					outfile,mafile,scaffovrlapsfile,samplerate,threads,
+					outfile,mafile,scaffovrlapsfile,sampleinrate,sampleacceptrate,threads,
 					end};
 
 char **pAllArgs;
@@ -376,7 +384,8 @@ if (!argerrors)
 		return(1);
 		}
 
-	bAntisenseOvlps = false;
+	FiltMinHomoLen = 0;
+	bSenseOnlyOvlps = false;
 	MinSeedCoreLen = cDfltSeedCoreLen;
 	MinNumSeedCores = cDfltNumSeedCores;
 	DeltaCoreOfs = cDfltDeltaCoreOfs;
@@ -422,15 +431,36 @@ if (!argerrors)
 	if(szHostName[0] != '\0' && szServiceName[0] == '\0')
 		strcpy(szServiceName, "43123");
 
-	SampleRate = samplerate->count ? samplerate->ival[0] : 100;
-	if(SampleRate < 1 || SampleRate > 100)
+	SampleInRate = sampleinrate->count ? sampleinrate->ival[0] : 100;
+	if(SampleInRate < 1 || SampleInRate > 100)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Input sequence sampling rate '-R%d' must be in range 1..100",SampleRate);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Input sequence acceptance sampling rate per 100 '-R%d' must be in range 1..100",SampleInRate);
+		return(1);
+		}
+
+	SampleAcceptRate = sampleacceptrate->count ? sampleacceptrate->ival[0] : 1000;
+	if(SampleAcceptRate < 1 || SampleAcceptRate > 1000)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Sample accepted sequence rate per 1000 '-Z%d' must be in range 1..1000",SampleAcceptRate);
 		return(1);
 		}
 
 	if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
 		{
+		if(PMode == ePBPMErrCorrect)
+			{
+			// simply clamping FiltMinHomoLen to be 0 or in the range of 8..25 with a default of 10
+			FiltMinHomoLen = minfilthomolen->count ? minfilthomolen->ival[0] : 10;
+			if(FiltMinHomoLen <= 0)
+				FiltMinHomoLen = 0;
+			else
+				if(FiltMinHomoLen < 8)
+					FiltMinHomoLen = 8;
+			if(FiltMinHomoLen > 25)
+				FiltMinHomoLen = 25;	
+			}
+		else
+			FiltMinHomoLen = 0;
 		if(PMode == ePBPMErrCorrect)
 			MinSeedCoreLen = minseedcorelen->count ? minseedcorelen->ival[0] : cDfltSeedCoreLen;
 		else
@@ -567,7 +597,7 @@ if (!argerrors)
 
 		if(MaxArtefactDev <= 0 || MaxArtefactDev > cMaxMaxArtefactDev)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Max overlap artefactual deviation '-a%d' must be either 0 or in range %d..%d",MaxArtefactDev,cMinMaxArtefactDev,cMaxMaxArtefactDev);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Max overlap artefactual deviation '-A%d' must be either 0 or in range %d..%d",MaxArtefactDev,cMinMaxArtefactDev,cMaxMaxArtefactDev);
 			return(1);
 			}
 
@@ -755,7 +785,7 @@ if (!argerrors)
 		MaxArtefactDev = maxartefactdev->count ? maxartefactdev->ival[0] : cDfltScaffMaxArtefactDev;
 		if(MaxArtefactDev <= 0 || MaxArtefactDev > cMaxMaxArtefactDev)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Max overlap artefactual deviation '-a%d' must be either 0 or in range %d..%d",MaxArtefactDev,cMinMaxArtefactDev,cMaxMaxArtefactDev);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Max overlap artefactual deviation '-A%d' must be either 0 or in range %d..%d",MaxArtefactDev,cMinMaxArtefactDev,cMaxMaxArtefactDev);
 			return(1);
 			}
 		if(MaxArtefactDev < 0)
@@ -908,9 +938,9 @@ if (!argerrors)
 		}
 
 	if(PMode == ePBMConsolidate || transcriptomelens > 0)
-		bAntisenseOvlps = true;
+		bSenseOnlyOvlps = false;
 	else
-		bAntisenseOvlps = antisenseovlps->count ? true : false;
+		bSenseOnlyOvlps = senseonlyovlps->count ? true : false;
 
 	if(PMode == ePBPMConsensus)
 		{
@@ -1031,13 +1061,23 @@ if (!argerrors)
 		}
 
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling input sequence rate: %d",SampleRate);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling input sequences for acceptance rate per 100: %d",SampleInRate);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sampling accepted sequence rate per 1000: %d",SampleAcceptRate);
+
 
 	if(PMode != ePBPMConsensus)
 		{
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Overlap processing: '%s'",bAntisenseOvlps ? "Sense and antisense" : "Sense only");
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Overlap processing: '%s'",bSenseOnlyOvlps ? "Sense only" : "Sense and antisense");
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Use seed cores of this length when identifying putative overlapping sequences: %dbp",MinSeedCoreLen);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Require at least this many seed cores between overlapping sequences: %d",MinNumSeedCores);
+
+		if(PMode == ePBPMErrCorrect)
+			{
+			if(FiltMinHomoLen != 0)
+				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Filtering PacBio reads for near homopolymer runs which are at least this length: %dbp",FiltMinHomoLen);
+			else
+				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Filtering PacBio reads for near homopolymer runs which are at least this length: No filtering");
+			}
 
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Offset cores by this many bp: %d",DeltaCoreOfs);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum seed core depth: %d",MaxSeedCoreDepth);
@@ -1101,7 +1141,7 @@ if (!argerrors)
 
 	if(PMode != ePBPMOverlapDetail)
 		{
-		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Trimming error corrected PacBio sequences until mean 100bp score at least: %d",MinConcScore);
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Trimming error corrected PacBio sequences until mean 50bp score at least: %d",MinConcScore);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Error corrected and trimmed PacBio sequences must be at least this long: %d",MinErrCorrectLen);
 		}
 
@@ -1128,9 +1168,11 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PMode),"pmode",&PMode);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SampleRate),"samplerate",&SampleRate);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SampleInRate),"sampleinrate",&SampleInRate);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SampleAcceptRate),"sampleacceptrate",&SampleAcceptRate);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(FiltMinHomoLen),"minfilthomolen",&FiltMinHomoLen);
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(bAntisenseOvlps),"antisenseovlps",&bAntisenseOvlps);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(bSenseOnlyOvlps),"senseonlyovlps",&bSenseOnlyOvlps);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinSeedCoreLen),"seedcorelen",&MinSeedCoreLen);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinNumSeedCores),"minseedcores",&MinNumSeedCores);
 
@@ -1198,7 +1240,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleRate,bAntisenseOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
+	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleInRate,SampleAcceptRate,FiltMinHomoLen,bSenseOnlyOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								TranscriptomeLens,MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,szChkPtsFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
@@ -1230,8 +1272,10 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		char *pszServiceName,		// Listen on this service name or port for for connections by service providers
 		int MaxRMI,					// max number of RMI service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads
-		int SampleRate,				// sample input sequences at this rate (1..100)
-		bool bAntisenseOvlps,		// true if to process for both sense and antisense overlaps
+		int SampleInRate,			// sample input sequences at this rate per 100
+		int SampleAcceptRate,		// sample accepted input sequences at this rate per 1000
+		int FiltMinHomoLen,			// filter PacBio reads for homopolymer runs >= this length (0 to disable filtering) 		
+		bool bSenseOnlyOvlps,		// process for sense only overlaps (default is for sense/sense and sense/antisense overlaps)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -1269,7 +1313,7 @@ if((pPBErrCorrect = new CPBErrCorrect)==NULL)
 	return(eBSFerrObj);
 	}
 
-Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleRate,bAntisenseOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
+Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleInRate,SampleAcceptRate,FiltMinHomoLen,bSenseOnlyOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
 								TranscriptomeLens,MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,pszChkPtsFile,NumThreads);
 delete pPBErrCorrect;
@@ -1377,7 +1421,7 @@ m_ProvSWchecked = 0;
 m_MultiAlignFileUnsyncedSize = 0;
 m_ErrCorFileUnsyncedSize = 0;
 
-m_bAntisenseOvlps = false;
+m_bSenseOnlyOvlps = false;
 
 m_MinErrCorrectLen = cDfltMinErrCorrectLen;
 m_MinConcScore = 3;
@@ -1631,7 +1675,7 @@ while((Rslt = CurEntryID = BioSeqFile.Next(CurEntryID)) > eBSFSuccess)
 											cBSFDescriptionSize-1,(char *)&szDescription);
 	SeqLen = BioSeqFile.GetDataLen(CurEntryID);
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %s|%s",szSource,szDescription);
-	if((NumSeqsAccepted + NumSeqsUnderlength) > ((SeqID * (UINT64)m_SampleRate) / 100))
+	if((NumSeqsAccepted + NumSeqsUnderlength) > ((SeqID * (UINT64)m_SampleInRate) / 100))
 		continue;
 	NumSampled += 1;
 	if(SeqLen < (UINT32)MinSeqLen)		// only accept for indexing sequences of at least this length)
@@ -1714,6 +1758,8 @@ return(Rslt);
 
 // ProcessFastaFile
 // Parse input fasta format file into a biosequence suffix array file
+// The sequence can be optionally processed for near homopolymer runs and these runs removed from the sequence
+
 int
 CPBErrCorrect::ProcessFastaFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
 					int MaxSeqLen,					// and which are no longer than this length
@@ -1776,7 +1822,7 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 		SeqID++;
 		if(bEntryCreated)				// add any previous entry
 			{
-			if((NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleRate) / 100))
+			if((NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleInRate) / 100))
 				{
 				NumSampled += 1;
 				if(BuffOfs < (size_t)MinSeqLen || BuffOfs > (size_t)MaxSeqLen)
@@ -1849,6 +1895,88 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 			SeqNs = 0;
 		}
 
+
+	if(m_FiltMinHomoLen > 0)
+		{
+	// checking for near homopolymer runs and marking these bases for deletion
+		UINT8 *pHomoBase;
+		UINT8 *pDelHomoBase;
+		UINT8 HomoBase;
+		UINT8 CurHomoBase;
+		UINT32 TotHomoLen;
+		UINT32 HomoIdx;
+		UINT32 StartHomoIdx;
+		bool bHomoRuns;
+		TotHomoLen = 0;
+		StartHomoIdx = 0;
+		bHomoRuns = false;
+		pHomoBase = &pSeqBuff[BuffOfs];
+		for(HomoIdx = 0; HomoIdx < SeqLen; HomoIdx++,pHomoBase++)
+			{
+			HomoBase = *pHomoBase & 0x03;
+			if(TotHomoLen == 0)
+				{
+				StartHomoIdx = HomoIdx;
+				CurHomoBase = HomoBase;
+				TotHomoLen = 1;
+				}
+			else
+				{
+				if(HomoBase == CurHomoBase)
+					TotHomoLen += 1;
+				else
+					{
+					if(TotHomoLen > 6)				// requiring an inital seed K-mer of at least 6 bases before accepting as possibly a homopolymer
+						{
+						// although not matching the current homopolymer base if the next two bases would match then accept as still being part of the homopolymer
+						if((HomoIdx + 3) < SeqLen)
+							{ 
+							if(((pHomoBase[1] & 0x03) == CurHomoBase) && ((pHomoBase[2] & 0x03) == CurHomoBase))
+								{
+								TotHomoLen += 1;
+								continue;
+								}
+							}
+
+						if(TotHomoLen >= (UINT32)m_FiltMinHomoLen)				// accepting as homopolymer if at least m_FiltMinHomoLen long
+							{
+							pDelHomoBase = &pSeqBuff[StartHomoIdx+3];	// retaining the first 3 bases as these started the homopolymer run
+							TotHomoLen -= 6;							// and retaining the last 3 bases as these terminated the homopolymer run
+							while(TotHomoLen--) 
+								*pDelHomoBase++ = eBaseInDel;			// marking base for subsequent deletion 
+							bHomoRuns = true;
+							}
+						}
+					TotHomoLen = 0;
+					StartHomoIdx = 0;
+					}
+				}
+ 			}
+		if(TotHomoLen >= (UINT32)m_FiltMinHomoLen)			// accepting as homopolymer if at least m_FiltMinHomoLen long
+			{
+			pDelHomoBase = &pSeqBuff[StartHomoIdx+3];	// retaining the first 3 bases as these started the homopolymer run
+			TotHomoLen -= 6;					    // and retaining the last 3 bases as these terminated the homopolymer run
+			while(TotHomoLen--) 
+				*pDelHomoBase++ = eBaseInDel;      // marking base for subsequent deletion 
+			bHomoRuns = true;
+			}
+
+		if(bHomoRuns)
+			{
+			TotHomoLen = 0;
+			pDelHomoBase = pHomoBase = &pSeqBuff[BuffOfs];
+			for(HomoIdx = 0; HomoIdx < SeqLen; HomoIdx++,pHomoBase++)
+				{
+				HomoBase = *pHomoBase & 0x07;
+				if(HomoBase == eBaseInDel)
+					continue;
+				*pDelHomoBase++ = *pHomoBase;
+				TotHomoLen += 1;
+				}
+			SeqLen = TotHomoLen;
+			}
+		}
+
 	BuffOfs += SeqLen;
 	AvailBuffSize -= SeqLen;
 	if(AvailBuffSize < (size_t)(cMaxAllocBuffChunk / 8))
@@ -1874,7 +2002,7 @@ if(Rslt < eBSFSuccess && Rslt != eBSErrSession)
 
 if(Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// close entry
 	{
-	if((NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleRate) / 100))
+	if((NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleInRate) / 100))
 		{
 		NumSampled += 1;
 		if(BuffOfs < (size_t)MinSeqLen || BuffOfs > (size_t)MaxSeqLen)
@@ -2046,8 +2174,10 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		char *pszServiceName,			// Listen on this service name or port for for connections by service providers
 		int MaxRMI,					// max number of RMI service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads supported
-		int SampleRate,				// sample input sequences at this rate (1..100)
-		bool bAntisenseOvlps,		// true if to process for both sense and antisense overlaps
+		int SampleInRate,			// sample input sequences at this rate per 100 (1..100)
+		int SampleAcceptRate,		// sample accepted input sequences at this rate per 1000 (1..1000)
+		int FiltMinHomoLen,			// filter PacBio reads for homopolymer runs >= this length (0 to disable filtering) 
+		bool bSenseOnlyOvlps,		// process for sense only overlaps (default is for sense/sense and sense/antisense overlaps)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences
@@ -2151,8 +2281,12 @@ m_HCRelWeighting = HCRelWeighting;
 
 m_MinErrCorrectLen = MinErrCorrectLen;
 m_MinConcScore = MinConcScore;
-m_SampleRate = SampleRate;
-m_bAntisenseOvlps = bAntisenseOvlps;
+m_SampleInRate = SampleInRate;
+m_SampleAcceptRate = SampleAcceptRate;
+m_bSenseOnlyOvlps = bSenseOnlyOvlps;
+m_FiltMinHomoLen = 0;
+if(FiltMinHomoLen > 0)
+	FiltMinHomoLen = max(FiltMinHomoLen,10);
 
 m_TranscriptomeLens = TranscriptomeLens;
 
@@ -2170,8 +2304,9 @@ switch(PMode) {
 		Reset();
 		return(Rslt);
 
-	default:
+	default:  // error correcting PacBio reads
 		m_OverlapFloat = cDfltMaxOverlapFloat;
+		m_FiltMinHomoLen = FiltMinHomoLen;
 		break;
 	}
 
@@ -2307,9 +2442,12 @@ if(NumTargSeqs < 3)
 	return(eBSFerrNoEntries);
 	}
 
+m_NumAcceptTargSeqs = NumTargSeqs;
+
 int NumHCSeqs = 0;
 if(NumHiConfFiles && pszHiConfFiles != NULL)			// load any optional high confidence sequences requested by user
 	{
+	m_FiltMinHomoLen = 0;
 	if((Rslt = LoadSeqs(m_MinHCSeqLen, m_MaxPBRdSeqLen, NumHiConfFiles,pszHiConfFiles,cFlgHCSeq)) < eBSFSuccess)
 		{
 		m_pSfxArray->Close(false);
@@ -2362,7 +2500,15 @@ m_NumPBScaffNodes = 0;
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Initialising for %d sequences",NumTargSeqs);	
 MaxSeqLen = 0;
+UINT32 NumSloughed;
+UINT32 NumAccepted;
+double PropAccepted;
+double ExpPropAccept;
+
 pCurPBScaffNode = m_pPBScaffNodes;
+NumSloughed = 0;
+NumAccepted = 0;
+ExpPropAccept = (double)m_SampleAcceptRate / 1000.0;
 for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	{
 	UINT16 SeqFlags;
@@ -2371,9 +2517,28 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	SeqFlags = m_pSfxArray->GetIdentFlags(CurNodeID);
 	pCurPBScaffNode->flgHCseq = SeqFlags & cFlgHCSeq ? 1 : 0;
 	pCurPBScaffNode->flgUnderlength = pCurPBScaffNode->SeqLen < m_MinPBSeqLen ? 1 : 0;
+	pCurPBScaffNode->flgSlough = 0;
+	if(m_SampleAcceptRate < 1000 && !pCurPBScaffNode->flgHCseq && !pCurPBScaffNode->flgUnderlength)
+		{
+		if(NumAccepted > 0)
+			PropAccepted = (double)NumAccepted / (double)(NumAccepted + NumSloughed);
+		else
+			PropAccepted = 0;
+		if(PropAccepted < ExpPropAccept)
+			NumAccepted += 1;
+		else
+			{
+			NumSloughed += 1;
+			pCurPBScaffNode->flgSlough = 1;
+			}
+		}
+
 	if(MaxSeqLen == 0 || pCurPBScaffNode->SeqLen > (UINT32)MaxSeqLen)
 		MaxSeqLen = pCurPBScaffNode->SeqLen;
 	}
+if(m_SampleAcceptRate < 1000)
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sampling accepted read rate: %d per 1000, out of %d accepted reads will be processing %d",m_SampleAcceptRate,NumAccepted+NumSloughed, NumAccepted);
+
 m_NumPBScaffNodes = NumTargSeqs;
 m_MaxPBSeqLen = MaxSeqLen;
 
@@ -3349,6 +3514,12 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 	pCurPBScaffNode->flgCpltdProc = 0;
 	ReleaseCASLock();
 
+	ProvOverlapping = 0;
+	ProvOverlapped = 0;
+	ProvContained = 0;
+	ProvArtefact = 0;
+	ProvSWchecked = 0;
+
 	CurChkPt.ECFileOfs = -1;
 	CurChkPt.EntryID = pCurPBScaffNode->EntryID;
 	CurChkPt.flgContained = pCurPBScaffNode->flgContained;
@@ -3359,6 +3530,13 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 	CurChkPt.NodeID = pCurPBScaffNode->NodeID;
 	CurChkPt.SeqLen = pCurPBScaffNode->SeqLen;
 
+	if(pCurPBScaffNode->flgSlough)
+		{
+		pCurPBScaffNode->flgCpltdProc = 1;
+		goto SloughedSeq;
+		}
+
+
 	if(m_TranscriptomeLens > 0)
 		MinTranscriptOverlapLen =  (pCurPBScaffNode->SeqLen * (100 - m_TranscriptomeLens)) / 100;
 	else
@@ -3367,18 +3545,11 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 	pThreadPar->bRevCpl = false;
 	IdentifyCoreHits(CurNodeID,pThreadPar);
 
-	if(m_bAntisenseOvlps)
+	if(!m_bSenseOnlyOvlps)
 		{
 		pThreadPar->bRevCpl = true;
 		IdentifyCoreHits(CurNodeID,pThreadPar);
 		}
-
-	ProvOverlapping = 0;
-	ProvOverlapped = 0;
-	ProvContained = 0;
-	ProvArtefact = 0;
-	ProvSWchecked = 0;
-
 
 	pThreadPar->NumTargCoreHitCnts = 0;
 	memset(pThreadPar->TargCoreHitCnts,0,sizeof(pThreadPar->TargCoreHitCnts));
@@ -4111,6 +4282,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			pCurPBScaffNode->flgCpltdProc = 1;
 		}
 
+SloughedSeq:     // branch to here for target sequences marked as not to be processed
 	AcquireCASSerialise();
 	if(ProvOverlapping > 0)
 		m_ProvOverlapping += 1;

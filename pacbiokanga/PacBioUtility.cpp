@@ -560,7 +560,7 @@ return(Rslt);
 }
 
 
-int												// identified SMRTBell at this offset + 1, 0 if non-detected
+int												// identified SMRTBell at this offset + 1, 0 if non-detected 
 CPacBioUtility::DetectSMRTBell(int StartOfs,	// search from this offset
 					int *pNumTetramers,			// returned number of tetramers from SmartBell sequence detected and which were in expected order 
 					int InSeqLen,				// number of bases in sequence to search for SmartBell
@@ -576,17 +576,75 @@ int QKMers;
 int PeakQKMers;
 int PeakLoc;
 
-if(StartOfs < 0 || pNumTetramers == NULL || InSeqLen < cSmartBellAdaptorSeqLen || pInSeq == NULL || MinTetramers < 1 ||
-	StartOfs + cSmartBellAdaptorSeqLen > InSeqLen)
+if(StartOfs < 0 || pNumTetramers == NULL || InSeqLen < cSmartBellAdapterSeqLen || pInSeq == NULL || MinTetramers < 1 ||
+	StartOfs + cSmartBellAdapterSeqLen > InSeqLen)
 	return(eBSFerrParams);
 
 PeakQKMers = 0;
 PeakLoc = 0;
-for(Idx = StartOfs+6; Idx < InSeqLen - cSmartBellAdaptorSeqLen/3 ; Idx++)
+for(Idx = StartOfs+6; Idx < InSeqLen - cSmartBellAdapterSeqLen/3 ; Idx++)
 	{
-	pQSeq = &cSmartBellAdaptorSeq[0];
+	pQSeq = &cSmartBellAdapterSeq[0];
 	QKMers = 0;
-	for(QIdx = 0; QIdx < cSmartBellAdaptorSeqLen - 6; QIdx++,pQSeq++)
+	for(QIdx = 0; QIdx < cSmartBellAdapterSeqLen - 6; QIdx++,pQSeq++)
+		{
+		pTSeq = &pInSeq[Idx-6];
+		for(TIdx = 0; TIdx < 12; TIdx++,pTSeq++)
+			{
+			if((*pQSeq == (*pTSeq & 0x03)) && 
+				(pQSeq[1] == (pTSeq[1] & 0x03)) &&
+				(pQSeq[2] == (pTSeq[2] & 0x03)) &&
+				(pQSeq[3] == (pTSeq[3] & 0x03))) 
+				{
+				QKMers += 1;
+				break;
+				}
+			}
+		}
+	if(QKMers > PeakQKMers)
+		{
+		PeakQKMers = QKMers;
+		PeakLoc = Idx;
+		}
+
+	if(QKMers >= MinTetramers)
+		{
+		*pNumTetramers = QKMers;
+		return(Idx);
+		}
+	}
+*pNumTetramers = 0;
+return(0);
+}
+
+// Identify PacBio ISO-seq primers at 5' and 3' ends of error corrected reads (still to be implemented!!!! )
+int												// identified SMRTBell at this offset + 1, 0 if non-detected
+CPacBioUtility::DetectIsoSeqPrimers(int StartOfs,	// search from this offset
+					int *pNumTetramers,			// returned number of tetramers from SmartBell sequence detected and which were in expected order 
+					int InSeqLen,				// number of bases in sequence to search for SmartBell
+					etSeqBase *pInSeq,			// sequence to search for SmartBell
+					int MinTetramers)			// only report SmartBell if at least this many tetramers in expected order detected
+{
+int Idx;
+int TIdx;
+int QIdx;
+const etSeqBase *pQSeq;
+etSeqBase *pTSeq;
+int QKMers;
+int PeakQKMers;
+int PeakLoc;
+
+if(StartOfs < 0 || pNumTetramers == NULL || InSeqLen < cSmartBellAdapterSeqLen || pInSeq == NULL || MinTetramers < 1 ||
+	StartOfs + cSmartBellAdapterSeqLen > InSeqLen)
+	return(eBSFerrParams);
+
+PeakQKMers = 0;
+PeakLoc = 0;
+for(Idx = StartOfs+6; Idx < InSeqLen - cSmartBellAdapterSeqLen/3 ; Idx++)
+	{
+	pQSeq = &cSmartBellAdapterSeq[0];
+	QKMers = 0;
+	for(QIdx = 0; QIdx < cSmartBellAdapterSeqLen - 6; QIdx++,pQSeq++)
 		{
 		pTSeq = &pInSeq[Idx-6];
 		for(TIdx = 0; TIdx < 12; TIdx++,pTSeq++)
@@ -678,7 +736,7 @@ while(NumSMRTBells < MaxSMRTBells && (NxtLocSMRTBell = DetectSMRTBell(NxtLocSMRT
 	pSMRTBells->NumTetramers = NumTetramers;
 	pSMRTBells->LocOfs = NxtLocSMRTBell;
 	NumSMRTBells += 1;
-	NxtLocSMRTBell += cSmartBellAdaptorSeqLen;
+	NxtLocSMRTBell += cSmartBellAdapterSeqLen;
 	}
 return(NumSMRTBells);
 }

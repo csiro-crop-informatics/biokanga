@@ -796,6 +796,9 @@ for(; m_MAFAlignBuffIdx < m_MAFAlignBuffered; m_MAFAlignBuffIdx += 1,pBuff+=1)
 				case '.':
 					Base = eBaseUndef;
 					break;
+				case '-':
+					Base = eBaseInDel;
+					break;
 				default:
 					m_pConsConfSeq->ConsBase = eBaseEOS;
 					m_pConsConfSeq->ProbeBase = eBaseEOS;

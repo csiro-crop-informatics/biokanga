@@ -161,7 +161,7 @@ class CAssembGraph
 	UINT32 m_AllocGraphVertices;		// number of graph vertices allocated
 	tsGraphVertex *m_pGraphVertices;   // allocated to hold array of graph vertices
 
-	bool m_bAnySenseOvlps;         // true if processing for sense/sense and sense/antisense overlapping edges, false for sense/sense only
+	bool m_bSenseOnlyOvlps;				// if false then both sense/sense and sense/antisense overlaps will be accepted and processed, otherwise sense/sense only overlaps accepted and processed
 	bool m_bOutEdgeSorted;				// true if m_pGraphOutEdges has been sorted in ascending FromVertexID.ToVertexOrder
 	UINT32 m_UsedGraphOutEdges;			// number of forward graph edges currently used
 	UINT32 m_AllocGraphOutEdges;		// number of forward graph edges allocated
@@ -270,10 +270,10 @@ public:
 
 	void Reset(void);								// reset and free any allocated resources
 	teBSFrsltCodes		// initialise with ScaffScoreThres and  maxThreads
-		Init(bool bSenseEdgesOnly = false,            // only processing for edges overlapping sense onto sense, and with no inferenced edges
+		Init(bool bSenseOnlyOvlps = false,				// if false then both sense/sense and sense/antisense overlaps will be accepted and processed, otherwise sense/sense only overlaps accepted and processed
 			 int ScaffScoreThres = cDfltMin1kScore,		// accepted edges must be of at least this overlap score
-			 bool bAcceptOrphanSeqs = false,		// also report sequences which are not overlapped or overlapping any other sequence
-						int MaxThreads = 8);						// set number of threads
+			 bool bAcceptOrphanSeqs = false,			// also report sequences which are not overlapped or overlapping any other sequence
+						int MaxThreads = 8);			// set number of threads
 
 	UINT32								// returned vertex identifier
 		AddVertex(UINT32 SeqLen,		// sequence length

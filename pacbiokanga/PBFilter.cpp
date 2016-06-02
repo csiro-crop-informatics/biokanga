@@ -36,8 +36,8 @@
 
 int
 ProcPacBioFilter(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adaptors must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adaptors  
+		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
+		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
 		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
@@ -71,8 +71,8 @@ int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failu
 
 int Idx;
 int PMode;					// processing mode
-int MinSMRTBellExacts;		// putative SMRTBell adaptors must contain at least this many exactly matching bases
-int SMRTBellFlankSeqLen;    // processing flanking sequences of this length around putative SMRTBell adaptors  
+int MinSMRTBellExacts;		// putative SMRTBell adapters must contain at least this many exactly matching bases
+int SMRTBellFlankSeqLen;    // processing flanking sequences of this length around putative SMRTBell adapters  
 int MinRevCplExacts;		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 int Trim5;					// 5' trim accepted reads by this many bp
 int Trim3;					// 3' trim accepted reads by this many bp
@@ -100,16 +100,16 @@ struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of di
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
 struct arg_int *pmode = arg_int0("m","pmode","<int>",			"processing mode - 0 default, 1 remove contaminate containing sequences");
-struct arg_int *minsmrtbellexacts = arg_int0("s","minsmrtbellexacts","<int>",	"putative SMRTBell adaptors must contain at least this many exactly matching bases (default 30, range 20 to 46)");
-struct arg_int *smrtbellflankseqlen = arg_int0("S","smrtbellflankseqlen","<int>",	"processing flanking sequences of this length around putative SMRTBell adaptors (default 500, range 200 to 1000)");
-struct arg_int *minrevcplexacts = arg_int0("a","minantisenseexacts","<int>",	"flanking 5' and antisense 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases (default smrtbellflankseqlen/2, range 100 to 1000)");
-struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 1000, range 0 to 10000)");
-struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 1000, range 0 to 10000)");
-struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 5000, range 1000 to 20000)");
+struct arg_int *minsmrtbellexacts = arg_int0("s","minsmrtbellexacts","<int>",	"putative SMRTBell adapters must contain at least this many exactly matching bases (default 30, range 20 to 46)");
+struct arg_int *smrtbellflankseqlen = arg_int0("S","smrtbellflankseqlen","<int>",	"processing flanking sequences of this length around putative SMRTBell adapters (default 200, range 100 to 1000)");
+struct arg_int *minrevcplexacts = arg_int0("a","minantisenseexacts","<int>",	"flanking 5' and antisense 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases (default smrtbellflankseqlen/2, range 50 to 1000)");
+struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 100, range 0 to 10000)");
+struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 100, range 0 to 10000)");
+struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 2500, range 500 to 50000)");
 
 struct arg_file *contamfile = arg_file0("I","contam","<file>",		"file containing contaminate sequences");
 struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences minimum accuracy rate (default 80, range 70 to 99");
-struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",		"Minimum contaminate overlap length (default 500, range 500 to 5000");
+struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",		"Minimum contaminate overlap length (default 500, range 250 to 5000");
 
 struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file(s) containing PacBio long reads to be filtered");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output accepted filtered reads to this file");
@@ -273,21 +273,21 @@ if (!argerrors)
 	MinSMRTBellExacts = minsmrtbellexacts->count ? minsmrtbellexacts->ival[0] : cDfltMinSMRTBellExacts;
 	if(MinSMRTBellExacts < cMinSMRTBellExacts || MinSMRTBellExacts > cMaxSMRTBellExacts)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell adaptors min exact match bases '-s%d' must be in range %d..%d",MinSMRTBellExacts,cMinSMRTBellExacts,cMaxSMRTBellExacts);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell adapters min exact match bases '-s%d' must be in range %d..%d",MinSMRTBellExacts,cMinSMRTBellExacts,cMaxSMRTBellExacts);
 		return(1);
 		}
 
-	SMRTBellFlankSeqLen = smrtbellflankseqlen->count ? smrtbellflankseqlen->ival[0] : 500;
-	if(SMRTBellFlankSeqLen < 200 || SMRTBellFlankSeqLen > 1000)
+	SMRTBellFlankSeqLen = smrtbellflankseqlen->count ? smrtbellflankseqlen->ival[0] : 200;
+	if(SMRTBellFlankSeqLen < 100 || SMRTBellFlankSeqLen > 1000)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: mantisense flanking sequence length '-S%d' must be in range 200..1000",SMRTBellFlankSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell flanking sequence length '-S%d' must be in range 100..1000",SMRTBellFlankSeqLen);
 		return(1);
 		}
 
-	MinRevCplExacts = minrevcplexacts->count ? minrevcplexacts->ival[0] : SMRTBellFlankSeqLen/2;
-	if(MinRevCplExacts < 100 || MinRevCplExacts > SMRTBellFlankSeqLen)
+	MinRevCplExacts = minrevcplexacts->count ? minrevcplexacts->ival[0] : (SMRTBellFlankSeqLen+1)/2;
+	if(MinRevCplExacts < 50 || MinRevCplExacts > SMRTBellFlankSeqLen)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: antisense flanking sequence length '-a%d' must be in range 100..%d",MinRevCplExacts,SMRTBellFlankSeqLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell flanking sequence exact match bases '-a%d' must be in range 50..%d",MinRevCplExacts,SMRTBellFlankSeqLen);
 		return(1);
 		}
 
@@ -306,9 +306,9 @@ if (!argerrors)
 		}
 
 	MinReadLen = minreadlen->count ? minreadlen->ival[0] : cDfltMinReadLen;
-	if(MinReadLen < 1000 || MinReadLen > 20000)
+	if(MinReadLen < 500 || MinReadLen > 50000)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum read length after any trim '-l%d' must be in range 1000..20000",MinReadLen);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum read length after any trim '-l%d' must be in range 500..50000",MinReadLen);
 		return(1);
 		}
 
@@ -323,9 +323,9 @@ if (!argerrors)
 		if(ContamARate == 100)	// whilst accepting user input of 100% accuracy internally allowing the odd error event!
 			ContamARate = 99;
 		ContamOvlpLen = contamovlplen->count ? contamovlplen->ival[0] : 500;
-		if(ContamOvlpLen < 500 || ContamOvlpLen > 5000)
+		if(ContamOvlpLen < 250 || ContamOvlpLen > 5000)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum read length after any trim '-C%d' must be in range 500..5000",ContamOvlpLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum read length after any trim '-C%d' must be in range 250..5000",ContamOvlpLen);
 			return(1);
 			}
 
@@ -349,7 +349,7 @@ if (!argerrors)
 
 	if (!inputfiles->count)
 		{
-		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: No input file(s) specified with with '-i<filespec>' option)");
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Error: No input file(s) specified with '-i<filespec>' option)");
 		return(1);
 		}
 
@@ -407,11 +407,11 @@ if (!argerrors)
 
 	char *pszMode;
 	switch(PMode) {
-		case ePBPMFilter:									// identify PacBio reads which have retained hairpins
-			pszMode = (char *)"Filter reads";
+		case ePBPMFilter:									// filter PacBio reads which have retained hairpins
+			pszMode = (char *)"Trim/split PacBio reads containing SMRTBell adapter sequences";
 			break;
-		case ePBPMContam:									// identify PacBio reads which have retained hairpins
-			pszMode = (char *)"Trim or remove contaminate containing reads";
+		case ePBPMContam:									// filter PacBio reads containing contaminate sequences
+			pszMode = (char *)"Trim/split PacBio reads containing SMRTBell adapter and contaminate sequences";
 			break;
 
 	}
@@ -506,8 +506,8 @@ return 0;
 
 int
 ProcPacBioFilter(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adaptors must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adaptors  
+		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
+		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
 		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
@@ -575,8 +575,8 @@ if(m_pSWAlign != NULL)
 
 m_PMode = ePBPMFilter;
 m_MinSMRTBellExacts = cDfltMinSMRTBellExacts;
-m_SMRTBellFlankSeqLen = 500;
-m_MinRevCplExacts = 250;
+m_SMRTBellFlankSeqLen = 200;
+m_MinRevCplExacts = 100;
 m_Trim5 = cDfltTrim5;							
 m_Trim3 = cDfltTrim3;							
 m_MinReadLen = cDfltMinReadLen;		
@@ -706,8 +706,8 @@ pthread_rwlock_unlock(&m_hRwLock);
 
 int
 CPBFilter::Process(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adaptors must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adaptors  
+		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
+		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
 		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
@@ -1064,10 +1064,10 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		pThreadPar->pSW->SetMaxInitiatePathOfs(0);
 		pThreadPar->pSW->SetMinNumExactMatches(m_MinSMRTBellExacts);
 		pThreadPar->pSW->SetTopNPeakMatches(20);
-		pThreadPar->pSW->SetProbe(cSmartBellAdaptorSeqLen,(etSeqBase *)cSmartBellAdaptorSeq);
+		pThreadPar->pSW->SetProbe(cSmartBellAdapterSeqLen,(etSeqBase *)cSmartBellAdapterSeq);
 		pThreadPar->pSW->SetTarg(QuerySeqLen,pQuerySeq);	// iterated sequence is the target
 		pPeakMatchesCell = pThreadPar->pSW->Align();
-		if((NumTopNPeakMatches = pThreadPar->pSW->GetTopNPeakMatches(&pPeakMatchesCells)) > 0) // NumTopNPeakMatches > 0 if any putative retained SMRTBell adaptors
+		if((NumTopNPeakMatches = pThreadPar->pSW->GetTopNPeakMatches(&pPeakMatchesCells)) > 0) // NumTopNPeakMatches > 0 if any putative retained SMRTBell adapters
 			{
 			int PeakIdx;
 			etSeqBase *p5Seq;
@@ -1084,7 +1084,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 			int NumSMRTBells = 0;
 			for(PeakIdx = 0; PeakIdx < NumTopNPeakMatches;  PeakIdx++,pPeakMatchesCell++)
 				{
-				if((1 + Trim3AtOfs - Trim5AtOfs)  < m_MinReadLen) // slough if would be underlength after updated end trimming
+				if((1 + Trim3AtOfs - Trim5AtOfs)  < m_MinReadLen) // slough if would be under length after updated end trimming
 					break;
 				if((int)(pPeakMatchesCell->EndTOfs + 50) < Trim5AtOfs)	// if would be trimmed off anyway then ignore and check next peak match 
 					continue;

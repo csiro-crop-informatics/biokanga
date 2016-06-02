@@ -260,7 +260,7 @@ m_bReduceEdges = true;
 m_NumReducts = 0;
 m_NumComponents = 0;	
 m_AllocComponents= 0;
-m_bAnySenseOvlps = false;
+m_bSenseOnlyOvlps = false;
 m_MinScaffScoreThres = cDfltMin1kScore;
 m_bAcceptOrphanSeqs = false;
 
@@ -270,7 +270,7 @@ DeleteMutexes();
 }
 
 teBSFrsltCodes 
-CAssembGraph::Init(bool bAnySenseOvlps,         // true if processing for sense/sense and sense/antisense overlapping edges, false for sense/sense only
+CAssembGraph::Init(bool bSenseOnlyOvlps,				// if false then both sense/sense and sense/antisense overlaps will be accepted and processed, otherwise sense/sense only overlaps accepted and processed
 					int ScaffScoreThres,		// accepted edges must be of at least this overlap score
 				   bool bAcceptOrphanSeqs,		// also report sequences which are not overlapped or overlapping any other sequence
 					int MaxThreads)		// initialise with maxThreads threads, if maxThreads == 0 then number of threads not set	
@@ -279,7 +279,7 @@ if(MaxThreads < 0 || MaxThreads > cMaxWorkerThreads ||
 		ScaffScoreThres < 0)
 		return(eBSFerrParams);
 Reset();
-m_bAnySenseOvlps = bAnySenseOvlps;
+m_bSenseOnlyOvlps = bSenseOnlyOvlps;
 m_MinScaffScoreThres = ScaffScoreThres;
 m_bAcceptOrphanSeqs = bAcceptOrphanSeqs;
 if(MaxThreads > 0)
@@ -405,7 +405,7 @@ for(Idx = 0; Idx < NumSeqs; Idx++,pOverlap++)
 	if(pOverlap->Score < m_MinScaffScoreThres || pOverlap->OverlapClass == eOLCOverlapping)   // only accepting if previously classified as being overlapping and score at least threshold
 		continue;
 
-	if((pOverlap->flgFromAntisense == 1 || pOverlap->flgToAntisense == 1) && !m_bAnySenseOvlps)
+	if((pOverlap->flgFromAntisense == 1 || pOverlap->flgToAntisense == 1) && m_bSenseOnlyOvlps)
 		continue;
 
 	// ensure up front that the sequence identifiers have been associated to the correct vertex
@@ -523,7 +523,7 @@ tVertID OverlappedVertexID;
 if(Score < m_MinScaffScoreThres || OverlapClass > eOLCOverlapping)			// only accepting edges which have been classified by caller as overlapping and that score at least the minimum threshold
 	return(m_UsedGraphOutEdges);
 
-if(bSenseOvlpAnti && !m_bAnySenseOvlps)
+if(bSenseOvlpAnti && m_bSenseOnlyOvlps)
 	return(m_UsedGraphOutEdges);
 
 if(FromSeqID < 1 || ToSeqID < 1 || FromSeqID > cMaxStoredSeqs || ToSeqID > cMaxStoredSeqs)
@@ -704,12 +704,25 @@ pOutEdge->FromSeqLen = ToSeqLen;
 pOutEdge->ToSeqLen = FromSeqLen;
 pOutEdge->Score = Score;
 pOutEdge->ScoreAlignLen = ScoreAlignLen;
-pOutEdge->FromSeq5Ofs = ToSeq5Ofs;
-pOutEdge->FromSeq3Ofs = ToSeq3Ofs;
-pOutEdge->ToSeq5Ofs = FromSeq5Ofs;
-pOutEdge->ToSeq3Ofs = FromSeq3Ofs;
+
 pOutEdge->flgFromAntisense = 0;
 pOutEdge->flgToAntisense = bSenseOvlpAnti ? 1 : 0;
+
+if(bSenseOvlpAnti)
+	{
+	pOutEdge->FromSeq5Ofs = ToSeqLen - (ToSeq3Ofs + 1);
+	pOutEdge->FromSeq3Ofs = ToSeqLen - (ToSeq5Ofs + 1);
+	pOutEdge->ToSeq5Ofs = FromSeqLen - (FromSeq3Ofs + 1);
+	pOutEdge->ToSeq3Ofs = FromSeqLen - (FromSeq5Ofs + 1); 
+	}
+else
+	{
+	pOutEdge->FromSeq5Ofs = ToSeq5Ofs;
+	pOutEdge->FromSeq3Ofs = ToSeq3Ofs;
+	pOutEdge->ToSeq5Ofs = FromSeq5Ofs;
+	pOutEdge->ToSeq3Ofs = FromSeq3Ofs;
+	}
+
 pOutEdge->flgInfBackEdge = 1;	// mark as inferenced so can be later removed if user supplies actual aligned edge
 
 m_bReduceEdges = true;
@@ -973,13 +986,17 @@ for(EdgeIdx = 0; EdgeIdx < m_UsedGraphOutEdges; EdgeIdx++, pEdge++)
 	{
 	if(pEdge->flgRemove)
 		continue;
-	if(pEdge->ToSeq5Ofs >= pEdge->FromSeq5Ofs)  // slough if not a forward overlap
+	if(m_bSenseOnlyOvlps)
 		{
-		pEdge->flgRemove = 1;
-		Num2Remove += 1;
-		continue;
+		if(pEdge->ToSeq5Ofs >= pEdge->FromSeq5Ofs)  // slough if not a forward overlap
+			{
+			pEdge->flgRemove = 1;
+			Num2Remove += 1;
+			continue;
+			}
 		}
-	// accepting as a forward overlap; now check ahead and mark for deletion any additional copies of this overlap which
+
+	// accepting as an overlap; now check ahead and mark for deletion any additional copies of this overlap which
     // must either have been duplicates or were inferred
 	pOutEdge = pEdge + 1;
 	while(pOutEdge != &m_pGraphOutEdges[m_UsedGraphOutEdges] && 
@@ -1203,6 +1220,11 @@ UINT32 NumIsolatedVertices;
 UINT32 NumStartVertices;
 UINT32 NumEndVertices;
 UINT32  NumInternVertices;
+UINT32 NumOutToAntisense;
+UINT32 TotNumOutToAntisense;
+UINT32 NumInToAntisense;
+UINT32 TotNumInToAntisense;
+
 tEdgeID EdgeID;
 tVertID VertexID;
 tsGraphVertex *pVertex;
@@ -1215,9 +1237,16 @@ NumIsolatedVertices = 0;
 NumStartVertices = 0;
 NumInternVertices = 0;
 NumEndVertices = 0;
+NumOutToAntisense = 0;
+TotNumOutToAntisense = 0;
+NumInToAntisense = 0;
+TotNumInToAntisense = 0;
+
 pVertex = m_pGraphVertices;
 for(VertexID = 1; VertexID <= m_UsedGraphVertices; VertexID++, pVertex++)
 	{
+	NumOutToAntisense = 0;
+	NumInToAntisense = 0;
 	NumOutEdges = 0;
 	NumInEdges = 0;
 	if(pVertex->OutEdgeID != 0)				// check for multiple outgoing edges
@@ -1228,6 +1257,8 @@ for(VertexID = 1; VertexID <= m_UsedGraphVertices; VertexID++, pVertex++)
 			pEdge = &m_pGraphOutEdges[EdgeID-1];
 			if(pEdge->FromVertexID != VertexID)
 				break;
+			if(pEdge->flgToAntisense)
+				NumOutToAntisense += 1;
 			NumOutEdges += 1;
 			EdgeID += 1;
 			}
@@ -1242,6 +1273,8 @@ for(VertexID = 1; VertexID <= m_UsedGraphVertices; VertexID++, pVertex++)
 			pEdge = &m_pGraphOutEdges[m_pGraphInEdges[EdgeID-1]-1];
 			if(pEdge->ToVertexID != VertexID)
 				break;
+			if(pEdge->flgToAntisense)
+				NumInToAntisense += 1;
 			NumInEdges += 1;
 			EdgeID += 1;
 			}
@@ -1265,6 +1298,8 @@ for(VertexID = 1; VertexID <= m_UsedGraphVertices; VertexID++, pVertex++)
 		NumInternVertices += 1;
 	if(NumInEdges > 1 && NumOutEdges > 1)
 		NumMultiInOutVertices += 1;
+	TotNumOutToAntisense += NumOutToAntisense;
+	TotNumInToAntisense += NumInToAntisense;
 	}
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Vertices degree of connectivity: %u Isolated, %u Start, %u End, %u Internal, %u MultiDegreeIn, %u MultiDegreeOut, %u MultiInOut",
 						NumIsolatedVertices,NumStartVertices,NumEndVertices,NumInternVertices,NumMultiInVertices,NumMultiOutVertices,NumMultiInOutVertices);

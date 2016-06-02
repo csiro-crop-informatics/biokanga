@@ -16,21 +16,21 @@
 #include "./pacbiocommon.h"
 #include "./PacBioUtility.h"
 
-const int cMinSMRTBellExacts = 20;					// user specified min mumber of exactly matching bases in putative SMRTBell adaptor
-const int cDfltMinSMRTBellExacts = 30;				// default mumber of exactly matching bases in putative SMRTBell adaptor
-const int cMaxSMRTBellExacts = 46;				    // user specified max mumber of exactly matching bases in putative SMRTBell adaptor
+const int cMinSMRTBellExacts = 20;					// user specified min mumber of exactly matching bases in putative SMRTBell adapter
+const int cDfltMinSMRTBellExacts = 30;				// default mumber of exactly matching bases in putative SMRTBell adapter
+const int cMaxSMRTBellExacts = 46;				    // user specified max mumber of exactly matching bases in putative SMRTBell adapter
 
-const int cDfltTrim5 = 1000;						// default is to after any filtering then to trim 5' end by this many bp
-const int cDfltTrim3 = 1000;						// default is to after any filtering then to trim 5' end by this many bp
-const int cDfltMinReadLen = 5000;					// default is to only report reads of at least this minimum read length after any end trimming
+const int cDfltTrim5 = 100;						// default is to after any filtering then to trim 5' end by this many bp
+const int cDfltTrim3 = 100;						// default is to after any filtering then to trim 5' end by this many bp
+const int cDfltMinReadLen = 2500;				// default is to only report reads of at least this minimum read length after any end trimming
 
 const int cDfltMaxPacBioSeqLen = 0x1ffff;			// default is to allow for PacBio reads of <= 128Kbp
 const int cAllocOutBuffSize = 0x0fffff;				// m_pOutBuff allocate output buffer size 
 const int cMaxInfiles = 50;							// can accept at most this many input filespecs
 
-const int cMinContamSeqLen    = 4000;			    // minimum contaminate sequence length accepted - contaminates normally expected to be clone vectors in the 4-8Kbp size range  
-const int cMinContamOvlpLen   = 1000;			    // requiring contaminants to end overlap by at least this many bp or else be fully contained or containing  
-const int cMaxSeedCoreDepth = 1000;					// explore matching cores to this max depth
+const int cMinContamSeqLen    = 1000;			    // minimum contaminate sequence length accepted - contaminates normally expected to be clone vectors in the 4-8Kbp size range  
+const int cMinContamOvlpLen   = 500;			    // requiring contaminants to end overlap by at least this many bp or else be fully contained or containing  
+const int cMaxSeedCoreDepth = 10000;					// explore matching cores to this max depth
 const int cDeltaCoreOfs = 10;						// offset core windows of coreSeqLen along the probe sequence when checking for overlaps 
 const int cCoreSeqLen = 15;							// putative overlaps are explored if there are cores of at least this length in any putative overlap
 const int cMinNumCores = 20;						// and if the putative overlap contains at least this many cores
@@ -73,8 +73,8 @@ typedef struct TAG_sThreadPBFilter {
 class CPBFilter
 {
 	etPBPMode m_PMode;						// processing mode
-	int m_MinSMRTBellExacts;				// putative SMRTBell adaptors must contain at least this many exactly matching bases
-	int m_SMRTBellFlankSeqLen;				// processing flanking sequences of this length around putative SMRTBell adaptors  
+	int m_MinSMRTBellExacts;				// putative SMRTBell adapters must contain at least this many exactly matching bases
+	int m_SMRTBellFlankSeqLen;				// processing flanking sequences of this length around putative SMRTBell adapters  
 	int m_MinRevCplExacts;					// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 
 	int m_Trim5;							// 5' trim accepted reads by this many bp
@@ -98,8 +98,8 @@ class CPBFilter
 	int m_TotProcessed;						// total reads processed
 	int	m_TotAccepted;						// after filtering accepted this number of reads
 	int m_TotContamTrimmed;					// this number of accepted reads were contaminate trimmed
-	int m_TotPutativeSMRTBells;             // number of putative SMRTBell adaptors
-	int	m_TotRejected;                      // rejected this number of reads because of retained PacBio SMRTBell adaptors
+	int m_TotPutativeSMRTBells;             // number of putative SMRTBell adapters
+	int	m_TotRejected;                      // rejected this number of reads because of retained PacBio SMRTBell adapters
 	int m_TotContamRejected;                // rejected this number of reads because of BAC vectors - contained, containing, or overlapping
 	int m_TotUnderLen;						// this number reads not accepted because they were underlength
 
@@ -127,7 +127,7 @@ class CPBFilter
 	pthread_rwlock_t m_hRwLock;
 #endif
 
-	static int SortSSWCells(const void *arg1, const void *arg2); // sort putative SMRTBell adaptors by StartTOfs ascending with NumExacts descending
+	static int SortSSWCells(const void *arg1, const void *arg2); // sort putative SMRTBell adapters by StartTOfs ascending with NumExacts descending
 	CPacBioUtility m_PacBioUtility;
 
 public:
@@ -138,7 +138,7 @@ public:
 
 	int
 	Process(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adaptors must contain at least this many exactly matching bases
+		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
 		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
 		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp

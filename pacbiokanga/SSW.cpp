@@ -1981,6 +1981,10 @@ for(; m_MAFAlignBuffIdx < m_MAFAlignBuffered; m_MAFAlignBuffIdx += 1,pBuff+=1)
 				case '.':
 					Base = eBaseUndef;
 					break;
+				case '-':
+					Base = eBaseInDel;
+					break;
+
 				default:
 					m_pConsConfSeq->Base = eBaseEOS;
 					m_pConsConfSeq->Conf = 0;
@@ -3569,7 +3573,7 @@ CurParsimonyFactor = 1.0 - (double)NumPermutable/NumSeqsNoUndefs;
 if(CurParsimonyFactor >= 0.75)		// if less than 25% of sequences are permutable then accept
 	return(CurParsimonyFactor);
 
-// check if it would take too long to explore all possible conbinations of InDels in the unique sequences
+// check if it would take too long to explore all possible combinations of InDels in the unique sequences
 if(SeqLen >= 4)
 	{
 	pSeqLenCombs = _ExpCombinations;
@@ -3662,15 +3666,45 @@ CSSW::ParsimoniousMultialign(int Depth,				// parsimony for this number of bases
 							tsMAlignCol *pInDelStartCol) // starting at this column
 {
 double Score;
+double ChkScore;
 UINT8 *pColBase;
 int ColIdx;
 int BaseIdx;
+int NumBases;
 tsMAlignCol *pCol;
 int ConcatSeqLen;
 UINT8 *pParsimoniousBase;
 
-if(Depth > cMaxMultiAlignSeqs || NumCols > cMaxParsimoniousAlignLen)
+if(Depth > cMaxMultiAlignSeqs)
 	return(-1.0);
+
+if(NumCols >= cMaxParsimoniousAlignLen/2)		// try trimming back to 2nd longest sequence as it could be just one sequence is causing the probe insert
+	{
+	ColIdx = 0;
+	pCol = pInDelStartCol;
+	do {
+		pColBase = &pCol->Bases[0];
+		NumBases = 0;
+		for(BaseIdx = 0; BaseIdx < Depth; BaseIdx++,pColBase++)
+			{
+			if((*pColBase & 0x07) <= eBaseN)
+				{
+				NumBases += 1;
+				if(NumBases > 1)
+					break;
+				}
+			}
+		ColIdx += 1;
+		if(NumBases <= 1 || ColIdx >= NumCols || pCol->NxtColIdx == 0)
+			pCol = NULL;
+		else
+			pCol = (tsMAlignCol *)&m_pMACols[(pCol->NxtColIdx - 1) * (size_t)m_MAColSize];
+		}
+	while(pCol != NULL);
+	if(ColIdx > cMaxParsimoniousAlignLen)
+		return(0.0);
+	NumCols = ColIdx;
+	}
 
 ConcatSeqLen = max(NumCols * 2, cMaxParsimoniousAlignLen) * cMaxMultiAlignSeqs;		// allow more than required in order to minimise potential future reallocs
 if(m_pParsimoniousBuff == NULL || (ConcatSeqLen + 1000) > m_AllocParsimoniousSize)
@@ -3687,6 +3721,7 @@ if(m_pParsimoniousBuff == NULL || (ConcatSeqLen + 1000) > m_AllocParsimoniousSiz
 		}
 	}
 
+
 ColIdx = 0;
 pCol = pInDelStartCol;
 do {
@@ -3697,12 +3732,11 @@ do {
 	if(ColIdx >= NumCols || pCol->NxtColIdx == 0)
 		pCol = NULL;
 	else
-		{
 		pCol = (tsMAlignCol *)&m_pMACols[(pCol->NxtColIdx - 1) * (size_t)m_MAColSize];
-		}
 	}
 while(pCol != NULL);
 
+ChkScore = 0.0;
 if((Score = ParsimoniousBasesMultialign(Depth,NumCols,m_pParsimoniousBuff)) >= 0.0)
 	{
 	// copy back sequences back into columns
@@ -3720,6 +3754,8 @@ if((Score = ParsimoniousBasesMultialign(Depth,NumCols,m_pParsimoniousBuff)) >= 0
 		}
 	while(pCol != NULL);
 	}
+else
+	ChkScore = Score;
 return(Score);
 }
 

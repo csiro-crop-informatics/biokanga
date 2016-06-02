@@ -85,6 +85,7 @@ typedef struct TAG_sPBEScaffNode {
 	UINT8 flgContains:1;			// sequence fully contains at least one other sequence
 	UINT8 flgUnderlength:1;         // sequence is under length
 	UINT8 flgHCseq:1;				// loaded as a high confidence (non-PacBio) sequence
+	UINT8 flgSlough:1;				// this is a target sequence but has been sampled as not to be processed and is to have flgCpltdProc set 
 } tsPBEScaffNode;
 
 typedef struct TAG_sECChkPt {
@@ -241,9 +242,11 @@ class CPBErrCorrect
 	UINT32 m_MinErrCorrectLen;				// error corrected sequences must be at least this minimum length
 	UINT32 m_MinConcScore;					// error corrected sequences trimmed until mean 100bp concensus score is at least this threshold
 
-	UINT32 m_SampleRate;					// sample input sequences at this rate (1..100)
-	bool m_bAntisenseOvlps;					// true if to process for both sense and antisense overlaps
+	UINT32 m_SampleInRate;			// sample input sequences at this rate per 100 (1..100)
+	UINT32 m_SampleAcceptRate;		// sample accepted input sequences at this rate per 1000 (1..1000)
 
+	bool m_bSenseOnlyOvlps;		// process for sense only overlaps (default is for sense/sense and sense/antisense overlaps)
+	int m_FiltMinHomoLen;		// filter PacBio reads for homopolymer runs >= this length (0 to disable filtering) 
 
 	int m_NumPacBioFiles;					// number of input pacbio file specs
 	char m_szPacBioFiles[cMaxInFileSpecs][_MAX_PATH];		// input pacbio files
@@ -273,6 +276,7 @@ class CPBErrCorrect
 	int m_ScaffLineBuffIdx;					// offset in m_szScaffLineBuff to write next overlap detail
 	char m_szScaffLineBuff[0x07fff];		// buffering for overlap distributions
 
+	UINT32 m_NumAcceptTargSeqs;                       // number of accepted target sequences
 	UINT32 m_NumPBScaffNodes;					// m_pPBScaffNodes currently holds many scaffolding nodes
     UINT32 m_MaxPBSeqLen;						// max length of any scaffolding node sequence
 	UINT32 m_AllocdPBScaffNodes;				// m_pPBScaffNodes allocated to hold this many scaffolding nodes
@@ -532,8 +536,10 @@ public:
 		char *pszServiceName,			// Listen on this service name or port for for connections by service providers
 		int MaxRMI,					// max number of RMI SW service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads supported
-		int SampleRate,				// sample input sequences at this rate (1..100)
-		bool bAntisenseOvlps,		// true if to process for both sense and antisense overlaps
+		int SampleInRate,			// sample input sequences at this rate per 100 (1..100)
+		int SampleAcceptRate,		// sample accepted input sequences at this rate per 1000 (1..1000)
+		int FiltMinHomoLen,			// filter PacBio reads for homopolymer runs >= this length (0 to disable filtering) 
+		bool bSenseOnlyOvlps,		// process for sense only overlaps (default is for sense/sense and sense/antisense overlaps)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 		int MaxSeedCoreDepth,		// only further process a seed core if there are no more than this number of matching cores in all targeted sequences
 		int MinSeedCoreLen,			// use seed cores of this length when identifying putative overlapping scaffold sequences

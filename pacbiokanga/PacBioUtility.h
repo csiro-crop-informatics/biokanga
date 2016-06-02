@@ -6,12 +6,12 @@ const int cMaxQuerySeqLen = (cAllocQuerySeqLen * 32);    // can handle query seq
 const int cMaxReadAheadQuerySeqs = 4000;	// read ahead and enqueue up to at most this many query sequences
 
 
-const etSeqBase cSmartBellAdaptorSeq[] = // "ATCTCTCTCTTTTCCTCCTCCTCCGTTGTTGTTGTTGAGAGAGAT" PacBio SMRTBell hairpin sequence
+const etSeqBase cSmartBellAdapterSeq[] = // "ATCTCTCTCTTTTCCTCCTCCTCCGTTGTTGTTGTTGAGAGAGAT" PacBio SMRTBell hairpin sequence
 			{ eBaseA,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseT,eBaseT,eBaseT
 			,eBaseC,eBaseC,eBaseT,eBaseC,eBaseC,eBaseT,eBaseC,eBaseC,eBaseT,eBaseC,eBaseC,eBaseG,eBaseT
 			,eBaseT,eBaseG,eBaseT,eBaseT,eBaseG,eBaseT,eBaseT,eBaseG,eBaseT,eBaseT,eBaseG,eBaseA,eBaseG
 			,eBaseA,eBaseG,eBaseA,eBaseG,eBaseA,eBaseT}; // PacBio SMRTBell hairpin sequence
-const int cSmartBellAdaptorSeqLen = sizeof(cSmartBellAdaptorSeq); // number of bases in PacBio SMRTBell hairpin sequence
+const int cSmartBellAdapterSeqLen = sizeof(cSmartBellAdapterSeq); // number of bases in PacBio SMRTBell hairpin sequence
 
 const int cHomopolymerTruncLen = 4;           // default is to truncate homopolymers of longer than this length to this length, min 1
 const int cMinSmartBellTetramers = 7;		  // default is to require at least this many SMRTBell hairpin sequence tetramers to be discovered and in expected order				
@@ -129,6 +129,15 @@ public:
 						etSeqBase *pSeq,	// identify all putative SMRTBell hairpins in this sequence
 						tsSMRTBellHit *pSMRTBells, // returned identified SMRTBells
 						int MinTetramers = cMinSmartBellTetramers);	// only report SmartBell if at least this many tetramers in expected order detected
+
+	// Identify PacBio ISO-seq primers at 5' and 3' ends of error corrected reads (still to be implemented!!!! )
+	int										// identified SMRTBell at this offset + 1, 0 if non-detected
+		DetectIsoSeqPrimers(int StartOfs,	// search from this offset
+					int *pNumTetramers,			// returned number of tetramers from SmartBell sequence detected and which were in expected order 
+					int InSeqLen,				// number of bases in sequence to search for SmartBell
+					etSeqBase *pInSeq,			// sequence to search for SmartBell
+					int MinTetramers);			// only report SmartBell if at least this many tetramers in expected order detected
+
 
 	int		// length after hompolymer reduction
 		ReduceHomopolymers(int InSeqLen,	// number of bases in sequence
