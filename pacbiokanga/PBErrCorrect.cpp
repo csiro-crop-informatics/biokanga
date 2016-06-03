@@ -194,7 +194,7 @@ struct arg_int *minhcseqlen = arg_int0("p","minhcseqlen","<int>",		"minimum indi
 struct arg_int *minhcseqovl = arg_int0("P","minhcseqovl","<int>",		"minimum high confidence sequence overlap onto PacBio length required (default 500, range 250 to 100000)");
 struct arg_int *hcrelweighting = arg_int0("r","hcrelweighting","<int>",	"high confidence sequence relative weighting when consensus base calling (default 3, range 1 to 10)");
 
-struct arg_int *minfilthomolen = arg_int0("H","minfilthomolen","<int>",			"filtering for near homopolymer runs of at least this length (default 10, 0 to disable, range 8 to 25)");
+struct arg_int *minfilthomolen = arg_int0("H","minfilthomolen","<int>",			"filtering for near homopolymer runs of at least this length (default 16, 0 to disable, accepted range 12 to 25)");
 
 
 struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 14, range 12 to 50)");
@@ -449,13 +449,13 @@ if (!argerrors)
 		{
 		if(PMode == ePBPMErrCorrect)
 			{
-			// simply clamping FiltMinHomoLen to be 0 or in the range of 8..25 with a default of 10
-			FiltMinHomoLen = minfilthomolen->count ? minfilthomolen->ival[0] : 10;
+			// simply clamping FiltMinHomoLen to be 0 or in the range of 12..25 with a default of 16
+			FiltMinHomoLen = minfilthomolen->count ? minfilthomolen->ival[0] : 16;
 			if(FiltMinHomoLen <= 0)
 				FiltMinHomoLen = 0;
 			else
-				if(FiltMinHomoLen < 8)
-					FiltMinHomoLen = 8;
+				if(FiltMinHomoLen < 12)
+					FiltMinHomoLen = 12;
 			if(FiltMinHomoLen > 25)
 				FiltMinHomoLen = 25;	
 			}
@@ -1926,12 +1926,12 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 					TotHomoLen += 1;
 				else
 					{
-					if(TotHomoLen > 6)				// requiring an inital seed K-mer of at least 6 bases before accepting as possibly a homopolymer
+					if(TotHomoLen >= 12)				// requiring an initial seed K-mer of at least 12 bases before accepting as possibly a homopolymer
 						{
-						// although not matching the current homopolymer base if the next two bases would match then accept as still being part of the homopolymer
-						if((HomoIdx + 3) < SeqLen)
+						// although not matching the current homopolymer base if the next three bases would match then accept as still being part of the homopolymer
+						if((HomoIdx + 4) < SeqLen)
 							{ 
-							if(((pHomoBase[1] & 0x03) == CurHomoBase) && ((pHomoBase[2] & 0x03) == CurHomoBase))
+							if(((pHomoBase[1] & 0x03) == CurHomoBase) && ((pHomoBase[2] & 0x03) == CurHomoBase) && ((pHomoBase[3] & 0x03) == CurHomoBase))
 								{
 								TotHomoLen += 1;
 								continue;
@@ -1940,8 +1940,8 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 
 						if(TotHomoLen >= (UINT32)m_FiltMinHomoLen)				// accepting as homopolymer if at least m_FiltMinHomoLen long
 							{
-							pDelHomoBase = &pSeqBuff[StartHomoIdx+3];	// retaining the first 3 bases as these started the homopolymer run
-							TotHomoLen -= 6;							// and retaining the last 3 bases as these terminated the homopolymer run
+							pDelHomoBase = &pSeqBuff[StartHomoIdx+6];	// retaining the first 6 bases as these started the homopolymer run
+							TotHomoLen -= 6;							// and retaining the last 6 bases as these terminated the homopolymer run
 							while(TotHomoLen--) 
 								*pDelHomoBase++ = eBaseInDel;			// marking base for subsequent deletion 
 							bHomoRuns = true;
@@ -1954,8 +1954,8 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
  			}
 		if(TotHomoLen >= (UINT32)m_FiltMinHomoLen)			// accepting as homopolymer if at least m_FiltMinHomoLen long
 			{
-			pDelHomoBase = &pSeqBuff[StartHomoIdx+3];	// retaining the first 3 bases as these started the homopolymer run
-			TotHomoLen -= 6;					    // and retaining the last 3 bases as these terminated the homopolymer run
+			pDelHomoBase = &pSeqBuff[StartHomoIdx+6];	// retaining the first 5 bases as these started the homopolymer run
+			TotHomoLen -= 6;					    // and retaining the last 5 bases as these terminated the homopolymer run
 			while(TotHomoLen--) 
 				*pDelHomoBase++ = eBaseInDel;      // marking base for subsequent deletion 
 			bHomoRuns = true;
@@ -2286,7 +2286,7 @@ m_SampleAcceptRate = SampleAcceptRate;
 m_bSenseOnlyOvlps = bSenseOnlyOvlps;
 m_FiltMinHomoLen = 0;
 if(FiltMinHomoLen > 0)
-	FiltMinHomoLen = max(FiltMinHomoLen,10);
+	FiltMinHomoLen = max(FiltMinHomoLen,12);
 
 m_TranscriptomeLens = TranscriptomeLens;
 
@@ -2991,8 +2991,11 @@ else
 
 if((Now - m_ProcessStatsThen) >= 60)
 	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artifact: %u",
+	if(m_PMode == ePBPMErrCorrect)
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artifact: %u",
 							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
+	else
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u processed",m_NumOverlapProcessed);
 	if(m_bRMI)
 		{
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: Current number of RMI SW threads: %d, number of non_RMI SW threads: %d, allowing up to %d active SW threads",
