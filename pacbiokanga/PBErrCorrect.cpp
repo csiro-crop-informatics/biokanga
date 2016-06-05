@@ -937,7 +937,7 @@ if (!argerrors)
 		szOutMAFile[0] = '\0';
 		}
 
-	if(PMode == ePBMConsolidate || transcriptomelens > 0)
+	if(PMode == ePBMConsolidate || TranscriptomeLens > 0)
 		bSenseOnlyOvlps = false;
 	else
 		bSenseOnlyOvlps = senseonlyovlps->count ? true : false;
@@ -1051,6 +1051,8 @@ if (!argerrors)
 		strncpy(szChkPtsFile,szOutFile,sizeof(szChkPtsFile)-5);
 		strcat(szChkPtsFile,".chk");
 		}
+	else
+		szChkPtsFile[0] = '\0';
 	
 	if(szHostName[0] != '\0')
 		{
@@ -3297,8 +3299,11 @@ for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
 
 delete pThreadPutOvlps;
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
+if(m_PMode == ePBPMErrCorrect)
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed: %u processed, SW aligned: %u, Overlapping: %u, Overlapped: %u, Contained: %u, Artefact: %u",
 							m_NumOverlapProcessed,m_ProvSWchecked,m_ProvOverlapping,m_ProvOverlapped,m_ProvContained,m_ProvArtefact);
+else
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed: %u processed",m_NumOverlapProcessed);
 
 if(m_hMultiAlignFile != -1)
 	{
@@ -3630,7 +3635,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 							{
 							if(PrevAcceptedProbeOfs == 0 || pNxtCoreHit->ProbeOfs >= PrevAcceptedProbeOfs + pThreadPar->CoreSeqLen) // a single matched seed core extension may have resulted in multiple hits, reduce counts by requiring a differential of at least m_SeedCoreLen
 								{
-								if((pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs) >= MaxNoHitGapLen)
+								if(pFirstCoreHit->WinHits > 0 && (pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs) >= MaxNoHitGapLen)
 									{
 									NumNoHitGaps += 1;
 									SumNoHitGapLens += pNxtCoreHit->ProbeOfs - PrevAcceptedProbeOfs;
