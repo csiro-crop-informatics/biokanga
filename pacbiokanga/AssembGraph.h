@@ -116,14 +116,15 @@ typedef struct TAG_sOverlappedSeq {
 				eOverlapClass OverlapClass;	// classification of overlap from OverlappingSeqID onto OverlappedSeqID
 	} tsOverlappedSeq;
 
-const int cAllocPathEdges = 100;			// initally allocate for this many path edges per component; realloc as needed
+const int cAllocPathEdges = 10000;			// initally allocate for this many path edges per component; realloc as needed
 
 typedef struct TAG_sPathTraceBack {
-		tComponentID ComponentID;			// path for this component
-		tVertID VertexID;					// path includes this vertex
-		 UINT32 SeqLen;					// vertex sequence length
-		UINT32 Off5;						// using from this 5' offset (0 based)
-		UINT32 Off3;						// to to this 3' offset inclusive
+				 tComponentID ComponentID;      // path is for this component
+				 tVertID VertexID;				// path includes this vertex sequence
+				 UINT32 SeqLen;					// vertex sequence length
+				 UINT32 PathOfs;				// vertex sequence is starting at this path offset (0..CurrentPathLength)
+				 UINT32 Off5;					// vertex sequence to include in path starts from this sequence 5' offset (0..SeqLen-1)
+				 bool bRevCpl;					// if true then reverse complement the vertex sequence before applying Off5 and Off3
 	} tsPathTraceBack;
 
 // disconnected graph components
@@ -317,14 +318,20 @@ public:
 				tComponentID ComponentID);			 // mark all traversed vertices as members of this component
 
 	INT32											// returned From sequence extension; -1 if no sequence extension
-	OverlapAcceptable(tsGraphOutEdge *pEdge);		// overlap edge
+	OverlapAcceptable(tsGraphOutEdge *pEdge,		// overlap edge
+				UINT8 FromOvlpClass = 0,	// From vertex overlap classification; bit 0 set if From vertex evaluated as antisense in current path
+				UINT8 *pToOvlpClass = NULL);		// returned To vertex overlap classification; bit 0 set if To vertex is evaluated as antisense in current path
 
 	UINT64
 		ScorePaths(tVertID VertexID);			// score all paths starting with outgoing edges from this vertex
 
 	UINT64										// highest scoring of any path from pEdge
 		ScorePath(UINT32 Depth,					// current recursive depth - used to detect circular paths
-				  tsGraphOutEdge *pEdge);		// score paths starting with this edge
+				  tsGraphOutEdge *pEdge,		// score paths starting with this edge
+				UINT8 FromOvlpClass = 0,	// From vertex overlap classification; bit 0 set if From vertex evaluated as antisense in current path
+				UINT8 *pToOvlpClass = NULL);	// returned To vertex overlap classification; bit 0 set if To vertex is evaluated as antisense in current path
+
+
 
 	int										 // eBSFSuccess or otherwise
 		FindHighestScoringPaths(void);		 // score all possible paths and record highest scoring path for each component
@@ -337,13 +344,14 @@ public:
 			ReportVerticesEdgesGraphML(char *pszOutFile,		 // report as GraphML on all vertices and their edges for each component to this file
 										   CSeqStore *pSeqStore);	// holds sequences used to assemble contig
 
-	int
-		AddTraceBackPath(bool bFirst,			// true if path starting
-				 tComponentID ComponentID,      // path for this component
-				 tVertID VertexID,				// path includes this vertex
-				 UINT32 SeqLen,					// sequence length
-				 UINT32 Off5,					// sequence from this 5' offset
-				 UINT32 Off3);					// to this 3' offset inclusive
+	int											// returned CurrentPathLength
+		AddTraceBackPath(bool bFirst,			// true if 1st vertex in path (starting a new path)
+				 tComponentID ComponentID,      // path is for this component
+				 tVertID VertexID,				// path includes this vertex sequence
+				 UINT32 SeqLen,					// vertex sequence length
+				 UINT32 PathOfs,				// vertex sequence is starting at this path offset (0..CurrentPathLength)
+				 UINT32 Off5,					// vertex sequence to include in path starts from this sequence 5' offset (0..SeqLen-1)
+				 bool bRevCpl);					// if true then reverse complement the vertex sequence before applying Off5
 
 	int										// eBSFSuccess or otherwise
 		GenTraceBackPath(tsComponent *pComponent); // generate traceback path for this component

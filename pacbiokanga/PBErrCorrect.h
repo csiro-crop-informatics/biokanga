@@ -142,7 +142,7 @@ typedef struct TAG_sThreadPBErrCorrect {
 	UINT32 CoreSeqLen;				// putative overlaps are explored if there are cores of at least this length in any putative overlap
 	UINT32 MinNumCores;				// and if the putative overlap contains at least this many cores
 	UINT32 MaxAcceptHitsPerSeedCore; // limit accepted hits per seed core to no more this many
-	UINT32 MinPBSeqLen;				// only process PacBio sequences which are at least this length
+	UINT32 MinPBSeqLen;				// only process PacBio sequences for error correction which are at least this length
 
 	UINT32 NumTargCoreHitCnts;		// current number of summary target core hit counts in TargCoreHitCnts
 	sPBECoreHitCnts TargCoreHitCnts[cSummaryTargCoreHitCnts+1]; // top targets by core hit counts
@@ -231,7 +231,7 @@ class CPBErrCorrect
 	UINT32 m_OverlapFloat;					// allow up to this much float on overlaps to account for the PacBio error profile
 
 	UINT32 m_TranscriptomeLens;				// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
-	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences must be of at least this length
+	UINT32 m_MinPBSeqLen;					// individual target PacBio sequences to be error corrected must be of at least this length
 	UINT32 m_MaxPBRdSeqLen;					// and no longer than this length
 	UINT32 m_MinPBSeqOverlap;				// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 	UINT32 m_MaxArtefactDev;				// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
@@ -550,7 +550,7 @@ public:
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
-		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
+		int MinPBSeqLen,			// only accepting PacBio reads of at least this length to be error corrected (defaults to 10Kbp) and if
 		int MaxPBSeqLen,			// no more than this length (defaults to 30Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean

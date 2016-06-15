@@ -3570,7 +3570,7 @@ if(!PrevHitIdx)	// if locate first exact match using SeedCoreLen
 			pQualTarg = pQualTargs;
 			for(PreQualIdx = 0; PreQualIdx < NumPreQuals; PreQualIdx+=1, pQualTarg+=1)
 				{
-				if(pQualTarg->TargEntryID == *pTargEntryID)
+				if(pEntry->EntryID == pQualTarg->TargEntryID)
 					{
 					bFirst = true;
 					break;

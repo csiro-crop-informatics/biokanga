@@ -11,6 +11,9 @@
 //   limitations under the License
 //   Please contact stuart.stephen@csiro.au for support or 
 //   to submit modifications to this source
+
+
+
 #include "stdafx.h"
 
 #ifdef HAVE_CONFIG_H
@@ -35,6 +38,7 @@
 #include "AssembGraph.h"
 #include "PBAssemb.h"
 
+#define PBASCAFFSENSEANTI 1
 
 int
 ProcPacBioAssemb(etPBPMode PMode,			// processing mode
@@ -1558,7 +1562,7 @@ if(m_NumAcceptedOverlaps == 0)
 	return(Rslt);										
 	}
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted %u sequence overlap details from file '%s' ...",m_NumAcceptedOverlaps,pszMAFFile);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Accepted %u sequence overlap details from file '%s' plus inferred overlaps ...",m_NumAcceptedOverlaps,pszMAFFile);
 
 
 UINT32 NumDiscComponents = 0;

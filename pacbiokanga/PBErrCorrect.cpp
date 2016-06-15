@@ -68,7 +68,7 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int MaxRMI,					// max number of RMI service provider instances supported
 		int MaxNonRMI,				// max number of non-RMI SW threads
 		int SampleInRate,			// sample input sequences at this rate per 100
-		int SampleAcceptRate,		// sample accepted input sequences at this rate per 1000
+		int SampleAcceptRate,		// sample accepted input sequences which are at least MinPBSeqLen bp at this rate per 1000 accepted
 		int FiltMinHomoLen,			// filter PacBio reads for homopolymer runs >= this length (0 to disable filtering) 
 		bool bSenseOnlyOvlps,		// process for sense only overlaps (default is for sense/sense and sense/antisense overlaps)
 		int DeltaCoreOfs,			// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
@@ -185,7 +185,7 @@ struct arg_lit  *senseonlyovlps    = arg_lit0("a","senseonlyovlps",    "process 
 struct arg_int  *transcriptomelens = arg_int0("t","transcriptome","<int>",	   "transcriptome assembly - overlap read lengths must match within this percentage and overlaps be full length");
 
 
-struct arg_int *minpbseqlen = arg_int0("l","minpbseqlen","<int>",		"minimum individual PacBio sequence length (default 10000, range 500 to 100000)");
+struct arg_int *minpbseqlen = arg_int0("l","minpbseqlen","<int>",		"minimum individual PacBio sequence length to error correct (default 10000, range 500 to 100000)");
 struct arg_int *maxpbseqlen = arg_int0("L", "maxpbseqlen", "<int>",		"maximum individual PacBio sequence length (default 35000, minimum minpbseqlen)");
 
 struct arg_int *minpbseqovl = arg_int0("b","minpbseqovl","<int>",		"minimum PacBio overlap onto PacBio length required (default 5000, range 500 to 100000)");
@@ -567,7 +567,7 @@ if (!argerrors)
 			MinPBSeqLen = minpbseqlen->count ? minpbseqlen->ival[0] : cDfltMinConsolidatePBSeqLen;
 		if(MinPBSeqLen < cMinPBSeqLen || MinPBSeqLen > cMaxMinPBSeqLen)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted PacBio length '-l%d' must be in range %d..%dbp",MinPBSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Minimum accepted PacBio length '-l%d' for error correction must be in range %d..%dbp",MinPBSeqLen,cMinPBSeqLen,cMaxMinPBSeqLen);
 			return(1);
 			}
 
@@ -1092,7 +1092,7 @@ if (!argerrors)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage: %d",MaxArtefactDev);
 		if(PMode == ePBPMErrCorrect || PMode == ePBMConsolidate)
 			{
-			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio sequence length: %dbp",MinPBSeqLen);
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio sequence length for error correction: %dbp",MinPBSeqLen);
 			gDiagnostics.DiagOutMsgOnly(eDLInfo, "Maximum PacBio sequence length: %dbp", MaxPBSeqLen);
 			if(TranscriptomeLens > 0)
 				{
@@ -1288,7 +1288,7 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
-		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
+		int MinPBSeqLen,			// only accepting PacBio reads for error correction of at least this length (defaults to 10Kbp) and if
         int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
@@ -2190,7 +2190,7 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
-		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if 
+		int MinPBSeqLen,			// only accepting PacBio reads to be error corrected of at least this length (defaults to 10Kbp) and if 
 		int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
 		int MaxArtefactDev,			// classify overlaps as artefactual if sliding window of 500bp over any overlap deviates by more than this percentage from the overlap mean
@@ -2426,13 +2426,13 @@ if((Rslt = m_pSfxArray->SetDatasetName((char *)"inmem")) != eBSFSuccess)
 m_pSfxArray->SetInitalSfxAllocEls(SumFileSizes);	// just a hint which is used for initial allocations by suffix processing
 
 
-if((Rslt = LoadSeqs(m_MinPBSeqLen, m_MaxPBRdSeqLen,NumPacBioFiles,pszPacBioFiles,cFlgLCSeq)) < eBSFSuccess)
+if((Rslt = LoadSeqs(m_MinPBSeqOverlap,m_MaxPBRdSeqLen, NumPacBioFiles,pszPacBioFiles,cFlgLCSeq)) < eBSFSuccess)
 	{
 	Reset();
 	return(Rslt);
 	}
 	// get number of sequences BioSeqs accepted for error correction
-if((NumTargSeqs = m_pSfxArray->GetNumEntries()) < 1)
+if((int)(NumTargSeqs = m_pSfxArray->GetNumEntries()) < 1)
 	NumTargSeqs = 0;
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loaded and accepted for processing a total of %d PacBio sequences",NumTargSeqs);
 
@@ -2539,7 +2539,7 @@ for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 		MaxSeqLen = pCurPBScaffNode->SeqLen;
 	}
 if(m_SampleAcceptRate < 1000)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sampling accepted read rate: %d per 1000, out of %d accepted reads will be processing %d",m_SampleAcceptRate,NumAccepted+NumSloughed, NumAccepted);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sampling accepted read rate: %d per 1000, out of %d accepted reads for error correction will be processing %d",m_SampleAcceptRate,NumAccepted+NumSloughed, NumAccepted);
 
 m_NumPBScaffNodes = NumTargSeqs;
 m_MaxPBSeqLen = MaxSeqLen;
@@ -3852,7 +3852,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 			if(bNonRMIRslt == true)
 				bNonRMIRslt = pThreadPar->pSW->SetMaxInitiatePathOfs(cDfltMaxOverlapFloat);
 			if(bNonRMIRslt == true)
-				bNonRMIRslt = pThreadPar->pSW->PreAllocMaxTargLen(m_MaxPBSeqLen, m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen);
+				bNonRMIRslt = pThreadPar->pSW->PreAllocMaxTargLen(m_MaxPBSeqLen+100, m_PMode == ePBPMConsensus ? 0 : m_MaxPBSeqLen+100);
 			ReleaseCASSerialise();
 			if(bNonRMIRslt == false)
 				goto RMIRestartThread;
@@ -4577,8 +4577,7 @@ if(NumQualSeqs > 0)
 				continue;
 
 			if((pPars->bSelfHits ? pTargNode->NodeID != pProbeNode->NodeID : pTargNode->NodeID == pProbeNode->NodeID) || 
-					 pTargNode->flgUnderlength == 1 ||	// not interested in selfhits or under length targets
-								HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
+								HitSeqLen < (UINT32)pPars->MinOverlapLen)		// not interested if target sequence length less than min overlap length required
 				continue;
 
   			if(AddCoreHit(ProbeNodeID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars)>0)
