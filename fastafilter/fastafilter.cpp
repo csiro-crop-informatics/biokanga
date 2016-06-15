@@ -32,7 +32,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "0.0.1";		// increment with each release
+const char *cpszProgVer = "0.0.2";		// increment with each release
 
 
 const char *pszDfltIdent = "Seq";			// if no identifier then default to this sequence identifier
@@ -98,7 +98,7 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"Print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"Diagnostics log file");
 
-struct arg_int *mode = arg_int0("m","mode","<int>",				"Processing mode: 0 default");
+struct arg_int *mode = arg_int0("m","mode","<int>",				"Processing mode: 0 filter, 1 reverse complement all sequences (default 0)");
 struct arg_int *maxnrun = arg_int0("n","maxnrun","<int>",		"Limit runs of indeterminates 'N's to be no more than this (defaults to 10)");
 struct arg_str *sepunique = arg_str0("s","sepunique","<str>",   "Separator to use when suffixing duplicate identifiers (defaults to '.')");
 struct arg_file *infile = arg_file1("i","in","<file>",			"Input fasta file");
@@ -206,6 +206,10 @@ if (!argerrors)
 	strcpy(szOutFile,outfile->filename[0]);
 	CUtility::TrimQuotedWhitespcExtd(szOutFile);
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 	const char *pszDescr;
@@ -213,6 +217,8 @@ if (!argerrors)
 		case 0:
 			pszDescr = "Rename duplicate sequence identifiers";
 			break;
+		case 1:
+			pszDescr = "Reverse complement all sequences";
 		}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode is : '%s'",pszDescr);
@@ -357,6 +363,123 @@ m_pFastaIdentifiers = NULL;
 Reset();
 }
 
+
+const UINT32 cMaxFastaLen = 500000000;  // allowing for fasta sequences of up to this max length
+int
+RevCplSeqs(char *pszInFasta,			// reverse complement fasta sequences in this file
+		   char *pszOutFasta)			// and write out to this file
+{
+int Rslt;
+int hOutFile;
+bool bFirstEntry;
+unsigned char *pSeqBuff;
+unsigned char *pszSeqBuff;
+char szDescription[cBSFDescriptionSize];
+int SeqLen;
+int Descrlen;
+int ChrIdx;
+CFasta InFasta;
+
+hOutFile = -1;
+if((pSeqBuff = new unsigned char [cMaxFastaLen]) == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile:- Unable to allocate memory (%d bytes) for raw sequence buffer",cMaxFastaLen);
+	Reset();
+	return(eBSFerrMem);
+	}
+if((pszSeqBuff = new unsigned char [cMaxFastaLen]) == NULL)
+	{
+	delete pSeqBuff;
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessFastaFile:- Unable to allocate memory (%d bytes) for char sequence buffer",cMaxFastaLen);
+	Reset();
+	return(eBSFerrMem);
+	}
+
+
+
+if((Rslt=InFasta.Open(pszInFasta,true))!=eBSFSuccess)
+	{
+	delete pSeqBuff;
+	delete pszSeqBuff;
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to open '%s' [%s] %s",pszInFasta,InFasta.ErrText((teBSFrsltCodes)Rslt),InFasta.GetErrMsg());
+	Reset();
+	return(Rslt);
+	}
+
+#ifdef _WIN32
+hOutFile = open(pszOutFasta,O_CREATETRUNC );
+#else
+if((hOutFile = open(pszOutFasta,O_RDWR | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+    if(ftruncate(hOutFile,0)!=0)
+			{
+			delete pSeqBuff;
+			delete pszSeqBuff;
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",pszOutFasta,strerror(errno));
+			Reset();
+			return(eBSFerrCreateFile);
+			}
+#endif
+
+if(hOutFile < 0)
+	{
+	delete pSeqBuff;
+	delete pszSeqBuff;
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output file '%s'",pszOutFasta);
+	Reset();
+	return(eBSFerrCreateFile);
+	}
+
+szDescription[0] = '\0';
+ChrIdx = 0;
+bFirstEntry = true;
+while((Rslt = SeqLen = InFasta.ReadSequence(pSeqBuff,cMaxFastaLen-1,true,false)) > eBSFSuccess)
+	{
+	if(SeqLen == eBSFFastaDescr)		// just read a descriptor line
+		{
+		ChrIdx = 0;
+		szDescription[0] = '>';
+		Descrlen = 1 + InFasta.ReadDescriptor(&szDescription[1],cBSFDescriptionSize-2);
+		szDescription[Descrlen++] = '\n';
+		CUtility::SafeWrite(hOutFile,szDescription,Descrlen);
+		ChrIdx = 0;
+		bFirstEntry = false;
+		continue;
+		}
+
+	CSeqTrans::ReverseComplement(SeqLen,pSeqBuff);
+
+	int BaseIdx = 0;
+	int BasesLine;
+	ChrIdx = 0;
+	do {
+		BasesLine = min(80,SeqLen - BaseIdx);
+		CSeqTrans::MapSeq2Ascii(&pSeqBuff[BaseIdx],BasesLine,(char *)&pszSeqBuff[ChrIdx]);
+		BaseIdx += BasesLine;
+		ChrIdx += BasesLine;
+		pszSeqBuff[ChrIdx] = '\n';
+		ChrIdx += 1;
+		}
+	while(BaseIdx < SeqLen);
+	if(pszSeqBuff[ChrIdx-1]!='\n')
+		pszSeqBuff[ChrIdx++] ='\n';	
+	CUtility::SafeWrite(hOutFile,pszSeqBuff,ChrIdx);
+	ChrIdx = 0;
+	}
+
+if(hOutFile != -1)
+	{
+#ifdef _WIN32
+	_commit(hOutFile);
+#else
+	fsync(hOutFile);
+#endif
+	close(hOutFile);
+	hOutFile = -1;
+	}
+
+return(eBSFSuccess);
+}
+
 int Process(int PMode,
 			int MaxNrun,				// truncate runs of 'N' to be no more than this length
 			char *pszSepUnique,			// use these as the unique separator text
@@ -376,6 +499,9 @@ int NumInstances;
 char szFastaDescr[cMaxIdentNameLen+10+cMaxDescrLineLen+1];
 FILE *pInStream;
 FILE *pOutStream;
+
+if(PMode == 1)               // reverse complement sequences; no changes to sequence descriptors
+	return(RevCplSeqs(pszInFasta,pszOutFasta));
 
 memreq = (size_t)(sizeof(tsFastaIdentifier) * cAllocFastaIdents);	
 #ifdef _WIN32
