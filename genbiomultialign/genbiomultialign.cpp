@@ -14,8 +14,8 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const int cMARawBuffSize = 0x03ffffff;
-const int cMALineSize    = 0x07fffff;
+const int cMARawBuffSize = 0x1fffffff;
+const int cMALineSize    = 0x0fffffff;
 
 CStopWatch gStopWatch;
 CDiagnostics gDiagnostics;				// for writing diagnostics messages to log file
@@ -23,7 +23,7 @@ char gszProcName[_MAX_FNAME];			// process name
 
 CAlignValidate AlignValidate;
 
-const unsigned int cProgVer = 305;		// increment with each release
+const unsigned int cProgVer = 306;		// increment with each release
 
 
 
@@ -422,7 +422,7 @@ ProcessMAFline(int LineLen, tsProcParams *pProcParams)
 static long Score;						// alignment line score or pass value
 static int RefChromID;					// reference chromosome
 static bool bRefChromNxt;				// true if next chromosome is the first in block - assume this is the reference
-char szSpecies[80];
+char szSpecies[cMaxDatasetSpeciesChrom];
 char szChrom[cMaxDatasetSpeciesChrom];
 unsigned long iStart;
 unsigned long iLen;

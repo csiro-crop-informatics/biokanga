@@ -11,7 +11,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const unsigned int cProgVer = 303;		// increment with each release
+const unsigned int cProgVer = 306;		// increment with each release
 
 
 const int cMAtotMaxSeqAlignLen = 0x0fffffff; // total (over all aligned species) max seq length that can be buffered in concatenated seqs
@@ -31,8 +31,8 @@ const int cDfltMaxMismatches = 100;		// default if non specified
 const int cMinMismatchHistLen = 10;		// minimal sized window over which mismatch history is maintained
 const int cMaxMismatchHistLen = 500;	// maximal sized window over which mismatch history is maintained
 
-const int cMaxIncludeFiles = 10;		// maximun number of include region filter files
-const int cMaxExcludeFiles = 10;		// maximun number of exclude region filter files
+const int cMaxIncludeFiles = 10;		// maximum number of include region filter files
+const int cMaxExcludeFiles = 10;		// maximum number of exclude region filter files
 
 const int cMaxIncludeChroms = 20;		// max number of include chromosomes regular expressions
 const int cMaxExcludeChroms = 20;		// max number of exclude chromosomes regular expressions
@@ -303,7 +303,7 @@ char *pszIncludeFiles[cMaxExcludeFiles];
 int NumExcludeFiles;
 char *pszExcludeFiles[cMaxIncludeFiles];
 int iWindowSize;
-char szSpeciesList[512];
+char szSpeciesList[cMaxAlignedSpecies * cMaxDatasetSpeciesChrom];
 int iNumSpeciesList;
 int iRegLen;
 int	iMinHyperLen;		// minimum hyper core length required
@@ -597,7 +597,7 @@ if (!argerrors)
 		iWindowSize = 0;
 		}
 
-	if(ChromPer->count && iWindowSize == 0) // a hack to force per chromsome stats generation
+	if(ChromPer->count && iWindowSize == 0) // a hack to force per chromosome stats generation
 		iWindowSize = 0x1fffffff;
 
 	iRegLen = RegLen->count ? RegLen->ival[0] : cDfltRegLen;
