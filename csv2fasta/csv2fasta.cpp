@@ -15,7 +15,7 @@
 #endif
 #include "IncExclChroms.h"
 
-const unsigned int cProgVer = 315;		// increment with each release
+const unsigned int cProgVer = 317;		// increment with each release
 
 const int cMaxTruncLength = 50000000;	// maximal element sequence truncation length
 const int cDfltTruncLength= 1000000;	// by default truncate sequences to this length
@@ -154,8 +154,8 @@ struct arg_str *strand=arg_str0("s", "strand","<str>",          "process for thi
 
 struct arg_int  *minlength = arg_int0("l","minlength","<int>",	"minimum element length (default 10)");
 struct arg_int  *trunclength = arg_int0("T","truncatelength","<int>","truncate elements to be no  longer than this length (default 1000000)");
-struct arg_int  *ofsloci   = arg_int0("u","offset","<int>",	    "offset element loci by this many bases, -2048 to +2048 (default 0)");
-struct arg_int  *deltalen  = arg_int0("U","deltalen","<int>",	"delta element lengths by this many bases, -2048 to +2048 (default 0)");
+struct arg_int  *ofsloci   = arg_int0("u","offset","<int>",	    "offset element start loci by this many bases, -2500 to +2500 (default 0)");
+struct arg_int  *deltalen  = arg_int0("U","deltalen","<int>",	"delta element lengths by this many bases, -5000 to +5000 (default 0)");
 struct arg_str  *ExcludeChroms = arg_strn("Z","chromexclude","<string>",0,cMaxExcludeChroms,"high priority - regular expressions defining species.chromosomes to exclude");
 struct arg_str  *IncludeChroms = arg_strn("z","chromeinclude","<string>",0,cMaxIncludeChroms,"low priority - regular expressions defining species.chromosomes to include");
 
@@ -250,16 +250,16 @@ if (!argerrors)
 	bSkipFirst = skipfirst->count ? true : false;
 
 	OfsLoci = ofsloci->count ? ofsloci->ival[0] : 0;
-	if(abs(OfsLoci) > 1024)
+	if(abs(OfsLoci) > 2500)
 		{
-		printf("Error: loci offset '-u%d' must be in the range -2048 to +2048",OfsLoci);
+		printf("Error: loci offset '-u%d' must be in the range -2500 to +2500",OfsLoci);
 		exit(1);
 		}
 
 	DeltaLen = deltalen->count ? deltalen->ival[0] : 0;
-	if(abs(DeltaLen) > 1024)
+	if(abs(DeltaLen) > 5000)
 		{
-		printf("Error: delta length '-U%d' must be in the range -2048 to +2048",DeltaLen);
+		printf("Error: delta length '-U%d' must be in the range -5000 to +5000",DeltaLen);
 		exit(1);
 		}
 
@@ -740,8 +740,8 @@ while((Rslt=pCSV->NextLine()) > 0)	// onto next line containing fields
 			else
 				NumReads = 1;
 
-			sprintf(szDescr,"%d %s|%s|%d|%d|%d|%c|%d",
-				SrcID,pszRefSpecies,pszChrom,StartLoci,EndLoci,Len,bOnMinStrand ? '-' : '+',NumReads);
+			sprintf(szDescr,"%s_El%d %s|%s|%d|%d|%d|%c|%d",
+				pszChrom,SrcID,pszRefSpecies,pszChrom,StartLoci,EndLoci,Len,bOnMinStrand ? '-' : '+',NumReads);
 			break;
 
 

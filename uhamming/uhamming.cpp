@@ -16,18 +16,18 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.5.1";		// increment with each release
+const char *cpszProgVer = "1.5.3";		// increment with each release
 
-const int cMinSeqLen = 20;				// minimum sequence length for Hamming distances
+const int cMinSeqLen = 10;				// minimum sequence length for Hamming distances
 const int cDfltSeqLen = 100;			// default sequence length for Hamming distances
-const int cMaxSeqLen = 5000;			// maximum sequence K-mer length for exhustative Hamming distances
+const int cMaxSeqLen = 5000;			// maximum sequence K-mer length for exhaustive Hamming distances
 
 const int cMinRHamming = 1;				// restricted hamming lower limit
 const int cDfltRHamming = 3;			// restricted hamming default limit
 const int cMaxRHamming = 10;			// restricted hamming upper limit
 const int cMaxNthRHamming = 100;		// sampling is to sample every Nth K-mer, with Nth is the range 1..cSampRHamming
 
-const int cMinCoreLen = 8;				// restricted hamming minimum core length supported
+const int cMinCoreLen = 4;				// restricted hamming minimum core length supported
 
 const int cMaxWorkerThreads = 128;		// limiting max number of threads to this many
 const int cMaxNumNodes = 10000;			// allow for upto this many nodes if processing is distributed over multiple nodes
@@ -120,6 +120,7 @@ Process(etPMode PMode,			// processing mode
 		UINT32 SweepEnd,		// finish processing at this sweep instance (0 for all remaining or SweepStart..GenomeLen) or if distributed processing then the node instance
 		int SeqLen,				// Hamming for these length sequences
 		int SampleN,			// sample (process) every N sweep instance (or if restricted Hammings then every Nth K-mer) 
+		int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 		int NumThreads,			// process with upto this number of threads
 		char *pszGenomeFile,	// bioseq file containing targeted genome assembly, or if restricted hammings then the assembly suffix array file
 		char *pszInSeqFile,		// if restricted Hammings then kmer sequences from this file
@@ -203,6 +204,7 @@ int NumNodes;				// total number of nodes (N) if processing over multiple nodes
 int SampleN;				// sample every N sweep instances
 
 bool bWatsonOnly;			// true if watson only strand processing - Crick is rather slow...
+int IntraInterBoth;	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 int CoreLen;				// core length to use when processing restricted maximal Hammings
 int RHamm;					// restricted hamming upper limit
 etResFormat ResFormat;				// resdtricted Hamming file output format
@@ -224,6 +226,9 @@ struct arg_int *resformat = arg_int0("S","resformat","<int>",	"restricted Hamnin
 
 struct arg_lit  *crick = arg_lit0("c","strandcrick",            "process Crick in addition to Watson strand - Caution: very slow processing");
 
+struct arg_int  *intrainterboth = arg_int0("z","intrainterboth","<int>", "0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only (default 0)");
+
+
 struct arg_int *rhamm = arg_int0("r","rhamm","<int>",			"restricted hamming upper limit (1..10, default 3) only applies in mode 0");
 
 struct arg_int *numnodes = arg_int0("n","numnodes","<int>",	    "total number of nodes (2..10000) if processing over multiple nodes");
@@ -231,7 +236,7 @@ struct arg_int *node = arg_int0("N","node","<int>",	            "node instance (
 
 struct arg_int *sweepstart = arg_int0("b","sweepstart","<int>",	"process starting from this sweep instance inclusive (default = 1 for 1st)");
 struct arg_int *sweepend = arg_int0("B","sweepend","<int>",		"complete processing at this sweep instance inclusive (default = 0 for all remaining, or >= Sweep start)");
-struct arg_int *seqlen = arg_int0("K","seqlen","<int>",			"Hamming edit distances for these length k-mer subsequences (range 20..5000, default is 100)");
+struct arg_int *seqlen = arg_int0("K","seqlen","<int>",			"Hamming edit distances for these length k-mer subsequences (range 10..5000, default is 100)");
 struct arg_file *infile = arg_file1("i","in","<file>",			"in mode 0 input sfx file, in mode 1 and 2, bioseq genome assembly file or in mode 3 merge from this input Hamming file");
 struct arg_file *inseqfile = arg_file0("I","seq","<file>",		"if restricted hamming processing then optional file containing source kmer sequences");
 
@@ -242,7 +247,7 @@ struct arg_int *threads = arg_int0("T","threads","<int>",		"number of processing
 struct arg_end *end = arg_end(20);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,sensitivity,rhamm,resformat,crick,numnodes,node,sweepstart,sweepend,seqlen,sample,infile,inseqfile,outfile,threads,
+					pmode,sensitivity,rhamm,resformat,crick,intrainterboth,numnodes,node,sweepstart,sweepend,seqlen,sample,infile,inseqfile,outfile,threads,
 					end};
 
 char **pAllArgs;
@@ -325,6 +330,7 @@ if (!argerrors)
 	SampleN = 1;
 	CoreLen = 0;
 	RHamm = 0;
+	IntraInterBoth = 0;
 	ResFormat = cRHFcsv;
 	Sensitivity = eSensDefault;
 	szInSeqFile[0] = '\0';
@@ -383,6 +389,13 @@ if (!argerrors)
 
 		if(crick->count > 0)
 			bWatsonOnly = false;
+
+		IntraInterBoth = intrainterboth->count ? intrainterboth->ival[0] : 0;
+		if(IntraInterBoth < 0 || IntraInterBoth > 2)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Hamming processing Intra/Inter/Both '-z%d' specified outside of range 0..2",IntraInterBoth);
+			exit(1);
+			}		
 
 		if(inseqfile->count)
 			{
@@ -479,6 +492,12 @@ if (!argerrors)
 			szOutFile[_MAX_PATH-1] = '\0';
 			}
 		}
+
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 
 	const char *pszDescr;
@@ -569,6 +588,19 @@ if (!argerrors)
 					}
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Sensitivity is : '%s'",pszDescr);
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Process %s",bWatsonOnly ? "Watson only strand" : "both Watson and Crick strands");
+			switch(IntraInterBoth) {
+				case 0:
+					pszDescr = "Both: Hammings from both Intra and Inter sequences";
+					break;
+				case 1:
+					pszDescr = "Intra: Hammings restricted to same sequence as probe K-mer drawn from";
+					break;
+				case 2:
+					pszDescr = "Inter: Hammings restricted to sequences other than sequence as probe K-mer drawn from";
+					break;
+				}
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Process Hammings for %s", pszDescr);
+
 			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Process k-mer subsequences of this length: %d",SeqLen);
 			if(SampleN > 1)
 				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Only sample (process) every %d K-mer",SampleN);
@@ -605,7 +637,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = Process(PMode,bWatsonOnly,Sensitivity,ResFormat,RHamm,(UINT32)SweepStart,(UINT32)SweepEnd,SeqLen,SampleN,NumThreads,szInFile,szInSeqFile,szOutFile);
+	Rslt = Process(PMode,bWatsonOnly,Sensitivity,ResFormat,RHamm,(UINT32)SweepStart,(UINT32)SweepEnd,SeqLen,SampleN,IntraInterBoth,NumThreads,szInFile,szInSeqFile,szOutFile);
 	gStopWatch.Stop();
 	Rslt = Rslt >=0 ? 0 : 1;
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Exit code: %d Total processing time: %s",Rslt,gStopWatch.Read());
@@ -1525,6 +1557,7 @@ typedef struct TAG_RHThread {
 	UINT32 EntryID;			// if using suffix array sequences then the entry identifer
 	UINT32 SeqOfs;			// if using suffix array sequences then the sequence offset
 	UINT8 *pSeq;			// if separate kmer sequences then pts to start of sequence
+	int IntraInterBoth;	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 	UINT8 *pHammings;		// Hammings returned
 } tsRHThread;
 
@@ -1630,9 +1663,9 @@ do {
 		{
 			
 		if(!pHammState->bProcSepKMers)
-			Rslt = m_pSfxArray->LocateSfxHammings(pHammState->RHamm,!pHammState->bWatsonOnly,pHammState->KMerLen,pHammState->SampleN,pPars->CurHammSeqLen,pHammState->MinCoreDepth,pHammState->MaxCoreDepth,pPars->EntryID,pPars->SeqOfs,pPars->pHammings,pPars->NumIdentNodes,pPars->pIdentNodes);
+			Rslt = m_pSfxArray->LocateSfxHammings(pHammState->RHamm,!pHammState->bWatsonOnly,pHammState->KMerLen,pHammState->SampleN,pPars->CurHammSeqLen,pHammState->MinCoreDepth,pHammState->MaxCoreDepth,pPars->EntryID,pPars->SeqOfs,pPars->IntraInterBoth,pPars->pHammings,pPars->NumIdentNodes,pPars->pIdentNodes);
 		else
-			Rslt = m_pSfxArray->LocateHammings(pHammState->RHamm,!pHammState->bWatsonOnly,pHammState->KMerLen,pHammState->SampleN,pPars->CurHammSeqLen,pHammState->MinCoreDepth,pHammState->MaxCoreDepth,pPars->pSeq,0,0,pPars->pHammings,pPars->NumIdentNodes,pPars->pIdentNodes);
+			Rslt = m_pSfxArray->LocateHammings(pHammState->RHamm,!pHammState->bWatsonOnly,pHammState->KMerLen,pHammState->SampleN,pPars->CurHammSeqLen,pHammState->MinCoreDepth,pHammState->MaxCoreDepth,pPars->pSeq,0,0,pPars->IntraInterBoth,pPars->pHammings,pPars->NumIdentNodes,pPars->pIdentNodes);
 		}
 	}
 while(!bCompleted && Rslt >= 0);
@@ -1995,6 +2028,7 @@ GenRestrictedHammings(etSensitivity Sensitivity, // restricted hamming processin
 		int RHamm,							// if > 0 then restricted hammings limit
 		int KMerLen,						// Hamming for this length k-mer sequences
 		int SampleN,						// sample (process) every Nth K-mer
+		int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 		int NumThreads,						// process with upto this number of threads
 		char *pszSfxFile,					// assembly suffix array file
 		char *pszInSeqFile,					// optionally kmer sequences from this file
@@ -2038,7 +2072,7 @@ if((Rslt=m_pSfxArray->Open(pszSfxFile,false,false,false))!=eBSFSuccess)
 	return(Rslt);
 	}
 
-// report to user some sfx array metadata as conformation the targeted assembly is correct
+// report to user some sfx array metadata as confirmation the targeted assembly is correct
 strcpy(m_szTargSpecies,m_pSfxArray->GetDatasetName());
 
 tsSfxHeaderV3 SfxHeader;
@@ -2279,6 +2313,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumProcThreads; ThreadIdx++,pThreadParam++,pWor
 	{
 	pThreadParam->threadID = ThreadIdx+1;
 	pThreadParam->EntryID = 0;
+	pThreadParam->IntraInterBoth = IntraInterBoth;
 	pThreadParam->pHammings = NULL;
 	pThreadParam->pHammState = &HammProcState;
 	pThreadParam->NumIdentNodes = m_PerThreadAllocdIdentNodes;
@@ -2469,6 +2504,7 @@ Process(etPMode PMode,			// processing mode
 		UINT32 SweepEnd,		// finish processing at this sweep instance (0 for all remaining or SweepStart..GenomeLen) or if distributed processing then the node instance
 		int SeqLen,				// Hamming for this length sequences
 		int SampleN,			// sample (process) every N sweep instance (or if restricted Hammings then every Nth K-mer)
+		int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 		int NumThreads,			// process with upto this number of threads
 		char *pszGenomeFile,	// bioseq file containing targeted genome assembly, or if restricted hammings then the assembly suffix array file
 		char *pszInSeqFile,		// if restricted Hammings then kmer sequences from this file
@@ -2502,7 +2538,7 @@ m_Sensitivity = Sensitivity;
 m_SampleN = SampleN;
 
 if(PMode == ePMrestrict)
-	return(GenRestrictedHammings(Sensitivity,ResFormat,bWatsonOnly,RHamm,SeqLen,SampleN,NumThreads,pszGenomeFile,pszInSeqFile,pszHammingFile));
+	return(GenRestrictedHammings(Sensitivity,ResFormat,bWatsonOnly,RHamm,SeqLen,SampleN,IntraInterBoth,NumThreads,pszGenomeFile,pszInSeqFile,pszHammingFile));
 
 if(PMode == ePMmerge)
 	return(MergeHammings(pszGenomeFile,pszHammingFile));

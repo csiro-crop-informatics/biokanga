@@ -148,7 +148,7 @@ struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of di
 struct arg_int *ScreenLogLevel=arg_int0("S", "ScreenLogLevel",	"<int>","Level of diagnostics written to screen 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *Mode=arg_int0("m", "mode","<int>",				"Processing mode: 0 report COV, stdev, mean for each chromosome, 1: hit density distribution along each chromsome");
+struct arg_int *Mode=arg_int0("m", "mode","<int>",				"Processing mode: 0 report COV, stdev, mean for each chromosome, 1: hit density distribution along each chromosome");
 struct arg_file *ProbeFile = arg_file1("i","probes","<file>",	"input from multifasta (.fa) probe file");
 struct arg_file *TargFile = arg_file1("I","targets","<file>",	"input from bioseq (.seq) target file");
 struct arg_file *RsltsFile = arg_file1("o","allresults","<file>",	"output results to this file as CSV");
@@ -449,7 +449,7 @@ int Process(teProcMode ProcMode,
 			int BinWidth)				// use this sized histogram bins when accumulating chromosome probe hits
 {
 CBioSeqFile *pBioSeq;
-unsigned char *pTargSeq;			// to hold sequence for each chromsome
+unsigned char *pTargSeq;			// to hold sequence for each chromosome
 int AllocdTargSeqLen;				// length of currently allocated pTargSeq
 int hRsltsFile;
 char szChromName[cBSFSourceSize+1];	// to hold current chromosome name

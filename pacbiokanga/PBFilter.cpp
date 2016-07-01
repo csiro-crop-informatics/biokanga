@@ -1152,7 +1152,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&S
 		if(pThreadPar->SWAlignInstance == 0)
 			pThreadPar->SWAlignInstance = m_pSWAlign->InitInstance();
 		tsSSWCell Matched;
-		if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq,false,&Matched)!=eBSFSuccess)
+		if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq,1,0,false,&Matched)!=eBSFSuccess)
 			{
 			int Trim5ContamLen;
 			int Trim3ContamLen;

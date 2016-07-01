@@ -330,7 +330,7 @@ if (!argerrors)
 			Node = node->ival[0];
 			if(Node < 1)
 				{
-				printf("\nError: node instance '-N%d' must be in range 1..%d",NumNodes);
+				printf("\nError: node instance '-N%d' must be in range 1..%d",NumNodes,cMaxNumNodes);
 				exit(1);
 				}
 			}
@@ -376,6 +376,11 @@ if (!argerrors)
 			printf(" Most likely cause is that logfile '%s' can't be opened/created",szLogFile);
 		exit(1);
 		}
+
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Version: %d.%2.2d Processing parameters:",cProgVer/100,cProgVer%100);
 
@@ -1345,7 +1350,7 @@ if(SampleN == 1)
 	pHamDist1 = m_pHamDist;
 	BuffOfs = 0;
 	CurLoci = 0;
-	BuffOfs = sprintf(szBuffer,"%lld,%d,%d\n",m_GenomeLen,SSeqStart+1,SSeqEnd);
+	BuffOfs = sprintf(szBuffer,"%u,%d,%d\n",m_GenomeLen,SSeqStart+1,SSeqEnd);
 	for(SeqIdx = 0; SeqIdx < (m_GenomeLen-2); SeqIdx++,pHamDist1++,CurLoci++)
 		{
 		if(CurLoci >= pChrom->NumSubSeqs)

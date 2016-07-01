@@ -287,6 +287,10 @@ if (!argerrors)
 	strcpy(szOutFile,outfile->filename[0]);
 	CUtility::TrimQuotedWhitespcExtd(szOutFile);
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 	const char *pszDescr;
@@ -936,7 +940,7 @@ for(Idx = 0; Idx < m_NumScaffolds; Idx++,pPEScaffold++)
 		continue;
 		}
 
-	// same pair of chromsomes so accumulate counts
+	// same pair of chromosomes so accumulate counts
 	if(pPEScaffold->PE1ChromID > 0 && pPEScaffold->PE2ChromID > 0)
 		{
 		NumPEAligned += 1;

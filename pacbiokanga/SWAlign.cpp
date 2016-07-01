@@ -727,7 +727,9 @@ return(-1);
 
 int
 CSWAlign::IdentifyCoreHits(tsPBSSWInstance *pInstance,		// using this instance
-				bool bRevCpl)		// true if probe sequence to be reverse complemented
+				bool bRevCpl,		// true if probe sequence to be reverse complemented
+				UINT32 MinTargLen,		// minimum accepted target length
+				UINT32 MaxTargLen)		// maximum accepted target length
 {
 INT64 PrevHitIdx;
 INT64 NextHitIdx;
@@ -760,13 +762,14 @@ TotHitsAllCores = 0;
 LastProbeOfs = 1 + pInstance->ProbeSeqLen - m_SeedCoreLen;
 if(m_SeedCoreLen < cMaxPacBioSeedExtn)
 	LastProbeOfs -= 120;
-
+if(MinTargLen < 1)
+	MinTargLen = 1;
 for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=m_DeltaCoreOfs,pCoreSeq+=m_DeltaCoreOfs)
 	{
 	PrevHitIdx = 0;
 	HitsThisCore = 0;
 
-    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pInstance->ProbeSeqLen - ProbeOfs,m_SeedCoreLen,0,1,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
+    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pInstance->ProbeSeqLen - ProbeOfs,m_SeedCoreLen,0,MinTargLen,MaxTargLen,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
 		{
 		PrevHitIdx = NextHitIdx;
   		if(AddCoreHit(pInstance,bRevCpl,ProbeOfs,HitEntryID,HitLoci,m_SeedCoreLen) > 0)
@@ -798,6 +801,8 @@ int												    // 0 if probe aligns to no target sequence, otherwise the tar
 CSWAlign::AlignProbeSeq(UINT32 SWAInstance,         // alignment instance
 						UINT32 ProbeSeqLen,			// sequence to align is this length
 						etSeqBase *pProbeSeq,       // probe sequence to align
+						UINT32 MinTargLen,          // aligned to targets must be at least this long
+						UINT32 MaxTargLen,			// and if > 0 then target no longer than this many bp
 						bool bSenseOnly,		   // true if to align probe sense only, false to align both sense and antisense	
     					tsSSWCell *pRetMatched)    // optional (if not NULL) returned match detail
 
@@ -903,9 +908,12 @@ memcpy(pSWAInstance->pProbeSeq,pProbeSeq,ProbeSeqLen);
 pSWAInstance->pProbeSeq[ProbeSeqLen] = eBaseEOS;
 pSWAInstance->ProbeSeqLen = ProbeSeqLen;
 
-IdentifyCoreHits(pSWAInstance,false);
+if(MinTargLen < 1)
+	MinTargLen = 1;
+
+IdentifyCoreHits(pSWAInstance,false,MinTargLen,MaxTargLen);
 if(!bSenseOnly)
-	IdentifyCoreHits(pSWAInstance,true);
+	IdentifyCoreHits(pSWAInstance,true,MinTargLen,MaxTargLen);
 
 ProvOverlapping = 0;
 ProvOverlapped = 0;

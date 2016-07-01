@@ -219,6 +219,8 @@ class CPBECContigs
 	int InitiateECContigs(int NumECThreads);	// initiate contig error correction using this many threads
 
 	int IdentifyCoreHits(UINT32 HiConfSeqID,	// identify all overlaps of this probe sequence HiConfSeqID onto target sequences
+				UINT32 MinTargLen,				// accepted target hit sequences must be at least this length
+				UINT32 MaxTargLen,				// and if > 0 then accepted targets no longer than this length
 				tsThreadPBECContigs *pPars);		// thread specific
 
 	int					// returns 0 if core overlapped (uses a non-exhaustive search) a previously added core, index 1..N of just added core hit or -1 if errors

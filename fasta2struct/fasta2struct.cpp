@@ -486,6 +486,10 @@ if (!argerrors)
 	else
 		NumIncludeChroms = NumExcludeChroms = 0;
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 

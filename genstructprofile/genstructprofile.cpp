@@ -353,6 +353,12 @@ if (!argerrors)
 			printf(" Most likely cause is that logfile '%s' can't be opened/created",szLogFile);
 		exit(1);
 		}
+
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Version: %d.%2.2d Processing parameters:",cProgVer/100,cProgVer%100);
 	const char *pszDescr;
 	switch(PMode) {

@@ -489,7 +489,22 @@ if (!argerrors)
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..10",DeltaCoreOfs);
 			return(1);
 			}
+
 		if(PMode == ePBPMErrCorrect)
+			TranscriptomeLens = transcriptomelens->count ? transcriptomelens->ival[0] : 0;
+		else
+			{
+			TranscriptomeLens = transcriptomelens->count ? transcriptomelens->ival[0] : 5;
+			if(TranscriptomeLens == 0)
+				TranscriptomeLens = 1;
+			}
+		if(TranscriptomeLens < 0 || TranscriptomeLens > 15)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Transcript overlap read length differential percentage '-t%d' must be either 0 to disable or in range 1..15",TranscriptomeLens);
+			return(1);
+			}
+
+		if(PMode == ePBPMErrCorrect && TranscriptomeLens == 0)
 			MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxSeedCoreDepth;
 		else
 			MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxConsolidateSeedCoreDepth;
@@ -544,20 +559,6 @@ if (!argerrors)
 		if(SWProgExtnPenaltyLen < 1 || SWProgExtnPenaltyLen > 63)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SW Apply gap extension progress penalty for gaps at least '-z%d' must be in range 1..%d",SWProgExtnPenaltyLen,63);
-			return(1);
-			}
-
-		if(PMode == ePBPMErrCorrect)
-			TranscriptomeLens = transcriptomelens->count ? transcriptomelens->ival[0] : 0;
-		else
-			{
-			TranscriptomeLens = transcriptomelens->count ? transcriptomelens->ival[0] : 5;
-			if(TranscriptomeLens == 0)
-				TranscriptomeLens = 1;
-			}
-		if(TranscriptomeLens < 0 || TranscriptomeLens > 15)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Transcript overlap read length differential percentage '-t%d' must be either 0 to disable or in range 1..15",TranscriptomeLens);
 			return(1);
 			}
 
@@ -4494,6 +4495,9 @@ UINT32 TargOvlpLenDiffbp;
 UINT32 ProbeOfs;
 UINT32 LastProbeOfs;
 
+UINT32 MinTargLen;
+UINT32 MaxTargLen;
+
 UINT32 ChkOvrLapCoreProbeOfs;
 UINT32 LastCoreProbeOfs;
 int ChkOvrLapCoreStartIdx;
@@ -4542,7 +4546,19 @@ LastProbeOfs = 1 + pProbeNode->SeqLen - pPars->CoreSeqLen;
 if(pPars->CoreSeqLen < cMaxPacBioSeedExtn)
 	LastProbeOfs -= 120;
 
-TargOvlpLenDiffbp = m_TranscriptomeLens == 0 ? 0 : ((pProbeNode->SeqLen * m_TranscriptomeLens) / 100);
+if(m_TranscriptomeLens == 0)
+	{
+	TargOvlpLenDiffbp = 0;
+	MinTargLen = pPars->MinPBSeqLen;
+	MaxTargLen = 0;
+	}
+else
+	{
+	TargOvlpLenDiffbp = ((pProbeNode->SeqLen * m_TranscriptomeLens) / 100);
+	MinTargLen = pProbeNode->SeqLen - TargOvlpLenDiffbp;
+	MaxTargLen = pProbeNode->SeqLen + TargOvlpLenDiffbp;
+	}
+
 memset(QualTargs,0,sizeof(QualTargs));
 QualCoreLen = pPars->CoreSeqLen + 5;
 NumQualSeqs = m_pSfxArray->PreQualTargs(pProbeNode->EntryID,pProbeNode->SeqLen,pPars->pProbeSeq, QualCoreLen,(int)pPars->DeltaCoreOfs, TargOvlpLenDiffbp, cMaxQualTargs,QualTargs);
@@ -4567,13 +4583,13 @@ if(NumQualSeqs > 0)
 		PrevHitIdx = 0;
 		HitsThisCore = 0;
 
-		while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pProbeNode->SeqLen - ProbeOfs,pPars->CoreSeqLen,pProbeNode->EntryID,pPars->MinPBSeqLen,PrevHitIdx,&HitEntryID,&HitLoci,NumQualSeqs,QualTargs)) > 0)
+		while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,pProbeNode->SeqLen - ProbeOfs,pPars->CoreSeqLen,pProbeNode->EntryID,MinTargLen,MaxTargLen,PrevHitIdx,&HitEntryID,&HitLoci,NumQualSeqs,QualTargs)) > 0)
 			{
 			PrevHitIdx = NextHitIdx;
 			pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
 			HitSeqLen = pTargNode->SeqLen; 
 
-			if(TargOvlpLenDiffbp > 0 && ((pProbeNode->SeqLen + TargOvlpLenDiffbp) < HitSeqLen  || pProbeNode->SeqLen > (HitSeqLen + TargOvlpLenDiffbp)))
+			if((MaxTargLen > 0 && MaxTargLen < HitSeqLen)  || MinTargLen > HitSeqLen)
 				continue;
 
 			if((pPars->bSelfHits ? pTargNode->NodeID != pProbeNode->NodeID : pTargNode->NodeID == pProbeNode->NodeID) || 

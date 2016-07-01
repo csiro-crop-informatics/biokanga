@@ -35,7 +35,7 @@ const int cAnchorLen = 6;								// require 5' and 3' end anchors of at least th
 const int cQualCoreKMerLen = 3;							// using tri-mers when checking for core downstream shared kmers between probe and target. Note currently a max of 4 would be supported as any more would violate cQualCoreDelta constraint 
 const int cQualCoreDelta = (cQualCoreKMerLen * 2) + 1;	 // looking for matching trimers starting within +/- 7bp of the probe trimer. NOTE must be <= cMinSeedCoreLen
 const int cQualCoreThres = 25;							 // require at least this many kmers to be shared between probe and target before accepting core
-const int cQualCoreHomopolymer = 80;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough
+const int cQualCoreHomopolymer = 90;                     // if any core contains more than this percentage of the same base then treat as being a near homopolymer core (likely a PacBio insert) and slough
 
 const int cMinPBSeqLen = 500;						 // allowing for minimum PacBio sequences to be specified down to this length (could be targeting RNA transcriptome)
 const int cDfltMinPBSeqLen = 10000;					 // default is to allow for error correction of PacBio sequences down to this minimum length

@@ -412,6 +412,11 @@ if (!argerrors)
 	strcpy(szOutFile,outfile->filename[0]);
 	CUtility::TrimQuotedWhitespcExtd(szOutFile);
 
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
+
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 	const char *pszDescr;
 	switch(PMode) {
@@ -467,7 +472,7 @@ char szSpeciesList[(cMaxIdntNameLen + 10) * cMaxExprCultivars];		// individual s
 int NumSNPSpecies;						 // number of SNP species used when aligning
 char *pszSNPSpecies[cMaxExprCultivars];  // SNP called species
 
-char szInFile[_MAX_PATH];	// parse markers from this CSV file
+char szInFile[_MAX_PATH];	// parse SNPs from this CSV file
 char szOutFile[_MAX_PATH];	// write markers to this created SQLite database
 
 // command line args
@@ -623,6 +628,11 @@ if (!argerrors)
 
 	strcpy(szOutFile,outfile->filename[0]);
 	CUtility::TrimQuotedWhitespcExtd(szOutFile);
+
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 	const char *pszDescr;
@@ -808,6 +818,11 @@ if (!argerrors)
 
 	strcpy(szOutFile,outfile->filename[0]);
 	CUtility::TrimQuotedWhitespcExtd(szOutFile);
+
+// show user current resource limits
+#ifndef _WIN32
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Resources: %s",CUtility::ReportResourceLimits());
+#endif
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing parameters:");
 	const char *pszDescr;

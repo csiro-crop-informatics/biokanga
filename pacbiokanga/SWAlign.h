@@ -141,7 +141,9 @@ class CSWAlign
 
 	int
 	IdentifyCoreHits(tsPBSSWInstance *pInstance,// using this instance
-					 bool bRevCpl);		// true if probe sequence to be reverse complemented
+					 bool bRevCpl,			// true if probe sequence to be reverse complemented
+					 UINT32 MinTargLen = 1,		// minimum accepted target length
+					 UINT32 MaxTargLen = 0);		// maximum accepted target length
 
 	int LoadTargFastaFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
 				char *pszFile,					// file containing sequences
@@ -206,6 +208,8 @@ public:
 			AlignProbeSeq(UINT32 SWAInstance,			// using this alignment instance
 							UINT32 ProbeSeqLen,			// sequence to align is this length
 							etSeqBase *pProbeSeq,      // probe sequence to align
+							UINT32 MinTargLen = 1,          // aligned to targets must be at least this long
+							UINT32 MaxTargLen = 0,			// and if > 0 then target no longer than this many bp
 							bool bSenseOnly = false,   // true if to align probe sense only, false to align both sense and antisense
 	    					tsSSWCell *pRetMatched = NULL);    // optional (if not NULL) returned match detail
 		

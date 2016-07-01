@@ -3192,7 +3192,7 @@ NumQualSeqs = 0;
 PrevHitIdx = 0;
 LastProbeOfs = ProbeSeqLen - (QualCoreLen + 100);
 pCoreSeq = pProbeSeq;
-MaxAcceptHomoCnt = (QualCoreLen * 80) / 100; // if any core contains more than 80% of the same base then treat as being a near homopolymer core and slough
+MaxAcceptHomoCnt = (QualCoreLen * 90) / 100; // if any core contains more than 90% of the same base then treat as being a near homopolymer core and slough
 for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=DeltaCoreOfs, pCoreSeq+=DeltaCoreOfs)
 	{
 	// with PacBio reads most homopolymer runs are actual artefact inserts so don't bother processing these homopolymer runs for cores
@@ -3214,7 +3214,7 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=DeltaCoreOfs, pCoreSeq+=Del
 		if((UINT32)TargLenDiffBp > 0 && ((TargSeqLen > (ProbeSeqLen + (UINT32)TargLenDiffBp)) || (TargSeqLen < (ProbeSeqLen - (UINT32)TargLenDiffBp))))
 			continue;
 
-	   TargScoreLen = min(150, TargSeqLen - HitLoci); // attempting to quick SW score over up to 200bp with a minimum of 100bp, this range including the QualCoreLen exactly matching core
+	   TargScoreLen = min(150, TargSeqLen - HitLoci); // attempting to quick SW score over up to 150bp with a minimum of 100bp, this range including the QualCoreLen exactly matching core
 	   if(TargScoreLen < 100)
 			continue;
 
@@ -3462,7 +3462,8 @@ CSfxArrayV3::IteratePacBio(etSeqBase *pProbeSeq,				// probe sequence
  									UINT32 ProbeLen,			// probe sequence length
  									 UINT32 SeedCoreLen,		// using this seed core length
 									 UINT32 SloughEntryID,		// if > 0 then hits to this entry (normally would be the probe sequence entry identifier) are to be sloughed
-									 UINT32 MinTargLen,			// hit target sequences must be at least this length
+									 UINT32 MinTargLen,			// accepted hit target sequences must be at least this length
+									 UINT32 MaxTargLen,			// if > 0 then accepted hit target sequences must be no longer than this length
 									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
 									 UINT32 *pHitLoci,			// if match then where to return loci
@@ -3518,6 +3519,13 @@ if(SeedCoreLen >= AcceptExactExtdCoreLen)	// if looking with seed cores of at le
 			continue;
 			}
 
+		pEntry = &m_pEntriesBlock->Entries[*pTargEntryID - 1];
+		if(MinTargLen >  pEntry->SeqLen || (MaxTargLen > 0 && MaxTargLen < pEntry->SeqLen))
+			{
+			PrevHitIdx = NxtHitIdx;
+			continue;
+			}
+
 		if(NumPreQuals != 0 && pQualTargs != NULL)
 			{
 			pQualTarg = pQualTargs;
@@ -3562,7 +3570,7 @@ if(!PrevHitIdx)	// if locate first exact match using SeedCoreLen
 	if((pEntry = MapChunkHit2Entry(TargLoci))==NULL)
 		return(0);
 
-	if(!(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen))
+	if(!(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen  || (MaxTargLen > 0 && MaxTargLen < pEntry->SeqLen)))
 		{
 		if(NumPreQuals != 0 && pQualTargs != NULL)
 			{
@@ -3603,7 +3611,7 @@ while(1)
 		if((Cmp = CmpProbeTarg(pProbeSeq,pEl2,SeedCoreLen)) != 0)	// only 0 if still matching on the seed core
 			return(0);
 
-		if(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen)
+		if(pEntry->EntryID == SloughEntryID || MinTargLen > pEntry->SeqLen || (MaxTargLen > 0 && MaxTargLen < pEntry->SeqLen))
 			{
 			PrevHitIdx+=1;
 			continue;
@@ -3627,7 +3635,7 @@ while(1)
 		HitLoci = (UINT32)(TargLoci - pEntry->StartOfs);
 		}
 
-	if(pEntry->SeqLen < (HitLoci + cPacBioSeedCoreExtn + 10))
+	if(pEntry->SeqLen < (HitLoci + cPacBioSeedCoreExtn + 10) || MinTargLen > pEntry->SeqLen || (MaxTargLen > 0 && MaxTargLen < pEntry->SeqLen))
 		{
 		if(!bFirst)
 			PrevHitIdx += 1;
@@ -3708,6 +3716,7 @@ CSfxArrayV3::LocateSfxHammings(int RHamm,				// restricted hammings limit
 						 UINT32 MaxCoreDepth,		// explore cores to at most this depth
 						 UINT32 EntryID,  				// KMer sequences are to be from this suffix entry
 						 UINT32 EntryLoci,				// and starting at this loci
+				 		 int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 						 UINT8 *pHammings,				// returned hammings
 						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding upto this many tsIdentNodes
 						 tsIdentNode *pAllocsIdentNodes) // memory allocated by caller for holding tsIdentNodes
@@ -3727,7 +3736,7 @@ int CurNIter;
 int LowestHamming;
 
 // quick sanity checks
-if(EntryID == 0 || RHamm < 1 || KMerLen < 20 || KMerLen > 500 || SrcSeqLen < KMerLen || pHammings == NULL)
+if(EntryID == 0 || RHamm < 1 || KMerLen < 10 || KMerLen > 500 || SrcSeqLen < KMerLen || pHammings == NULL)
 	return(eBSFerrInternal);
 EntryLen = GetSeqLen(EntryID);
 if(EntryLen == 0 || ((EntryLen - EntryLoci) < (UINT32)SrcSeqLen))
@@ -3776,18 +3785,18 @@ for(Ofs = 0; Ofs <= (SrcSeqLen - KMerLen); Ofs += SampleNth,EntryLoci+=SampleNth
 					NonNSeq[NIdxs[Idx]] = (CurNIter >> (2 * Idx)) & 0x03;
 				CurNIter += 1;
 				}
-			Rslt = LocateHamming(0,1,2*MinCoreDepth,10*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,NumAllocdIdentNodes,pAllocsIdentNodes);
+			Rslt = LocateHamming(0,1,2*MinCoreDepth,10*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 			if(Rslt > 1 && RHamm > 1)
 				{
-				Rslt = LocateHamming(2,2,2*MinCoreDepth,8*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,NumAllocdIdentNodes,pAllocsIdentNodes);
+				Rslt = LocateHamming(2,2,2*MinCoreDepth,8*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 				if(Rslt > 2 && RHamm > 2)
 					{
-					Rslt = LocateHamming(3,3,2*MinCoreDepth,4*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,NumAllocdIdentNodes,pAllocsIdentNodes);
+					Rslt = LocateHamming(3,3,2*MinCoreDepth,4*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 					if(Rslt > 3 && RHamm > 3)
 						{
-						Rslt = LocateHamming(4,4,MinCoreDepth,2*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,NumAllocdIdentNodes,pAllocsIdentNodes);
+						Rslt = LocateHamming(4,4,MinCoreDepth,2*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 						if(Rslt > 4 && RHamm > 4)
-							Rslt = LocateHamming(5,RHamm,MinCoreDepth,MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,NumAllocdIdentNodes,pAllocsIdentNodes);
+							Rslt = LocateHamming(5,RHamm,MinCoreDepth,MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,EntryID,EntryLoci,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 						}
 					}
 				}
@@ -3828,6 +3837,7 @@ CSfxArrayV3::LocateHammings(int RHamm,					// restricted hammings limit
 						 etSeqBase *pSrcSeq,			// hamming k-mers from this sequence
 						 UINT32 SeqEntry,  				// sequence was from this suffix entry (0 if probe not from same assembly)
 						 UINT32 SeqLoci,				// and starting at this loci
+				 		int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 						 UINT8 *pHammings,				// returned hammings
 						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding upto this many tsIdentNodes
 						 tsIdentNode *pAllocsIdentNodes) // memory allocated by caller for holding tsIdentNodes
@@ -3845,7 +3855,7 @@ int CurNIter;
 int LowestHamming;
 
 // quick sanity checks
-if(RHamm < 1 || KMerLen < 20 || KMerLen > 500 || SrcSeqLen < KMerLen || pSrcSeq == NULL || pHammings == NULL)
+if(RHamm < 1 || KMerLen < 10 || KMerLen > 500 || SrcSeqLen < KMerLen || pSrcSeq == NULL || pHammings == NULL)
 	return(eBSFerrInternal);
 
 // iterate over each K-mer instance and save the Hamming for that instance
@@ -3887,18 +3897,18 @@ for(Ofs = 0; Ofs <= (SrcSeqLen - KMerLen); Ofs+=SampleNth,pSrcSeq+=SampleNth)
 					NonNSeq[NIdxs[Idx]] = (CurNIter >> (2 * Idx)) & 0x03;
 				CurNIter += 1;
 				}
-			Rslt = LocateHamming(0,1,2*MinCoreDepth,10*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,NumAllocdIdentNodes,pAllocsIdentNodes);
+			Rslt = LocateHamming(0,1,2*MinCoreDepth,10*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 			if(Rslt > 1 && RHamm > 1)
 				{
-				Rslt = LocateHamming(2,2,2*MinCoreDepth,8*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,NumAllocdIdentNodes,pAllocsIdentNodes);
+				Rslt = LocateHamming(2,2,2*MinCoreDepth,8*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 				if(Rslt > 2 && RHamm > 2)
 					{
-					Rslt = LocateHamming(3,3,2*MinCoreDepth,4*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,NumAllocdIdentNodes,pAllocsIdentNodes);
+					Rslt = LocateHamming(3,3,2*MinCoreDepth,4*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 					if(Rslt > 3 && RHamm > 3)
 						{
-						Rslt = LocateHamming(4,4,MinCoreDepth,2*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,NumAllocdIdentNodes,pAllocsIdentNodes);
+						Rslt = LocateHamming(4,4,MinCoreDepth,2*MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 						if(Rslt > 4 && RHamm > 4)
-							Rslt = LocateHamming(5,RHamm,MinCoreDepth,MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,NumAllocdIdentNodes,pAllocsIdentNodes);
+							Rslt = LocateHamming(5,RHamm,MinCoreDepth,MaxCoreDepth,bSAHammings,pHSrcSeq,KMerLen,SeqEntry,SeqLoci+Ofs,IntraInterBoth,NumAllocdIdentNodes,pAllocsIdentNodes);
 						}
 					}
 				}
@@ -3938,6 +3948,7 @@ CSfxArrayV3::LocateHamming(int RHammMin,				// process for Hammings of at least 
 						 UINT32 ProbeLen,				// probe length
  						 UINT32 ProbeEntry,  			// probe was from this suffix entry (0 if probe not from same assembly)
 						 UINT32 ProbeLoci,				// and starting at this loci
+				 		 int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding upto this many tsIdentNodes
 						 tsIdentNode *pAllocsIdentNodes) // memory allocated by caller for holding tsIdentNodes
 {
@@ -4007,8 +4018,16 @@ if(RHammMin == 0)
 	UINT32 TargEntryID;
 	while((PrevHitIdx = IterateExacts(pProbeSeq,ProbeLen,PrevHitIdx,&TargEntryID,&HitLoci)) > 0)
 		{
-		if(ProbeEntry == TargEntryID && ProbeLoci == HitLoci)
+		if(ProbeEntry == TargEntryID && ProbeLoci == HitLoci)  // not interested in self hits!
 			continue;
+
+		if(ProbeEntry != 0 && IntraInterBoth != 0)
+			{
+			if((IntraInterBoth == 1 && ProbeEntry != TargEntryID) ||
+				(IntraInterBoth == 2 && ProbeEntry == TargEntryID))
+				continue;
+			}
+
 		if(pRevCplSeq != NULL && (ProbeLen >= sizeof(RevCplSeq1Kbp)))
 			free(pRevCplSeq);
 		return(0);
@@ -4018,9 +4037,17 @@ if(RHammMin == 0)
 		{
 		memmove(pRevCplSeq,pProbeSeq,ProbeLen);
 		CSeqTrans::ReverseComplement(ProbeLen,pRevCplSeq);
-		if((PrevHitIdx = IterateExacts(pRevCplSeq,ProbeLen,0,&TargEntryID,&HitLoci)) > 0)
+		PrevHitIdx = 0;
+		while((PrevHitIdx = IterateExacts(pRevCplSeq,ProbeLen,PrevHitIdx,&TargEntryID,&HitLoci)) > 0)
 			{
-			if((ProbeLen >= sizeof(RevCplSeq1Kbp)))
+			if(ProbeEntry != 0 && IntraInterBoth != 0)
+				{
+				if((IntraInterBoth == 1 && ProbeEntry != TargEntryID) ||
+					(IntraInterBoth == 2 && ProbeEntry == TargEntryID))
+					continue;
+				}
+	
+			if(pRevCplSeq != NULL && (ProbeLen >= sizeof(RevCplSeq1Kbp)))
 				free(pRevCplSeq);
 			return(0);
 			}
@@ -4166,6 +4193,12 @@ do
 					{
 					HitLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);
 					if(ProbeLoci == HitLoci)
+						continue;
+					}
+				if(ProbeEntry != 0 && IntraInterBoth != 0)
+					{
+					if((IntraInterBoth == 1 && ProbeEntry != pEntry->EntryID) ||
+						(IntraInterBoth == 2 && ProbeEntry == pEntry->EntryID))
 						continue;
 					}
 				}

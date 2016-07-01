@@ -634,7 +634,8 @@ public:
  										UINT32 ProbeLen,		// probe sequence length
  									 UINT32 SeedCoreLen,		// using this seed core length
 									 UINT32 SloughEntryID,		// if > 0 then hits to this entry (normally would be the probe sequence entry identifier) are to be sloughed
-									 UINT32 MinTargLen,			// hit target sequences must be at least this length
+									 UINT32 MinTargLen,			// accepted hit target sequences must be at least this length
+									 UINT32 MaxTargLen,			// if > 0 then accepted hit target sequences must be no longer than this length
 									 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
  									 UINT32 *pTargEntryID,		// if match then where to return suffix entry (chromosome) matched on
 									 UINT32 *pHitLoci,			// if match then where to return loci
@@ -815,6 +816,7 @@ public:
 						 UINT32 MaxCoreDepth,			// explore cores to at most this depth
 						 UINT32 EntryID,  				// KMer sequences are to be from this suffix entry
 						 UINT32 EntryLoci,				// and starting at this loci
+				 		int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 						 UINT8 *pHammings,				// returned hammings
 						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding upto this many tsIdentNodes
 						 tsIdentNode *pAllocsIdentNodes); // memory allocated by caller for holding tsIdentNodes
@@ -830,6 +832,7 @@ public:
 						 etSeqBase *pSrcSeq,			// hamming k-mers from this sequence
 						 UINT32 SeqEntry,  				// sequence was from this suffix entry (0 if probe not from same assembly)
 						 UINT32 SeqLoci,				// and starting at this loci
+						 int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
 						 UINT8 *pHammings,				// returned hammings
 						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding upto this many tsIdentNodes
 						 tsIdentNode *pAllocsIdentNodes); // memory allocated by caller for holding tsIdentNodes
@@ -839,12 +842,13 @@ public:
 						 int RHammMax,					// process for Hammings upto this limit
 						 UINT32 MinCoreDepth,			// initially explore cores to at least this depth and only continue exploring if depth would be no more than MaxCoreDepth
 						 UINT32 MaxCoreDepth,			// explore cores to at most this depth
-						 bool bSAHammings,				// if true then hammings on both sense and antisense required
+						 bool bSAHammings,				// if true then hammings relative to either/both sense and antisense required
  						 etSeqBase *pProbeSeq,			// probe sequence
 						 UINT32 ProbeLen,				// probe length
  						 UINT32 ProbeEntry,  			// probe was from this suffix entry (0 if probe not from same assembly)
 						 UINT32 ProbeLoci,				// and starting at this loci
-						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding upto this many tsIdentNodes
+						 int IntraInterBoth,	    // 0: hammings over both intra (same sequence as probe K-mer drawn from) and inter (different sequences to that from which probe K-mer drawn), 1: Intra only, 2: Inter only
+ 						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding upto this many tsIdentNodes
 						 tsIdentNode *pAllocsIdentNodes); // memory allocated by caller for holding tsIdentNodes
 
 		//

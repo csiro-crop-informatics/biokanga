@@ -14,7 +14,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const unsigned int cProgVer = 305;		// increment with each release
+const unsigned int cProgVer = 306;		// increment with each release
 
 const unsigned int cLineBuffSize = 10000; // lines are buffered up until this length before write to disk
 const int cMinLenEl = 0;				// minimum length element goes down to 0
@@ -31,6 +31,9 @@ Process(int MinLen,					// filter out elements of less than this length
 		int MaxLen,					// or longer than this length
 		char *pszInfile,			// csv file containing element loci
 		char *pszFilterRefIDFile,	// RefIDs to filter
+		char *pszTrackName,			// optional track name; if track name and description specified specified then BED header will be created
+		char *pszDescr,				// optional track description; if track name and description specified specified then BED header will be created
+		bool bAppend,				// false to create/truncate existing file, true to append
 		char *pszOutfile);			// BED file to create
 
 
@@ -98,10 +101,10 @@ int Rslt;
 char szInfile[_MAX_PATH];
 char szFilterRefIDFile[_MAX_PATH];  // exclude any RefIDs in this filter file
 char szOutfile[_MAX_PATH];
-char szDescr[40];
-char szTrack[40];
-char szChrom[40];
-char szName[40];
+char szDescr[80];
+char szTrack[80];
+char szChrom[80];
+char szName[80];
 int iEntry,iEntryfld,iStepfld,iNbins,iStartstep,iEndstep,iValuefield,iWindowsize,iRemap;
 bool bAppend, bWiggle;
 int iMode;
@@ -137,8 +140,8 @@ struct arg_int *MaxInstances = arg_int0("Y", "maxinsts","<int>",	"mode 7 maximum
 struct arg_int *MinIdentity = arg_int0("d", "minident","<int>",	"mode 3 minimum out species alignment identity (default 0)");
 struct arg_int *MaxIdentity = arg_int0("k", "maxident","<int>",	"mode 3 maximum out species alignment identity (default 100)");
 
-struct arg_str *descr = arg_str0("D","descr","<string>",		"description");
-struct arg_str *track = arg_str0("t","track","<string>",		"track name");
+struct arg_str *descr = arg_str0("D","descr","<string>",		"BED description");
+struct arg_str *track = arg_str0("t","track","<string>",		"BED track name");
 struct arg_str *chrom = arg_str0("c","chromosome","<string>",	"chromosome");
 struct arg_str *name = arg_str0("n","name","<string>",			"entry name");
 struct arg_int *nbins = arg_int0("N", "numbins","<int>",		"number of bins (default 10)");
@@ -268,6 +271,28 @@ if (!argerrors)
 				{
 				printf("\nError: Maximum identity specified as '-D%d' must be in range %d..100\n",iMaxIdentity,iMinIdentity);
 				exit(1);
+				}
+			}
+
+		if(iMode == eCSVFdefault)
+			{
+			if(append->count)
+				bAppend = true;
+			else
+				bAppend = false;
+
+			if(!track->count)
+				{
+				szTrack[0] = '\0';
+				szDescr[0] = '\0';
+				}
+			else
+				{
+				strcpy(szTrack,track->sval[0]);
+				if(descr->count)
+					strcpy(szDescr,descr->sval[0]);
+				else
+					strcpy(szDescr,szTrack);
 				}
 			}
 		}
@@ -400,6 +425,15 @@ if (!argerrors)
 				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum out group identity: %d", iMinIdentity);
 				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum out group identity: %d", iMaxIdentity);
 				}
+		if(iMode == eCSVFdefault)
+			{
+			if(szTrack[0] != '\0' && szDescr[0] != '\0')
+				{
+				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Track name: '%s'",szTrack);				// track name for BED file
+				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Description: '%s'",szDescr);				// description for BED file
+				}
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Append to existing CSV file: %s",bAppend ? "yes" : "no");	// true to append on to existing file otherwise (false) truncate existing file
+			}
 		}
 	else
 		{
@@ -422,7 +456,7 @@ if (!argerrors)
 	gStopWatch.Start();
 	switch(iMode) {
 		case eCSVFdefault:
-			Rslt = Process(iMinLenEl,iMaxLenEl,szInfile,szFilterRefIDFile,szOutfile);
+			Rslt = Process(iMinLenEl,iMaxLenEl,szInfile,szFilterRefIDFile,szTrack,szDescr,bAppend,szOutfile);
 			break;
 
 		case eCSVFprobe:
@@ -488,8 +522,11 @@ return(0);
 int
 Process(int MinLen,					// filter out elements of less than this length
 		int MaxLen,					// or longer than this length
-		char *pszInfile,			// csv file containing element loci
+		char *pszInfile,			// input csv file containing element loci
 		char *pszFilterRefIDFile,	// RefIDs to filter
+		char *pszTrackName,			// optional track name; if track name and description specified specified then BED header will be created
+		char *pszDescr,				// optional track description; if track name and description specified specified then BED header will be created
+		bool bAppend,				// false to create/truncate existing file, true to append
 		char *pszOutfile)			// BED file to create
 {
 int NumFields;
@@ -499,13 +536,13 @@ char *pszChrom;
 char *pszAliasChrom;
 char *pszElType;
 char *pszRefSpecies;
-//char *pszRelSpecies;
 int StartLoci;
 int EndLoci;
 int Len;
 char *pszStrand;
 char Strand;
-//int Features;
+int openopts;
+INT64 FileLen;
 
 int LineLen;
 int hFile;
@@ -551,18 +588,34 @@ if((Rslt=pCSV->Open(pszInfile))!=eBSFSuccess)
 	return(Rslt);
 	}
 
+// create or open existing output file taking into account if the file is to be appended or truncated
 #ifdef _WIN32
-if((hFile = open(pszOutfile, _O_RDWR | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC, _S_IREAD | _S_IWRITE ))==-1)
+openopts = _O_RDWR | _O_BINARY | _O_SEQUENTIAL | _O_CREAT;
+openopts |= bAppend ? 0 : _O_TRUNC;
+hFile = open(pszOutfile,openopts, _S_IREAD | _S_IWRITE );
 #else
-if((hFile = open(pszOutfile, O_RDWR | O_CREAT | O_TRUNC, S_IREAD | S_IWRITE ))==-1)
+openopts = O_RDWR | O_CREAT;
+openopts |= bAppend ? 0 : O_TRUNC;
+hFile = open(pszOutfile,openopts, S_IREAD | S_IWRITE );
 #endif
+if(hFile == -1)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to create output BED file: %s - %s",pszOutfile,strerror(errno));
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to open %s - %s",pszOutfile,strerror(errno));
 	delete pCSV;
 	if(pFilterRefIDs != NULL)
 		delete pFilterRefIDs;
 	return(eBSFerrCreateFile);
 	}
+if(bAppend)
+	FileLen = _lseeki64(hFile,0,SEEK_END);
+
+if((!bAppend || FileLen == 0) && pszTrackName != NULL && pszTrackName[0] != '\0' && pszDescr != NULL && pszDescr[0] != '\0')
+	{
+	LineLen = sprintf(szLineBuff,"\ntrack name=%s description=\"%s\" useScore=0\n",pszTrackName,pszDescr);
+	CUtility::SafeWrite(hFile,szLineBuff,LineLen);
+	LineLen = 0;
+	}
+	
 
 NumElsRead=0;		// number of elements before filtering
 NumElsAccepted=0;	// number of elements accepted after filtering
@@ -620,11 +673,8 @@ while((Rslt=pCSV->NextLine()) > 0)	// onto next line containing fields
 			Strand = *pszStrand;
 		}
 
-	
-//	pCSV->GetText(8,&pszRelSpecies);
-//	pCSV->GetInt(9,&Features);
-	LineLen += sprintf(&szLineBuff[LineLen],"%s\t%d\t%d\tEl%d\t%d\t%c\n",
-		pszAliasChrom,StartLoci,StartLoci+Len,SrcID,Len < 1000 ? Len : 1000,Strand);
+	LineLen += sprintf(&szLineBuff[LineLen],"%s\t%d\t%d\t%s_El%d\t%d\t%c\n",
+		pszAliasChrom,StartLoci,StartLoci+Len,pszAliasChrom,SrcID,Len < 1000 ? Len : 1000,Strand);
 	if(LineLen > (cLineBuffSize-200))
 		{
 		CUtility::SafeWrite(hFile,szLineBuff,LineLen);

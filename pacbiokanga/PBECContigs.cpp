@@ -1727,10 +1727,10 @@ for(HiConfSeqID = 1; HiConfSeqID <= m_NumHiConfSeqs; HiConfSeqID++)
 	HiConfSeqLen = m_pSeqStore->GetLen(HiConfSeqID);
 
 	pThreadPar->bRevCpl = false;
-	IdentifyCoreHits(HiConfSeqID,pThreadPar);
+	IdentifyCoreHits(HiConfSeqID,pThreadPar->MinPBSeqLen,0,pThreadPar);
 
 	pThreadPar->bRevCpl = true;
-	IdentifyCoreHits(HiConfSeqID,pThreadPar);
+	IdentifyCoreHits(HiConfSeqID,pThreadPar->MinPBSeqLen,0,pThreadPar);
 
 
 	ProvOverlapping = 0;
@@ -2283,6 +2283,8 @@ return(m_pMapEntryID2NodeIDs[EntryID-1]);
 
 int
 CPBECContigs::IdentifyCoreHits(UINT32 HiConfSeqID,	// identify all overlaps of this probe sequence HiConfSeqID onto target sequences
+				UINT32 MinTargLen,				// accepted target hit sequences must be at least this length
+				UINT32 MaxTargLen,				// and if > 0 then accepted targets no longer than this length
 				tsThreadPBECContigs *pPars)		// thread specific
 {
 INT64 PrevHitIdx;
@@ -2332,19 +2334,22 @@ LastProbeOfs = 1 + ProbeSeqLen - pPars->CoreSeqLen;
 if(pPars->CoreSeqLen < cMaxPacBioSeedExtn)
 	LastProbeOfs -= 120;
 
+if(MinTargLen < 1)
+	MinTargLen = 1;
+
 for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=pPars->DeltaCoreOfs,pCoreSeq+=pPars->DeltaCoreOfs)
 	{
 	PrevHitIdx = 0;
 	HitsThisCore = 0;
 
-    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,ProbeSeqLen - ProbeOfs,pPars->CoreSeqLen,0,pPars->MinPBSeqLen,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
+    while((NextHitIdx = m_pSfxArray->IteratePacBio(pCoreSeq,ProbeSeqLen - ProbeOfs,pPars->CoreSeqLen,0,pPars->MinPBSeqLen,MaxTargLen,PrevHitIdx,&HitEntryID,&HitLoci)) > 0)
 		{
 		PrevHitIdx = NextHitIdx;
 		pTargNode = &m_pPBScaffNodes[MapEntryID2NodeID(HitEntryID)-1];
 		HitSeqLen = pTargNode->SeqLen; 
 
 		if( pTargNode->flgUnderlength == 1 ||	// not interested in under length targets
-							HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length less than min sequence length to be processed
+			 HitSeqLen < (UINT32)pPars->MinPBSeqLen)		// not interested if target sequence length not in range of accepted target sequence length to be processed
 			continue;
 
   		if(AddCoreHit(HiConfSeqID,pPars->bRevCpl,ProbeOfs,pTargNode->NodeID,HitLoci,pPars->CoreSeqLen,pPars)>0)
