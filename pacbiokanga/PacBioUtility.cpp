@@ -560,64 +560,8 @@ return(Rslt);
 }
 
 
-int												// identified SMRTBell at this offset + 1, 0 if non-detected 
-CPacBioUtility::DetectSMRTBell(int StartOfs,	// search from this offset
-					int *pNumTetramers,			// returned number of tetramers from SmartBell sequence detected and which were in expected order 
-					int InSeqLen,				// number of bases in sequence to search for SmartBell
-					etSeqBase *pInSeq,			// sequence to search for SmartBell
-					int MinTetramers)			// only report SmartBell if at least this many tetramers in expected order detected
-{
-int Idx;
-int TIdx;
-int QIdx;
-const etSeqBase *pQSeq;
-etSeqBase *pTSeq;
-int QKMers;
-int PeakQKMers;
-int PeakLoc;
 
-if(StartOfs < 0 || pNumTetramers == NULL || InSeqLen < cSmartBellAdapterSeqLen || pInSeq == NULL || MinTetramers < 1 ||
-	StartOfs + cSmartBellAdapterSeqLen > InSeqLen)
-	return(eBSFerrParams);
-
-PeakQKMers = 0;
-PeakLoc = 0;
-for(Idx = StartOfs+6; Idx < InSeqLen - cSmartBellAdapterSeqLen/3 ; Idx++)
-	{
-	pQSeq = &cSmartBellAdapterSeq[0];
-	QKMers = 0;
-	for(QIdx = 0; QIdx < cSmartBellAdapterSeqLen - 6; QIdx++,pQSeq++)
-		{
-		pTSeq = &pInSeq[Idx-6];
-		for(TIdx = 0; TIdx < 12; TIdx++,pTSeq++)
-			{
-			if((*pQSeq == (*pTSeq & 0x03)) && 
-				(pQSeq[1] == (pTSeq[1] & 0x03)) &&
-				(pQSeq[2] == (pTSeq[2] & 0x03)) &&
-				(pQSeq[3] == (pTSeq[3] & 0x03))) 
-				{
-				QKMers += 1;
-				break;
-				}
-			}
-		}
-	if(QKMers > PeakQKMers)
-		{
-		PeakQKMers = QKMers;
-		PeakLoc = Idx;
-		}
-
-	if(QKMers >= MinTetramers)
-		{
-		*pNumTetramers = QKMers;
-		return(Idx);
-		}
-	}
-*pNumTetramers = 0;
-return(0);
-}
-
-// Identify PacBio ISO-seq primers at 5' and 3' ends of error corrected reads (still to be implemented!!!! )
+// Identify PacBio ISO-seq primers at 5' and 3' ends of error corrected reads (still being developed!!!! )
 int												// identified SMRTBell at this offset + 1, 0 if non-detected
 CPacBioUtility::DetectIsoSeqPrimers(int StartOfs,	// search from this offset
 					int *pNumTetramers,			// returned number of tetramers from SmartBell sequence detected and which were in expected order 
@@ -678,67 +622,436 @@ return(0);
 
 int		// length after hompolymer reduction
 CPacBioUtility::ReduceHomopolymers(int InSeqLen,	// number of bases in sequence
-					   etSeqBase *pInSeq,		// sequence which may contain homopolymers
-					   etSeqBase *pOutSeq,		// homopolymer reduced sequence copied into this sequence buffer
-					   int TruncLen)			// homopolymers longer than this length (min 1) to be truncated at this length
+					   etSeqBase *pInSeq,			// sequence which may contain homopolymers
+					   int TruncLen)				// homopolymers longer than this length (min 12) to be truncated at this length
 {
-int InIdx;
-int OutIdx;
-int HomopolymerLen;
+UINT8 *pHomoBase;
+UINT8 *pDelHomoBase;
+UINT8 HomoBase;
+UINT8 CurHomoBase;
+UINT32 TotHomoLen;
+UINT32 HomoIdx;
+UINT32 StartHomoIdx;
+bool bHomoRuns;
+if(TruncLen < 12)
+	return(InSeqLen);
 
-if(TruncLen < 1 || InSeqLen < TruncLen || pInSeq == NULL || *pInSeq > eBaseN || pOutSeq == NULL )
-	return(-1);
-
-OutIdx = 0;
-HomopolymerLen = 0;
-for(InIdx = 0; InIdx < (InSeqLen - 1); InIdx++,pInSeq++)
+// checking for near homopolymer runs and marking these bases for deletion
+TotHomoLen = 0;
+StartHomoIdx = 0;
+bHomoRuns = false;
+pHomoBase = pInSeq;
+for(HomoIdx = 0; HomoIdx < (UINT32)InSeqLen; HomoIdx++,pHomoBase++)
 	{
-	if(*pInSeq != pInSeq[1])
+	HomoBase = *pHomoBase & 0x03;
+	if(TotHomoLen == 0)
 		{
-		*pOutSeq++ = *pInSeq++;
-		OutIdx += 1;
-		HomopolymerLen = 0;
+		StartHomoIdx = HomoIdx;
+		CurHomoBase = HomoBase;
+		TotHomoLen = 1;
 		}
 	else
 		{
-		HomopolymerLen += 1;
-		if(HomopolymerLen <= TruncLen)
+		if(HomoBase == CurHomoBase)
+			TotHomoLen += 1;
+		else
 			{
-			*pOutSeq++ = *pInSeq++;
-			OutIdx += 1;
+			if(TotHomoLen >= 12)				// requiring an initial seed K-mer of at least 12 bases before accepting as possibly a homopolymer
+				{
+				// although not matching the current homopolymer base if the next three bases would match then accept as still being part of the homopolymer
+				if((HomoIdx + 4) < (UINT32)InSeqLen)
+					{ 
+					if(((pHomoBase[1] & 0x03) == CurHomoBase) && ((pHomoBase[2] & 0x03) == CurHomoBase) && ((pHomoBase[3] & 0x03) == CurHomoBase))
+						{
+						TotHomoLen += 1;
+						continue;
+						}
+					}
+
+				if(TotHomoLen >= (UINT32)TruncLen)				// accepting as homopolymer if at least m_FiltMinHomoLen long
+					{
+					pDelHomoBase = &pInSeq[StartHomoIdx+6];	// retaining the first 6 bases as these started the homopolymer run
+					TotHomoLen -= 6;							// and retaining the last 6 bases as these terminated the homopolymer run
+					while(TotHomoLen--) 
+						*pDelHomoBase++ = eBaseInDel;			// marking base for subsequent deletion 
+					bHomoRuns = true;
+					}
+				}
+			TotHomoLen = 0;
+			StartHomoIdx = 0;
 			}
 		}
-	}
-if(HomopolymerLen <= TruncLen || *pInSeq != pInSeq[-1])
+ 	}
+
+if(TotHomoLen >= (UINT32)TruncLen)			// accepting as homopolymer if at least m_FiltMinHomoLen long
 	{
-	*pOutSeq++ = *pInSeq;
-	OutIdx += 1;
+	pDelHomoBase = &pInSeq[StartHomoIdx+6];	// retaining the first 5 bases as these started the homopolymer run
+	TotHomoLen -= 6;					    // and retaining the last 5 bases as these terminated the homopolymer run
+	while(TotHomoLen--) 
+		*pDelHomoBase++ = eBaseInDel;      // marking base for subsequent deletion 
+	bHomoRuns = true;
 	}
-return(OutIdx);
+
+if(bHomoRuns)
+	{
+	TotHomoLen = 0;
+	pDelHomoBase = pHomoBase = pInSeq;
+	for(HomoIdx = 0; HomoIdx < (UINT32)InSeqLen; HomoIdx++,pHomoBase++)
+		{
+		HomoBase = *pHomoBase & 0x07;
+		if(HomoBase == eBaseInDel)
+			continue;
+		*pDelHomoBase++ = *pHomoBase;
+		TotHomoLen += 1;
+		}
+	InSeqLen = (int)TotHomoLen;
+	}
+
+return(InSeqLen);
 }
 
 int													// number of putatve SMRTBell hairpins identified
 CPacBioUtility::IdentifySMRTBells(int MaxSMRTBells,	// identify at most this many SMRTBells to return in pSMRTBells
-						int SeqLen,			// length of sequence to search for SMRTBell hairpins
-						etSeqBase *pSeq,	// identify all putative SMRTBell hairpins in this sequence
-						tsSMRTBellHit *pSMRTBells, // returned identified SMRTBells
-						int MinTetramers)	// only report SmartBell if at least this many tetramers in expected order detected
+						int SeqLen,					// length of sequence to search for SMRTBell hairpins
+						etSeqBase *pSeq,			// identify all putative SMRTBell hairpins in this sequence
+						tsSMRTBellHit *pSMRTBells)	// returned identified SMRTBells
 {
-int NumTetramers;
-int NxtLocSMRTBell;
 int NumSMRTBells;
+int LHE;
+int RHS;
+int Len;
+int MinScore;
+int Hits;
+int NumTargsSense;
+int NumTargsAnti;
 
-NxtLocSMRTBell = 0;
+tsSMRTBellHit *pExchg;
+tsSMRTBellHit Swap;
+int NumSwaps;
+int ExchgIdx;
 
+tsSWQuickHit *pQuickHit;
+tsSWQuickHit QuickHitsSense[50];
+tsSWQuickHit QuickHitsAnti[50];
+
+tsSWQuickHit QuickHitsExtd[50];
+
+
+int NumTargsFSense;
+int NumTargsFAnti;
+
+etSeqBase AdapterAntisense[1000];
+etSeqBase RHSAntisense[1000];
+
+NumTargsFSense = 0;
+NumTargsFAnti = 0;
 NumSMRTBells = 0;
-while(NumSMRTBells < MaxSMRTBells && (NxtLocSMRTBell = DetectSMRTBell(NxtLocSMRTBell,&NumTetramers,SeqLen,pSeq,MinTetramers)) > 0)
+NumTargsSense = SWQuick(cSmartBellAdapterSeqLen,(etSeqBase *)cSmartBellAdapterSeq,SeqLen,pSeq,15,QuickHitsSense,15,2,-20,-4,-3,-4,-3);
+if(NumTargsSense > 0)
 	{
-	pSMRTBells->NumTetramers = NumTetramers;
-	pSMRTBells->LocOfs = NxtLocSMRTBell;
-	NumSMRTBells += 1;
-	NxtLocSMRTBell += cSmartBellAdapterSeqLen;
+	pQuickHit = QuickHitsSense;
+	for(int Idx = 0; Idx < NumTargsSense; Idx++,pQuickHit+=1)
+		{
+		LHE = pQuickHit->TargOfs - pQuickHit->QueryOfs;
+		RHS = LHE + cSmartBellAdapterSeqLen;
+		if(LHE < 100 || RHS+100 >= SeqLen)
+			continue;
+		Len = min(500,min(LHE,SeqLen-RHS));
+		MinScore = (100 * Len) / 500;
+		memcpy(RHSAntisense,&pSeq[RHS],Len);
+		CSeqTrans::ReverseComplement(Len,RHSAntisense);
+		if((Hits = SWQuick(Len,&pSeq[LHE-Len],Len,RHSAntisense,1,QuickHitsExtd,MinScore,2,-20,-4,-3,-4,-3)) > 0)
+			{
+			pSMRTBells[NumSMRTBells].HiScore = QuickHitsExtd[0].HiScore;
+			pSMRTBells[NumSMRTBells].TargOfs = (LHE + RHS)/2;
+			NumSMRTBells += 1;
+			MaxSMRTBells -= 1;
+			// not expecting too many SMRTBells in any targeted sequence
+			// ensure SMRTBells are ordered from 5' end ascending just using a simple exchange sort
+			if(NumSMRTBells > 1)
+				{
+				do {
+					pExchg = pSMRTBells;
+					NumSwaps = 0;
+					for(ExchgIdx = 0; ExchgIdx < NumSMRTBells - 1; ExchgIdx++, pExchg++)
+						{
+						if(pExchg->TargOfs > pExchg[1].TargOfs)
+							{
+							Swap = pExchg[1];
+							pExchg[1] = *pExchg;
+							*pExchg = Swap;
+							NumSwaps += 1;
+							}
+						}
+					}
+				while(NumSwaps);
+				}
+			}
+		if(MaxSMRTBells == 0)
+			break;
+		}
 	}
+
+if(MaxSMRTBells > 0)
+	{
+	memcpy(AdapterAntisense,cSmartBellAdapterSeq,cSmartBellAdapterSeqLen);
+	CSeqTrans::ReverseComplement(cSmartBellAdapterSeqLen,AdapterAntisense);
+	NumTargsAnti = SWQuick(cSmartBellAdapterSeqLen,(etSeqBase *)AdapterAntisense,SeqLen,pSeq,15,QuickHitsAnti,15,2,-20,-4,-3,-4,-3);
+	if(NumTargsAnti > 0)
+		{
+		pQuickHit = QuickHitsAnti;
+		for(int Idx = 0; Idx < NumTargsAnti; Idx++,pQuickHit+=1)
+			{
+			LHE = pQuickHit->TargOfs - pQuickHit->QueryOfs;
+			RHS = LHE + cSmartBellAdapterSeqLen;
+			if(LHE < 100 || RHS+100 >= SeqLen)
+				continue;
+			Len = min(500,min(LHE,SeqLen-RHS));
+			MinScore = (100 * Len) / 500;
+			memcpy(RHSAntisense,&pSeq[RHS],Len);
+			CSeqTrans::ReverseComplement(Len,RHSAntisense);
+			if((Hits = SWQuick(Len,&pSeq[LHE-Len],Len,RHSAntisense,1,&QuickHitsExtd[NumSMRTBells],MinScore,2,-20,-4,-3,-4,-3)) > 0)
+				{
+				pSMRTBells[NumSMRTBells].HiScore = QuickHitsExtd[0].HiScore;
+				pSMRTBells[NumSMRTBells].TargOfs = (LHE + RHS)/2;
+				NumSMRTBells += 1;
+				MaxSMRTBells -= 1;
+				// not expecting too many SMRTBells in any targeted sequence
+				// ensure SMRTBells are ordered from 5' end ascending just using a simple exchange sort
+				if(NumSMRTBells > 1)
+					{
+					do {
+						pExchg = pSMRTBells;
+						NumSwaps = 0;
+						for(ExchgIdx = 0; ExchgIdx < NumSMRTBells - 1; ExchgIdx++, pExchg++)
+							{
+							if(pExchg->TargOfs > pExchg[1].TargOfs)
+								{
+								Swap = pExchg[1];
+								pExchg[1] = *pExchg;
+								*pExchg = Swap;
+								NumSwaps += 1;
+								}
+							}
+						}
+					while(NumSwaps);
+					}
+				}
+			if(MaxSMRTBells == 0)
+				break;
+			}
+		}
+	}
+
 return(NumSMRTBells);
 }
 
 
+typedef struct TAG_sSWQScore {
+	INT32 PathScore;		// accumulated path score
+	UINT32 RunLen;			// current run length of Class type
+	UINT32 RunClass;		// run length class; 0:exact match, 1: mismatches, 2: insertions into the target, 3: deletions from the target		
+} tsSWQScore;
+
+int								// number of target hits returned
+CPacBioUtility::SWQuick(int QueryLen,			// relatively short query sequence to search for; typically a SMRTBell or some adapter sequence
+		etSeqBase *pQuerySeq,	// query sequence
+		int TargLen,			// length of sequence to search, expected to be at least the query sequence length
+		etSeqBase *pTargSeq,	// identify all queries in this target sequence
+		int MaxTargHits,		// return at most this many target hits
+		tsSWQuickHit *pTargHits, // returned putative target hits
+		int MinScore,			// only report hits having at least this score
+		int MatchScore,			// score for exact base matches
+		int MismatchScore,		// score for mismatches
+		int InsertScore,		// score for 1st inserted base of any contiguous run of insertions into the target
+		int InsertAffineScore,  // score for 2nd and subsequent inserted bases in any contiguous insertion run
+		int DeleteScore,		// score for 1st deleted base of any contiguous deletions from the target
+		int DeleteAffineScore)  // score for 2nd and subsequent deleted bases in any contiguous deletion run
+{
+static bool bFirst = true;
+bool bExactMatch;
+int HiScore;
+int LoHiScore;
+int LoHitIdx;
+int HiQIdx;
+int NumHiScores;
+tsSWQScore CellScores[cMaxSWQuickQueryLen+1];
+tsSWQScore *pCell;
+tsSWQScore DiagCell;
+tsSWQScore NxtDiagCell;
+tsSWQScore NewMatchCell;
+tsSWQScore NewInsertCell;
+tsSWQScore NewDeleteCell;
+
+int TLen, QLen;
+int TIdx,QIdx;
+etSeqBase *pTSeq,*pQSeq;
+tsSWQuickHit *pHit;
+int HitIdx;
+
+int MaxScore;
+
+if(QueryLen < cMinSWQuickQueryLen || QueryLen > cMaxSWQuickQueryLen || pQuerySeq == NULL ||
+	TargLen < QueryLen || pTargSeq == NULL || 
+	MaxTargHits < 1 || MaxTargHits > cMaxSWQuickHits || pTargHits == NULL || MinScore == 0)
+	return(eBSFerrParams);
+
+memset(pTargHits,0,sizeof(tsSWQuickHit) * MaxTargHits);
+memset(CellScores,0,sizeof(tsSWQScore) * (QueryLen + 1));
+NumHiScores = 0;
+MaxScore = 0;
+TLen = TargLen;
+pTSeq = pTargSeq;
+for(TIdx = 0; TIdx < TLen; TIdx++,pTSeq++)
+	{
+	pQSeq = pQuerySeq;
+	QLen = QueryLen;
+	pCell = &CellScores[1];
+	DiagCell = CellScores[0];
+	HiScore = 0;
+	HiQIdx = -1;
+	for(QIdx = 0; QIdx < QLen; QIdx++,pQSeq++,pCell++)
+		{
+		NxtDiagCell = *pCell;
+		bExactMatch = (*pTSeq & 0x03) == (*pQSeq & 0x03) ? true : false;
+		NewMatchCell = DiagCell;
+		if(bExactMatch) 
+			{
+			NewMatchCell.PathScore += MatchScore;
+			if(NewMatchCell.RunClass != 0)
+				{
+				NewMatchCell.RunLen = 1;
+				NewMatchCell.RunClass = 0;
+				}
+			else 
+				NewMatchCell.RunLen += 1;
+			}
+		else	
+			{
+			NewMatchCell.PathScore += MismatchScore;
+			if(NewMatchCell.RunClass != 1)
+				{
+				NewMatchCell.RunLen = 1;
+				NewMatchCell.RunClass = 1;
+				}
+			else
+				NewMatchCell.RunLen += 1;
+			}
+
+		NewInsertCell = *pCell;
+		if(NewInsertCell.RunClass != 2)
+			{
+			NewInsertCell.RunLen = 1;
+			NewInsertCell.RunClass = 2;
+			NewInsertCell.PathScore += InsertScore;
+			}
+		else
+			{
+			NewInsertCell.RunLen += 1;
+			NewInsertCell.PathScore += InsertAffineScore;
+			}
+
+		NewDeleteCell = pCell[-1];
+		if(NewDeleteCell.RunClass != 3)
+			{
+			NewDeleteCell.RunLen = 1;
+			NewDeleteCell.RunClass = 3;
+			NewDeleteCell.PathScore += DeleteScore;
+			}
+		else
+			{
+			NewDeleteCell.RunLen += 1;
+			NewDeleteCell.PathScore += DeleteAffineScore;
+			}
+
+		if(NewMatchCell.PathScore <= 0)
+			{
+			NewMatchCell.PathScore = 0;
+			NewMatchCell.RunClass = 0;
+			NewMatchCell.RunLen = 0;
+			}
+
+		if(NewInsertCell.PathScore <= 0)
+			{
+			NewInsertCell.PathScore = 0;
+			NewInsertCell.RunClass = 0;
+			NewInsertCell.RunLen = 0;
+			}
+
+		if(NewDeleteCell.PathScore <= 0)
+			{
+			NewDeleteCell.PathScore = 0;
+			NewDeleteCell.RunClass = 0;
+			NewDeleteCell.RunLen = 0;
+			}
+
+		if(NewMatchCell.PathScore >= NewInsertCell.PathScore && NewMatchCell.PathScore >= NewDeleteCell.PathScore)
+			*pCell = NewMatchCell;
+		else
+			{
+			if(NewInsertCell.PathScore >= NewDeleteCell.PathScore)
+				*pCell = NewInsertCell;
+			else
+				*pCell = NewDeleteCell;
+			}
+		DiagCell = NxtDiagCell;
+		if(pCell->PathScore > HiScore)
+			{
+			HiScore = pCell->PathScore;
+			HiQIdx = QIdx;
+			}
+		}
+	if(HiScore > MaxScore)
+		MaxScore = HiScore;
+
+	if(HiScore >= MinScore)
+		{
+		// overwrite any previous highest score if that highest score was <= HiScore and within QueryLen/2 of this latest score
+		// if a previous highest score is higher and within QueryLen/2 of this latest score then slough this latest HiScore
+		if(NumHiScores)
+			{
+			pHit = &pTargHits[NumHiScores-1];
+			if(pHit->TargOfs >= (TIdx - QueryLen/2))
+				{
+				if(HiScore >= pHit->HiScore)
+					{
+					pHit->TargOfs = TIdx;
+					pHit->QueryOfs = HiQIdx;
+					pHit->HiScore = HiScore;
+					}
+				continue;
+				}
+			if(NumHiScores == MaxTargHits)	// if score higher than lowest previously recorded then slough that lowest score to make room for this higher score
+				{
+				LoHiScore = HiScore;
+				LoHitIdx = -1;
+				pHit =  pTargHits;
+				for(HitIdx = 0; HitIdx < MaxTargHits; HitIdx++,pHit++)
+					{
+					if(pHit->HiScore < LoHiScore)
+						{
+						LoHitIdx = HitIdx;
+						LoHiScore = pHit->HiScore;
+						}
+					}
+				if(LoHitIdx < 0)
+					continue;
+				NumHiScores -= 1;
+				pHit = &pTargHits[LoHitIdx];
+				if(LoHitIdx < NumHiScores)
+					memmove(pHit,&pHit[1],(NumHiScores-LoHitIdx)  * sizeof(tsSWQuickHit));
+				}
+			pHit = &pTargHits[NumHiScores];
+			}
+		else
+			pHit =  pTargHits;
+ 
+		pHit->TargOfs = TIdx;
+		pHit->QueryOfs = HiQIdx;
+		pHit->HiScore = HiScore;
+		NumHiScores += 1;
+		}
+
+	}
+return(NumHiScores);
+}

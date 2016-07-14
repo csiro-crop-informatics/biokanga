@@ -18,7 +18,6 @@ typedef enum {
 
 class CFastaNxx
 {
-
 	size_t m_AllocMemSeq;				// allocation size of m_pSeq
 	etSeqBase *m_pSeq;					// allocated to fasta sequences
 	int m_NumContigLens;				// current number of contig lengths in m_pContigLengths
@@ -46,6 +45,8 @@ public:
 	Process(etNxxPMode Mode,				// processing mode - 0  N50 distributions, 1 k-mer count distributions
 			int MinLength,					// core elements must be of at least this length
 			int MaxLength,					// will be truncated to this length
+			int NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+			int BinDelta,				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
 			int NumInputFiles,				// number of input sequence files
 			char **pszInFastaFile,			// names of input sequence files (wildcards allowed)
 			char *pszRsltsFile);			// file to write fasta into

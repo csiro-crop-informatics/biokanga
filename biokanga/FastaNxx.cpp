@@ -20,6 +20,8 @@ int
 Process(etNxxPMode Mode,			// processing mode - 0  N50 distributions, 1 n-mer count distributions
         int MinLength,				// core elements must be of at least this length
 		int MaxLength,				// will be truncated to this length
+		int NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+		int BinDelta,				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
 		int NumInputFiles,			// number of input sequence files
 		char **pszInFastaFile,		// names of input sequence files (wildcards allowed)
 		char *pszRsltsFile);		// file to write results out into
@@ -49,6 +51,9 @@ int Idx;
 int iMinLength;				// sequences must be of at least this length
 int iMaxLength;				// and no longer than this length
 
+int NumBins;				// when generating length distributions then use this many bins - 0 defaults to using 1000
+int BinDelta;				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
+
 int NumInputFiles;							// number of input sequence files
 char *pszInFastaFile[cMaxInFileSpecs];		// names of input sequence files (wildcards allowed)
 
@@ -73,6 +78,9 @@ struct arg_file *RsltsFile = arg_file0("o","output","<file>",	"output file");
 struct arg_int  *MinLength = arg_int0("l","minlength","<int>",	"minimum fasta sequence length (default 10)");
 struct arg_int  *MaxLength = arg_int0("L","maxlength","<int>",	"truncate fasta sequence length (default 200)");
 
+struct arg_int  *numbins = arg_int0("b","numbins","<int>",	"when generating length distributions then use this many bins (defaults to 1000, range 10..10000)");
+struct arg_int  *bindelta = arg_int0("B","bindelta","<int>","when generating length distributions then each bin holds this length delta (default 0 for auto-determination, range 1,2,5,10,25,50,100,250,500 or 1000)");
+
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",		"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");
@@ -81,9 +89,8 @@ struct arg_end *end = arg_end(100);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					summrslts,experimentname,experimentdescr,
-					pmode,pinputfiles,RsltsFile,MinLength,MaxLength,
+					pmode,pinputfiles,RsltsFile,MinLength,MaxLength,numbins,bindelta,
 					end};
-
 
 char **pAllArgs;
 int argerrors;
@@ -225,6 +232,8 @@ if (!argerrors)
 		exit(1);
 		}
 
+	NumBins = 1000;
+	BinDelta = 0;
 	if(PMode == ePMdefault)
 		{
 		iMinLength = MinLength->count ? MinLength->ival[0] : cDfltMinLengthRange;
@@ -292,6 +301,23 @@ if (!argerrors)
 		}
 	else
 		{
+		NumBins = numbins->count ? numbins->ival[0] : 1000;
+		if(NumBins == 0)
+			NumBins = 1000;
+		if(NumBins < 10 || NumBins > 10000)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of bins '-b%d' is not in range 10..10000");
+			exit(1);
+			}
+		BinDelta = bindelta->count ? bindelta->ival[0] : 0;
+		switch(BinDelta) {
+			case 0: case 1: case 2: case 5: case 10: case 25: case 50: case 100: case 250: case 500: case 1000:
+				break;
+			default:
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Bin length delta '-B%d' must be either 0 (auto),1,2,5,10,25,50,100,250,500 or 1000");
+				exit(1);
+			}
+
 		szRsltsFile[0] = '\0';
 		if(RsltsFile->count)
 			{
@@ -317,6 +343,11 @@ if (!argerrors)
 		{
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum contig sequence length: %d",iMinLength);
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum contig sequence length: %d",iMaxLength);
+		if(szRsltsFile[0] != '\0')
+			{
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Number of bins: %d",NumBins);
+			gDiagnostics.DiagOutMsgOnly(eDLInfo,"Bin length delta: %d",BinDelta);
+			}
 		}
 	if(PMode == ePMKMerDist)
 		{
@@ -336,6 +367,9 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(INT32),"minlen",&iMinLength);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(INT32),"maxlen",&iMaxLength);
 
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(INT32),"numbins",&numbins);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(INT32),"bindelta",&bindelta);
+
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(INT32),"NumInputFiles",&NumInputFiles);
 		for(Idx = 0; Idx < NumInputFiles; Idx++)
 			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszInFastaFile[Idx]),"in",pszInFastaFile[Idx]);
@@ -349,7 +383,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = Process(PMode,iMinLength,iMaxLength,NumInputFiles,pszInFastaFile,szRsltsFile);
+	Rslt = Process(PMode,iMinLength,iMaxLength,NumBins,BinDelta,NumInputFiles,pszInFastaFile,szRsltsFile);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -375,6 +409,8 @@ int
 Process(etNxxPMode Mode,			// processing mode - 0  N50 distributions, 1 n-mer count distributions
         int MinLength,				// core elements must be of at least this length
 		int MaxLength,				// will be truncated to this length
+		int NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+		int BinDelta,				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
 		int NumInputFiles,			// number of input sequence files
 		char **pszInFastaFile,		// names of input sequence files (wildcards allowed)
 		char *pszRsltsFile)			// file to write fasta into
@@ -386,7 +422,7 @@ if((pFastaNxx = new CFastaNxx) == NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to create CFastaNxx object");
 	return(eBSFerrObj);
 	}
-Rslt = pFastaNxx->Process(Mode,MinLength,MaxLength,NumInputFiles,pszInFastaFile,pszRsltsFile);
+Rslt = pFastaNxx->Process(Mode,MinLength,MaxLength,NumBins,BinDelta,NumInputFiles,pszInFastaFile,pszRsltsFile);
 
 delete pFastaNxx;
 return(Rslt);
@@ -664,6 +700,8 @@ int
 CFastaNxx::Process(etNxxPMode Mode,		// processing mode - 0  N50 distributions, 1 n-mer count distributions
         int MinLength,				// core elements must be of at least this length
 		int MaxLength,				// will be truncated to this length
+		int NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+		int BinDelta,				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
 		int NumInputFiles,			// number of input sequence files
 		char **pszInFastaFile,		// names of input sequence files (wildcards allowed)
 		char *pszRsltsFile)			// file to write fasta into
@@ -785,8 +823,6 @@ if(Mode == ePMdefault)
 	int CtgNxIdx;
 	int NumCtgs;
 	int *pCnts;
-	int NumBins;
-	int BinDelta;
 
 	if(pszRsltsFile != NULL && pszRsltsFile[0] != '\0')
 		{
@@ -801,45 +837,49 @@ if(Mode == ePMdefault)
 			return(eBSFerrCreateFile);
 			}
 
-		NumBins = 1000;			// 1000 bins for length distributions; each bin to hold length delta's of 1,2,5,10,20,25,50,100,200,500 and 1000 dependent on the MaxLengthRead accepted
-		if(m_MaxLengthRead <= 1000)
-			BinDelta = 1;
-		else
+		if(NumBins == 0)
+			NumBins = 1000;			// default is 1000 bins for length distributions
+		if(BinDelta == 0)			// needing to auto determine bin length delta's of 1,2,5,10,20,25,50,100,200,500 and 1000 dependent on the MaxLengthRead accepted
 			{
-			if(m_MaxLengthRead < 2000)
-				BinDelta = 2;
+			if(m_MaxLengthRead <= NumBins)
+				BinDelta = 1;
 			else
-				if(m_MaxLengthRead < 5000)
-					BinDelta = 5;
+				{
+				if(m_MaxLengthRead < 2 * NumBins)
+					BinDelta = 2;
 				else
-					if(m_MaxLengthRead < 10000)
-						BinDelta = 10;
+					if(m_MaxLengthRead < 5 * NumBins)
+						BinDelta = 5;
 					else
-						if(m_MaxLengthRead < 20000)
-							BinDelta = 20;
+						if(m_MaxLengthRead < 10 * NumBins)
+							BinDelta = 10;
 						else
-							if(m_MaxLengthRead < 50000)
-								BinDelta = 50;
+							if(m_MaxLengthRead < 25 * NumBins)
+								BinDelta = 25;
 							else
-								if(m_MaxLengthRead < 100000)
-									BinDelta = 100;
+								if(m_MaxLengthRead < 50 * NumBins)
+									BinDelta = 50;
 								else
-									if(m_MaxLengthRead < 200000)
-										BinDelta = 200;
+									if(m_MaxLengthRead < 100 * NumBins)
+										BinDelta = 100;
 									else
-										if(m_MaxLengthRead < 500000)
-											BinDelta = 500;
+										if(m_MaxLengthRead < 250 * NumBins)
+											BinDelta = 250;
 										else
-											BinDelta = 1000;
+											if(m_MaxLengthRead < 500 * NumBins)
+												BinDelta = 500;
+											else
+												BinDelta = 1000;
+				}
 			}
 
-		if((m_pBins = new UINT32 [NumBins])==NULL)
+		if((m_pBins = new UINT32 [NumBins+1])==NULL)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"GenContigs: Memory allocation for %d bins failed - %s",NumBins,strerror(errno));
 			Reset();
 			return(eBSFerrMem);
 			}
-		memset(m_pBins,0,sizeof(UINT32) * NumBins);
+		memset(m_pBins,0,sizeof(UINT32) * (NumBins+1));
 		}
 	else
 		m_pBins = NULL;
@@ -850,12 +890,7 @@ if(Mode == ePMdefault)
 		{
 		SumCtgLens += *pCnts;
 		if(m_pBins != NULL && *pCnts != 0)
-			{
-			if(BinDelta == 1000 && *pCnts > 1000000)
-				m_pBins[999] += 1;
-			else
-				m_pBins[*pCnts / BinDelta] += 1;
-			}
+			m_pBins[min(*pCnts / BinDelta,NumBins)] += 1;
 		}	
 
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"  Total sequence length over accepted contigs: %lld",SumCtgLens);
@@ -864,7 +899,7 @@ if(Mode == ePMdefault)
 		{
 		WrtOfs = 0;
 		pCnts = (int *)m_pBins;
-		for(CtgLenIdx = 0; CtgLenIdx < NumBins; CtgLenIdx++, pCnts++)
+		for(CtgLenIdx = 0; CtgLenIdx <= NumBins; CtgLenIdx++, pCnts++)
 			{
 			WrtOfs += sprintf(&szWrtBuff[WrtOfs],"%d,%d\n",CtgLenIdx * BinDelta,*pCnts);
 			if(WrtOfs + 50 > sizeof(szWrtBuff))

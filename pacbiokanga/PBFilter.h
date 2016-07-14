@@ -20,9 +20,9 @@ const int cMinSMRTBellExacts = 20;					// user specified min mumber of exactly m
 const int cDfltMinSMRTBellExacts = 30;				// default mumber of exactly matching bases in putative SMRTBell adapter
 const int cMaxSMRTBellExacts = 46;				    // user specified max mumber of exactly matching bases in putative SMRTBell adapter
 
-const int cDfltTrim5 = 100;						// default is to after any filtering then to trim 5' end by this many bp
-const int cDfltTrim3 = 100;						// default is to after any filtering then to trim 5' end by this many bp
-const int cDfltMinReadLen = 2500;				// default is to only report reads of at least this minimum read length after any end trimming
+const int cDfltTrim5 = 0;						// default is to after any filtering then to trim 5' end by this many bp
+const int cDfltTrim3 = 0;						// default is to after any filtering then to trim 5' end by this many bp
+const int cDfltMinReadLen = 1000;				// default is to only report reads of at least this minimum read length after any end trimming
 
 const int cDfltMaxPacBioSeqLen = 0x1ffff;			// default is to allow for PacBio reads of <= 128Kbp
 const int cAllocOutBuffSize = 0x0fffff;				// m_pOutBuff allocate output buffer size 
@@ -40,8 +40,8 @@ const int cDfltMaxProbeSeqLen = cDfltMaxPacBioSeqLen;	// initially allocate for 
 
 
 typedef enum TAG_ePBPMode {
-	ePBPMFilter,										// filter and optionally trim PacBio reads
-	ePBPMContam                                         // also remove or trim reads containing contaminate sequences
+	ePBPMFilter,										// filter and split reads at PacBio SMRTBells and optionally trim PacBio reads
+	ePBPMContam                                         // remove or trim reads containing contaminate sequences
 	} etPBPMode;
 
 #pragma pack(1)
@@ -73,10 +73,6 @@ typedef struct TAG_sThreadPBFilter {
 class CPBFilter
 {
 	etPBPMode m_PMode;						// processing mode
-	int m_MinSMRTBellExacts;				// putative SMRTBell adapters must contain at least this many exactly matching bases
-	int m_SMRTBellFlankSeqLen;				// processing flanking sequences of this length around putative SMRTBell adapters  
-	int m_MinRevCplExacts;					// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
-
 	int m_Trim5;							// 5' trim accepted reads by this many bp
 	int m_Trim3;							// 3' trim accepted reads by this many bp
 	int m_MinReadLen;						// read sequences must be at least this length after any end timming
@@ -85,7 +81,7 @@ class CPBFilter
 
 	char m_szOutFile[_MAX_PATH];			// name of file in which to write filter accepted and trimmed sequences
 	int m_hOutFile;							// handle for file into which to write filter accepted and trimmed sequences
-	char *m_pOutBuff;						// used to buffer sequences passing filtering ready to be written to file
+	char *m_pszOutBuff;						// used to buffer sequences passing filtering ready to be written to file
 	int m_AllocOutBuffSize;					// m_pOutBuff allocated to hold at most this many chars
 	int m_OutBuffIdx;						// current number of chars in m_pOutbuff
 
@@ -98,16 +94,23 @@ class CPBFilter
 	int m_TotProcessed;						// total reads processed
 	int	m_TotAccepted;						// after filtering accepted this number of reads
 	int m_TotContamTrimmed;					// this number of accepted reads were contaminate trimmed
-	int m_TotPutativeSMRTBells;             // number of putative SMRTBell adapters
+	int m_TotSMRTBells;						// number of SMRTBell adapters located
+	int m_TotSMRTBellSubSeqs;				// sequences with SMRTBell adapters trimmed into this many subsequences
 	int	m_TotRejected;                      // rejected this number of reads because of retained PacBio SMRTBell adapters
 	int m_TotContamRejected;                // rejected this number of reads because of BAC vectors - contained, containing, or overlapping
-	int m_TotUnderLen;						// this number reads not accepted because they were underlength
+	int m_TotUnderLen;						// this number reads not accepted because they were under length
 
 	void Init(void);							// initialise state to that immediately following construction
 	void Reset(void);							// reset state
 
 	int ProcessFiltering(int MaxSeqLen,			// max length sequence expected
 							int NumOvlpThreads);	// filtering using at most this many threads
+
+	int			// eBSFSuccess or error code if write failed
+		WriteFastaFile(int SeqID,	// primary sequence identifier
+			int SecSeqID,			// secondary sequence identifier
+			int SeqLen,				// sequence to write is this length
+			etSeqBase *pSeq);		// sequence
 
 	bool m_bMutexesCreated;			// will be set true if synchronisation mutexes have been created
 	int CreateMutexes(void);
@@ -138,9 +141,6 @@ public:
 
 	int
 	Process(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
-		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end trimming

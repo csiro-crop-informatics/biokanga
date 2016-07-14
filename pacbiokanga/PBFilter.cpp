@@ -36,9 +36,6 @@
 
 int
 ProcPacBioFilter(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
-		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
@@ -71,9 +68,6 @@ int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failu
 
 int Idx;
 int PMode;					// processing mode
-int MinSMRTBellExacts;		// putative SMRTBell adapters must contain at least this many exactly matching bases
-int SMRTBellFlankSeqLen;    // processing flanking sequences of this length around putative SMRTBell adapters  
-int MinRevCplExacts;		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 int Trim5;					// 5' trim accepted reads by this many bp
 int Trim3;					// 3' trim accepted reads by this many bp
 int MinReadLen;				// read sequences must be at least this length after any end trimming
@@ -99,17 +93,14 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","pmode","<int>",			"processing mode - 0 default, 1 remove contaminate containing sequences");
-struct arg_int *minsmrtbellexacts = arg_int0("s","minsmrtbellexacts","<int>",	"putative SMRTBell adapters must contain at least this many exactly matching bases (default 30, range 20 to 46)");
-struct arg_int *smrtbellflankseqlen = arg_int0("S","smrtbellflankseqlen","<int>",	"processing flanking sequences of this length around putative SMRTBell adapters (default 200, range 100 to 1000)");
-struct arg_int *minrevcplexacts = arg_int0("a","minantisenseexacts","<int>",	"flanking 5' and antisense 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases (default smrtbellflankseqlen/2, range 50 to 1000)");
-struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 100, range 0 to 10000)");
-struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 100, range 0 to 10000)");
-struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 2500, range 500 to 50000)");
+struct arg_int *pmode = arg_int0("m","pmode","<int>",			"processing mode - 0 SMRTBell trimming, 1 remove contaminate containing sequences");
+struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 0, range 0 to 10000)");
+struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 0, range 0 to 10000)");
+struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 1000, range 500 to 50000)");
 
 struct arg_file *contamfile = arg_file0("I","contam","<file>",		"file containing contaminate sequences");
-struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences minimum accuracy rate (default 80, range 70 to 99");
-struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",		"Minimum contaminate overlap length (default 500, range 250 to 5000");
+struct arg_int *contamarate = arg_int0("c","contamerate","<int>",	"PacBio sequences expected accuracy rate (default 80, range 70 to 99");
+struct arg_int *contamovlplen = arg_int0("C","contamovlplen","<int>",	"Minimum contaminate overlap length (default 500, range 250 to 5000");
 
 struct arg_file *inputfiles = arg_filen("i","in","<file>", 1, cMaxInfiles,		"input file(s) containing PacBio long reads to be filtered");
 struct arg_file *outfile = arg_file1("o","out","<file>",			"output accepted filtered reads to this file");
@@ -123,7 +114,7 @@ struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"exper
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,minsmrtbellexacts,smrtbellflankseqlen,minrevcplexacts,trim5,trim3,minreadlen,summrslts,experimentname,experimentdescr,
+					pmode,trim5,trim3,minreadlen,summrslts,experimentname,experimentdescr,
 					contamarate,contamovlplen,contamfile,	inputfiles,outfile,threads,
 					end};
 
@@ -270,27 +261,6 @@ if (!argerrors)
 		return(1);
 		}
 
-	MinSMRTBellExacts = minsmrtbellexacts->count ? minsmrtbellexacts->ival[0] : cDfltMinSMRTBellExacts;
-	if(MinSMRTBellExacts < cMinSMRTBellExacts || MinSMRTBellExacts > cMaxSMRTBellExacts)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell adapters min exact match bases '-s%d' must be in range %d..%d",MinSMRTBellExacts,cMinSMRTBellExacts,cMaxSMRTBellExacts);
-		return(1);
-		}
-
-	SMRTBellFlankSeqLen = smrtbellflankseqlen->count ? smrtbellflankseqlen->ival[0] : 200;
-	if(SMRTBellFlankSeqLen < 100 || SMRTBellFlankSeqLen > 1000)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell flanking sequence length '-S%d' must be in range 100..1000",SMRTBellFlankSeqLen);
-		return(1);
-		}
-
-	MinRevCplExacts = minrevcplexacts->count ? minrevcplexacts->ival[0] : (SMRTBellFlankSeqLen+1)/2;
-	if(MinRevCplExacts < 50 || MinRevCplExacts > SMRTBellFlankSeqLen)
-		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell flanking sequence exact match bases '-a%d' must be in range 50..%d",MinRevCplExacts,SMRTBellFlankSeqLen);
-		return(1);
-		}
-
 	Trim5 = trim5->count ? trim5->ival[0] : cDfltTrim5;
 	if(Trim5 < 0 || Trim5 > 10000)
 		{
@@ -410,17 +380,14 @@ if (!argerrors)
 		case ePBPMFilter:									// filter PacBio reads which have retained hairpins
 			pszMode = (char *)"Trim/split PacBio reads containing SMRTBell adapter sequences";
 			break;
-		case ePBPMContam:									// filter PacBio reads containing contaminate sequences
-			pszMode = (char *)"Trim/split PacBio reads containing SMRTBell adapter and contaminate sequences";
+		case ePBPMContam:									// filter reads containing contaminate sequences
+			pszMode = (char *)"Trim/split PacBio reads containing contaminate sequences";
 			break;
 
 	}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing mode: '%s'",pszMode);
 
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"putative SMRTBell adapters must contain at least this many exactly matching bases: %dbp",MinSMRTBellExacts);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing flanking sequences of this length around putative SMRTBell adapters: %dbp",SMRTBellFlankSeqLen);
-	gDiagnostics.DiagOutMsgOnly(eDLInfo,"5' to antisense 3' flanking sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases: %dbp",MinRevCplExacts);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"5' trim accepted reads by: %dbp",Trim5);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"3' trim accepted reads by: %dbp",Trim3);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"read sequences must be at least this length after any end trimming: %dbp",MinReadLen);
@@ -448,9 +415,6 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PMode),"pmode",&PMode);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinSMRTBellExacts),"minsmrtbellexacts",&MinSMRTBellExacts);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SMRTBellFlankSeqLen),"smrtbellflankseqlen",&SMRTBellFlankSeqLen);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinRevCplExacts),"minantisenseexacts",&MinRevCplExacts);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim5),"trim5",&Trim5);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim3),"trim3",&Trim3);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinReadLen),"minreadlen",&MinReadLen);
@@ -479,7 +443,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioFilter((etPBPMode)PMode,MinSMRTBellExacts,SMRTBellFlankSeqLen,MinRevCplExacts,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,
+	Rslt = ProcPacBioFilter((etPBPMode)PMode,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,
 												szContamFile,NumInputFiles,pszInputFiles,szOutFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
@@ -506,9 +470,6 @@ return 0;
 
 int
 ProcPacBioFilter(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
-		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
@@ -528,7 +489,7 @@ if((pPacBioer = new CPBFilter)==NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CPBFilter");
 	return(eBSFerrObj);
 	}
-Rslt = pPacBioer->Process(PMode,MinSMRTBellExacts,SMRTBellFlankSeqLen,MinRevCplExacts,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,pszContamFile,NumInputFiles,pszInputFiles,pszOutFile,NumThreads);
+Rslt = pPacBioer->Process(PMode,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,pszContamFile,NumInputFiles,pszInputFiles,pszOutFile,NumThreads);
 delete pPacBioer;
 return(Rslt);
 }
@@ -537,7 +498,7 @@ CPBFilter::CPBFilter() // relies on base classes constructors
 {
 m_bMutexesCreated = false;
 m_hOutFile = -1;
-m_pOutBuff = NULL;
+m_pszOutBuff = NULL;
 m_pSWAlign = NULL;
 Init();
 }
@@ -561,10 +522,10 @@ if(m_hOutFile != -1)
 	close(m_hOutFile);
 	m_hOutFile = -1;
 	}
-if(m_pOutBuff != NULL)
+if(m_pszOutBuff != NULL)
 	{
-	delete m_pOutBuff;
-	m_pOutBuff = NULL;
+	delete m_pszOutBuff;
+	m_pszOutBuff = NULL;
 	}
 
 if(m_pSWAlign != NULL)
@@ -574,20 +535,19 @@ if(m_pSWAlign != NULL)
 	}
 
 m_PMode = ePBPMFilter;
-m_MinSMRTBellExacts = cDfltMinSMRTBellExacts;
-m_SMRTBellFlankSeqLen = 200;
-m_MinRevCplExacts = 100;
+
 m_Trim5 = cDfltTrim5;							
 m_Trim3 = cDfltTrim3;							
 m_MinReadLen = cDfltMinReadLen;		
 
 m_TotProcessed = 0;
 m_TotAccepted = 0;
+m_TotSMRTBells = 0;
+m_TotSMRTBellSubSeqs = 0;
 m_TotContamTrimmed = 0;
 m_TotRejected = 0;
 m_TotContamRejected = 0;
 m_TotUnderLen = 0;
-m_TotPutativeSMRTBells = 0;	
 m_OutBuffIdx = 0;
 m_AllocOutBuffSize=0;
 m_NumInputFiles = 0;
@@ -706,9 +666,6 @@ pthread_rwlock_unlock(&m_hRwLock);
 
 int
 CPBFilter::Process(etPBPMode PMode,	// processing mode
-		int MinSMRTBellExacts,		// putative SMRTBell adapters must contain at least this many exactly matching bases
-		int SMRTBellFlankSeqLen,    // processing flanking sequences of this length around putative SMRTBell adapters  
-		int MinRevCplExacts,		// flanking 5' and RevCpl 3' sequences around putative SMRTBell hairpins must contain at least this many exactly matching bases
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
@@ -726,9 +683,6 @@ Reset();
 CreateMutexes();
 
 m_PMode = PMode;
-m_MinSMRTBellExacts = MinSMRTBellExacts;
-m_SMRTBellFlankSeqLen = SMRTBellFlankSeqLen;
-m_MinRevCplExacts = MinRevCplExacts;
 m_Trim5 = Trim5;					
 m_Trim3 = Trim3;					
 m_MinReadLen = MinReadLen;	
@@ -911,7 +865,7 @@ if(ThreadIdx != NumOvlpThreads)	// any errors whilst allocating memory?
 	}
 
 
-if((m_pOutBuff = new char [cAllocOutBuffSize]) == NULL)
+if((m_pszOutBuff = new char [cAllocOutBuffSize]) == NULL)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to allocate %d chars for buffering",cAllocOutBuffSize);
 	Reset();
@@ -957,7 +911,10 @@ sleep(10);
 #endif
 
 AcquireLock(false);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d",m_TotProcessed,m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen,m_TotPutativeSMRTBells,m_TotRejected,m_TotContamRejected);
+if(m_PMode == ePBPMFilter)
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing: %d - accepted %d, rejected: %d, under length %d, SMRTBells identified: %d, SMRTBell subseqs: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotSMRTBells, m_TotSMRTBellSubSeqs);
+else
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing: %d - accepted: %d, rejected: %d, under length: %d, vector trimmed: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotContamTrimmed);
 ReleaseLock(false);
 
 pThreadPar = pThreadPutOvlps;
@@ -967,7 +924,10 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while (WAIT_TIMEOUT == WaitForSingleObject(pThreadPar->threadHandle, 60000))
 		{
 		AcquireLock(false);
-		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d", m_TotProcessed, m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen, m_TotPutativeSMRTBells, m_TotRejected, m_TotContamRejected);
+		if(m_PMode == ePBPMFilter)
+			gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing: %d - accepted %d, rejected: %d, under length %d, SMRTBells identified: %d, SMRTBell subseqs: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotSMRTBells, m_TotSMRTBellSubSeqs);
+		else
+			gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing: %d - accepted: %d, rejected: %d, under length: %d, vector trimmed: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotContamTrimmed);
 		ReleaseLock(false);
 		};
 	CloseHandle(pThreadPar->threadHandle);
@@ -979,14 +939,20 @@ for (ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	while ((JoinRlt = pthread_timedjoin_np(pThreadPar->threadID, NULL, &ts)) != 0)
 		{
 		AcquireLock(false);
-		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d", m_TotProcessed, m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen, m_TotPutativeSMRTBells, m_TotRejected, m_TotContamRejected);
+		if(m_PMode == ePBPMFilter)
+			gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing: %d - accepted %d, rejected: %d, under length %d, SMRTBells identified: %d, SMRTBell subseqs: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotSMRTBells, m_TotSMRTBellSubSeqs);
+		else
+			gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processing: %d - accepted: %d, rejected: %d, under length: %d, vector trimmed: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotContamTrimmed);
 		ReleaseLock(false);
 		ts.tv_sec += 60;
 		}
 #endif
 	}
 
-gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed %d - accepted %d, vector trimmed %d, underlength %d, putative SMRTBells %d, retained SMRTBell %d, vectors deleted %d", m_TotProcessed, m_TotAccepted, m_TotContamTrimmed, m_TotUnderLen, m_TotPutativeSMRTBells, m_TotRejected, m_TotContamRejected);
+if(m_PMode == ePBPMFilter)
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed: %d - accepted %d, rejected: %d, under length %d, SMRTBells identified: %d, SMRTBell subseqs: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotSMRTBells, m_TotSMRTBellSubSeqs);
+else
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Processed: %d - accepted: %d, rejected: %d, under length: %d, vector trimmed: %d", m_TotProcessed, m_TotAccepted, m_TotRejected, m_TotUnderLen, m_TotContamTrimmed);
 
 pThreadPar = pThreadPutOvlps;
 for(ThreadIdx = 0; ThreadIdx < NumOvlpThreads; ThreadIdx++,pThreadPar++)
@@ -1001,7 +967,7 @@ delete pThreadPutOvlps;
 if(m_hOutFile != -1)
 	{
 	if(m_OutBuffIdx > 0)
-		CUtility::SafeWrite(m_hOutFile,m_pOutBuff,m_OutBuffIdx);
+		CUtility::SafeWrite(m_hOutFile,m_pszOutBuff,m_OutBuffIdx);
 
 #ifdef _WIN32
 	_commit(m_hOutFile);
@@ -1010,8 +976,8 @@ if(m_hOutFile != -1)
 #endif
 	close(m_hOutFile);
 	m_hOutFile = -1;
-	delete m_pOutBuff;
-	m_pOutBuff = NULL;
+	delete m_pszOutBuff;
+	m_pszOutBuff = NULL;
 	}
 
 return(0);
@@ -1021,244 +987,271 @@ return(0);
 int
 CPBFilter::PBFilterReads(tsThreadPBFilter *pThreadPar)
 {
+int Rslt;
 int SeqID;
 char szQuerySeqIdent[100];
 UINT8 *pQuerySeq;
 int QuerySeqLen;
-int	PrevSeqID;
-int PrevQuerySeqLen;
-tsSSWCell *pPeakMatchesCell;
-int NumTopNPeakMatches;
-tsSSWCell *pPeakMatchesCells;
-tsSSWCell *pPutPeakMatchesCell;
 
+int TrimStartOfs;
+int TrimLen;
 int Trim5AtOfs;
 int Trim3AtOfs;
+int Trim5AtContam;
+int Trim3AtContam;
 
-if(pThreadPar->pSW == NULL)
-	{
-	pThreadPar->pSW = new CSSW;
-	pThreadPar->pSW->SetScores(3,-7,-4,-1,2,6,3);		// these scores are for pacbio vs pacbio so effectively doubling the expected PacBio error rates
-	pThreadPar->pSW->PreAllocMaxTargLen(100000);		// will be realloc'd as and when may be needed ...
-	}
+tsSMRTBellHit BellHits[cMaxSMRTBellHits+1];
+tsSMRTBellHit *pBellHit;
+int BellIdx;
+int PrevBellTargOfs;
+int TrimSeqLen;
 
-PrevSeqID = 0;
-PrevQuerySeqLen = 0;
 // iterating over all sequences
-while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(20,sizeof(szQuerySeqIdent),&SeqID,szQuerySeqIdent,&QuerySeqLen))!=NULL)				
+while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(60,sizeof(szQuerySeqIdent),&SeqID,szQuerySeqIdent,&QuerySeqLen))!=NULL)				
 	{
+	// remove near homopolymer runs
+	QuerySeqLen = m_PacBioUtility.ReduceHomopolymers(QuerySeqLen,pQuerySeq,16);
+
+	AcquireLock(true);
 	m_TotProcessed += 1;
-	if(QuerySeqLen < m_MinReadLen + m_Trim5 + m_Trim3) // slough if would be underlength after any end trimming
+	if(QuerySeqLen < m_MinReadLen + m_Trim5 + m_Trim3) // simply slough if would be under length after any end trimming
 		{
-		AcquireLock(true);
 		m_TotUnderLen += 1;
+		m_TotRejected += 1;
 		ReleaseLock(true);
+		delete pQuerySeq;
 		continue;
 		}
-	else   // of sufficient length to process further checking for retained PacBio SMRTBell adapters
+	ReleaseLock(true);
+	Trim5AtOfs = m_Trim5;
+	Trim3AtOfs = QuerySeqLen - (m_Trim3 + 1);
+	TrimLen = 1 + Trim3AtOfs - Trim5AtOfs;
+
+	if(m_PMode == ePBPMFilter)
 		{
-		Trim5AtOfs = m_Trim5;
-		Trim3AtOfs = QuerySeqLen - (m_Trim3 + 1);
-		// check for at most 20 putatively retained SMRTBell adapters in any read sequence
-		pThreadPar->pSW->SetScores(3,-7,-4,-1,2,6,3);		// these scores are for ref sequence vs pacbio so use expected PacBio error rates
-		pThreadPar->pSW->SetMaxInitiatePathOfs(0);
-		pThreadPar->pSW->SetMinNumExactMatches(m_MinSMRTBellExacts);
-		pThreadPar->pSW->SetTopNPeakMatches(20);
-		pThreadPar->pSW->SetProbe(cSmartBellAdapterSeqLen,(etSeqBase *)cSmartBellAdapterSeq);
-		pThreadPar->pSW->SetTarg(QuerySeqLen,pQuerySeq);	// iterated sequence is the target
-		pPeakMatchesCell = pThreadPar->pSW->Align();
-		if((NumTopNPeakMatches = pThreadPar->pSW->GetTopNPeakMatches(&pPeakMatchesCells)) > 0) // NumTopNPeakMatches > 0 if any putative retained SMRTBell adapters
+		int NumBellHits;
+		// Note: more chance of finding 5' and 3' end SMRTBells if no end trimming ... End trim later ...
+		NumBellHits = m_PacBioUtility.IdentifySMRTBells(cMaxSMRTBellHits,QuerySeqLen,pQuerySeq,BellHits);
+		if(NumBellHits > 0)
 			{
-			int PeakIdx;
-			etSeqBase *p5Seq;
-			etSeqBase *p3Seq;
-			etSeqBase RevCpl3Seq[1000];
-			pPeakMatchesCell = pPeakMatchesCells;
 			AcquireLock(true);
-			m_TotPutativeSMRTBells += NumTopNPeakMatches;
-			ReleaseLock(true);
-
-			if(NumTopNPeakMatches > 1)
-				qsort(pPeakMatchesCell,NumTopNPeakMatches,sizeof(tsSSWCell),SortSSWCells);
-
-			int NumSMRTBells = 0;
-			for(PeakIdx = 0; PeakIdx < NumTopNPeakMatches;  PeakIdx++,pPeakMatchesCell++)
+			m_TotSMRTBells += NumBellHits;
+			if(NumBellHits > 4)		// if more than 4 retained SMRTbells then don't attempt to trim
 				{
-				if((1 + Trim3AtOfs - Trim5AtOfs)  < m_MinReadLen) // slough if would be under length after updated end trimming
-					break;
-				if((int)(pPeakMatchesCell->EndTOfs + 50) < Trim5AtOfs)	// if would be trimmed off anyway then ignore and check next peak match 
-					continue;
-
-				if((int)pPeakMatchesCell->StartTOfs < m_SMRTBellFlankSeqLen + 50)
-					{
-					// 5' trim back to where the putative SMRTBell starts
-					Trim5AtOfs = pPeakMatchesCell->EndTOfs + 50;
-					continue;
-					}
-
-				if((int)(pPeakMatchesCell->EndTOfs + 50) > Trim3AtOfs)	// if would be trimmed off anyway then ignore and check next peak match 
-					continue;
-
-				if((int)pPeakMatchesCell->EndTOfs + m_SMRTBellFlankSeqLen >= QuerySeqLen)
-					{
-					// 3' trim back to where the putative SMRTBell starts
-					Trim3AtOfs = pPeakMatchesCell->StartTOfs - 50;
-					continue;
-					}
-
-				// get ptr to sequence 5' to identified hairpin peak
-				p5Seq = &pQuerySeq[pPeakMatchesCell->StartTOfs - (m_SMRTBellFlankSeqLen-1)];
-				// get sequence 3' to identified hairpin peak and RevCpl
-				p3Seq = &pQuerySeq[pPeakMatchesCell->EndTOfs];
-				memcpy(RevCpl3Seq,p3Seq,m_SMRTBellFlankSeqLen);
-				CSeqTrans::ReverseComplement(m_SMRTBellFlankSeqLen,RevCpl3Seq);
-				// look for alignment
-				pThreadPar->pSW->SetScores(3,-7,-4,-1,2,6,3);		// these scores are for pacbio vs pacbio so effectively doubling the expected PacBio error rates
-				pThreadPar->pSW->SetMaxInitiatePathOfs(100);
-				pThreadPar->pSW->SetMinNumExactMatches(m_MinRevCplExacts);
-				pThreadPar->pSW->SetTopNPeakMatches(0);
-				pThreadPar->pSW->SetProbe(m_SMRTBellFlankSeqLen,p5Seq);
-				pThreadPar->pSW->SetTarg(m_SMRTBellFlankSeqLen,p3Seq);	
-				pPutPeakMatchesCell = pThreadPar->pSW->Align();
-				if((int)pPutPeakMatchesCell->NumExacts >= m_MinRevCplExacts)
-					NumSMRTBells += 1;
-				}
-			if(NumSMRTBells > 0)
-				{
-				AcquireLock(true);
 				m_TotRejected += 1;
 				ReleaseLock(true);
+				delete pQuerySeq;
 				continue;
-				}			
+				}
+			ReleaseLock(true);
 			}
-		}
 
-	if(1 + Trim3AtOfs - Trim5AtOfs  < m_MinReadLen) // slough if would be underlength after any end trimming
-		{
+		int NumSubSeqs = 0;
+		PrevBellTargOfs = Trim5AtOfs;
+		BellIdx = 0;
+		if(NumBellHits > 0)
+			{
+			pBellHit = BellHits;
+			for(BellIdx = 0; BellIdx < NumBellHits; BellIdx++,pBellHit+=1)
+				{
+				TrimSeqLen = pBellHit->TargOfs - PrevBellTargOfs - 25; // allowing 25bp float on SMRTBell loci
+				if(TrimSeqLen < m_MinReadLen)
+					{
+					PrevBellTargOfs += 25;
+					continue;
+					}
+				NumSubSeqs += 1;
+				if((Rslt=WriteFastaFile(SeqID,NumSubSeqs,TrimSeqLen,&pQuerySeq[PrevBellTargOfs]))!=eBSFSuccess)
+					{
+					delete pQuerySeq;
+					return(Rslt);
+					}
+				
+				PrevBellTargOfs = pBellHit->TargOfs + 25;			// allowing 25bp float on SMRTBell loci
+				}
+			}
+		TrimSeqLen = 1 + Trim3AtOfs - PrevBellTargOfs;
+		if(TrimSeqLen < m_MinReadLen)
+			{
+			AcquireLock(true);
+			if(NumSubSeqs > 0)
+				{
+				m_TotAccepted += 1;
+				m_TotSMRTBellSubSeqs += NumSubSeqs;
+				}
+			else
+				m_TotRejected += 1;
+			ReleaseLock(true);
+			delete pQuerySeq;
+			continue;
+			}
+		
+		if(NumBellHits > 0)
+			NumSubSeqs += 1;
+
+		if((Rslt=WriteFastaFile(SeqID,NumSubSeqs,TrimSeqLen,&pQuerySeq[PrevBellTargOfs]))!=eBSFSuccess)
+			{
+			delete pQuerySeq;
+			return(Rslt);
+			}
+
 		AcquireLock(true);
-		m_TotUnderLen += 1;
+		m_TotAccepted += 1;	
+		m_TotSMRTBellSubSeqs += NumSubSeqs;
 		ReleaseLock(true);
+		delete pQuerySeq;
 		continue;
 		}
-
-	int Trim5AtContam;
-	int Trim3AtContam;
 
 	Trim5AtContam = 0;
 	Trim3AtContam = QuerySeqLen - 1;
 
-	if(m_PMode == ePBPMContam)
+	if(pThreadPar->SWAlignInstance == 0)
+		pThreadPar->SWAlignInstance = m_pSWAlign->InitInstance();
+	tsSSWCell Matched;
+	if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq,1,0,false,&Matched)!=eBSFSuccess)
 		{
-		if(pThreadPar->SWAlignInstance == 0)
-			pThreadPar->SWAlignInstance = m_pSWAlign->InitInstance();
-		tsSSWCell Matched;
-		if(m_pSWAlign->AlignProbeSeq(pThreadPar->SWAlignInstance,QuerySeqLen,(etSeqBase *)pQuerySeq,1,0,false,&Matched)!=eBSFSuccess)
+		int Trim5ContamLen;
+		int Trim3ContamLen;
+		bool bTrimContam = false;
+		if(Matched.StartPOfs > 0 && Matched.EndPOfs > 0)
 			{
-			int Trim5ContamLen;
-			int Trim3ContamLen;
-			bool bTrimContam = false;
-			if(Matched.StartPOfs > 0 && Matched.EndPOfs > 0)
-				{
-				Matched.StartPOfs -= 1;
-				Matched.EndPOfs -= 1;
-				if((int)Matched.StartPOfs > Trim5AtOfs)
-					Trim5ContamLen = (int)Matched.StartPOfs - Trim5AtOfs;
-				else
-					Trim5ContamLen = 0;
-				if((int)Matched.EndPOfs < Trim3AtOfs)
-					Trim3ContamLen = Trim3AtOfs - (int)Matched.EndPOfs;
-				else
-					Trim3ContamLen = 0;
+			Matched.StartPOfs -= 1;
+			Matched.EndPOfs -= 1;
+			if((int)Matched.StartPOfs > Trim5AtOfs)
+				Trim5ContamLen = (int)Matched.StartPOfs - Trim5AtOfs;
+			else
+				Trim5ContamLen = 0;
+			if((int)Matched.EndPOfs < Trim3AtOfs)
+				Trim3ContamLen = Trim3AtOfs - (int)Matched.EndPOfs;
+			else
+				Trim3ContamLen = 0;
 
-				if(Trim5ContamLen >= m_MinReadLen || Trim3ContamLen >= m_MinReadLen)
-					{
-					if(Trim5ContamLen >= Trim3ContamLen)
-						{
-						Trim3AtContam = Matched.StartPOfs;
-						Trim5AtContam = 0;
-						}
-					else
-						{
-						Trim3AtContam = QuerySeqLen - 1;
-						Trim5AtContam = Matched.EndPOfs;
-						}
-					AcquireLock(true);
-					m_TotContamTrimmed += 1;
-					ReleaseLock(true);
-					bTrimContam = true;
-					}
-				}
-		
-			if(!bTrimContam)
+			if(Trim5ContamLen >= m_MinReadLen || Trim3ContamLen >= m_MinReadLen)
 				{
+				if(Trim5ContamLen >= Trim3ContamLen)
+					{
+					Trim3AtContam = Matched.StartPOfs;
+					Trim5AtContam = 0;
+					}
+				else
+					{
+					Trim3AtContam = QuerySeqLen - 1;
+					Trim5AtContam = Matched.EndPOfs;
+					}
 				AcquireLock(true);
-				m_TotContamRejected += 1;
+				m_TotContamTrimmed += 1;
 				ReleaseLock(true);
-				continue;
+				bTrimContam = true;
 				}
 			}
+		
+		if(!bTrimContam)
+			{
+			AcquireLock(true);
+			m_TotContamRejected += 1;
+			ReleaseLock(true);
+			delete pQuerySeq;
+			continue;
+			}
+		}
+
+	TrimStartOfs = max(Trim5AtOfs, Trim5AtContam);
+	TrimLen = 1 + min(Trim3AtOfs, Trim3AtContam) - TrimStartOfs;
+	if(TrimLen < m_MinReadLen)
+		{
+		AcquireLock(true);
+		m_TotUnderLen += 1;
+		ReleaseLock(true);
+		delete pQuerySeq;
+		continue;
+		}	
+
+	if((Rslt=WriteFastaFile(SeqID,0,TrimLen,&pQuerySeq[TrimStartOfs]))!=eBSFSuccess)
+		{
+		delete pQuerySeq;
+		return(Rslt);
 		}
 
 	AcquireLock(true);
 	m_TotAccepted += 1;
 	ReleaseLock(true);
-
-	if(m_hOutFile != -1)
-		{
-		AcquireSerialise();
-		int SeqIdx;
-		int LineLen;
-		char Base;
-		char *pBuff;
-		if(m_OutBuffIdx > (m_AllocOutBuffSize - (QuerySeqLen * 2)))
-			{
-			CUtility::SafeWrite(m_hOutFile,m_pOutBuff,m_OutBuffIdx);
-			m_OutBuffIdx = 0;
-			}
-		m_OutBuffIdx += sprintf(&m_pOutBuff[m_OutBuffIdx],">%s\n",szQuerySeqIdent);
-		LineLen = 0;
-		pBuff = &m_pOutBuff[m_OutBuffIdx]; 
-		for(SeqIdx = max(Trim5AtOfs, Trim5AtContam); SeqIdx <= min(Trim3AtOfs, Trim3AtContam); SeqIdx++)
-			{
-			switch(pQuerySeq[SeqIdx]) {
-				case eBaseA:
-					Base = 'A';
-					break;
-				case eBaseC:
-					Base = 'C';
-					break;
-				case eBaseG:
-					Base = 'G';
-					break;
-				case eBaseT:
-					Base = 'T';
-					break;
-				default:
-					Base = 'N';
-					break;
-					}
-			*pBuff++ = Base;
-			m_OutBuffIdx += 1;
-			LineLen += 1;
-			if(LineLen > 80)
-				{
-				*pBuff++ = '\n';
-				m_OutBuffIdx += 1;
-				LineLen = 0;
-				}
-			}	
-		*pBuff++ = '\n';
-		m_OutBuffIdx += 1;
-		ReleaseSerialise();
-		}
-
 	delete pQuerySeq;
-	PrevSeqID = SeqID;
-	PrevQuerySeqLen = QuerySeqLen;
 	}
-return(0);
+return(eBSFSuccess);
 }
 
+
+int										// eBSFSuccess if sequence written to file otherwise the error code
+CPBFilter::WriteFastaFile(int SeqID,	// primary sequence identifier
+			int SecSeqID,				// secondary sequence identifier
+			int SeqLen,					// sequence to write is this length
+			etSeqBase *pSeq)			// sequence
+{
+int SeqIdx;
+int LineLen;
+char Base;
+char *pBuff;
+etSeqBase *pBase;
+
+if(SeqLen < 1)
+	return(eBSFSuccess);
+
+AcquireSerialise();
+
+if(m_hOutFile == -1)
+	{
+	ReleaseSerialise();
+	return(eBSFerrClosed);
+	}
+
+if(m_OutBuffIdx > (m_AllocOutBuffSize - (SeqLen * 2)))
+	{
+	if(!CUtility::SafeWrite(m_hOutFile,m_pszOutBuff,m_OutBuffIdx))
+		{
+		ReleaseSerialise();
+		return(eBSFerrFileAccess);
+		}
+	m_OutBuffIdx = 0;
+	}
+m_OutBuffIdx += sprintf(&m_pszOutBuff[m_OutBuffIdx],">FiltSeq%d_%d %d\n",SeqID,SecSeqID,SeqLen);
+LineLen = 0;
+pBuff = &m_pszOutBuff[m_OutBuffIdx]; 
+pBase = pSeq;
+for(SeqIdx = 0; SeqIdx < SeqLen; SeqIdx++, pBase+=1)
+	{
+	switch(*pBase) {
+		case eBaseA:
+			Base = 'A';
+			break;
+		case eBaseC:
+			Base = 'C';
+			break;
+		case eBaseG:
+			Base = 'G';
+			break;
+		case eBaseT:
+			Base = 'T';
+			break;
+		default:
+			Base = 'N';
+			break;
+			}
+	*pBuff++ = Base;
+	m_OutBuffIdx += 1;
+	LineLen += 1;
+	if(LineLen > 80)
+		{
+		*pBuff++ = '\n';
+		m_OutBuffIdx += 1;
+		LineLen = 0;
+		}
+	}	
+*pBuff++ = '\n';
+m_OutBuffIdx += 1;
+ReleaseSerialise();
+return(eBSFSuccess);
+}
 
 
 

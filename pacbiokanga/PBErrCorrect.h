@@ -51,6 +51,14 @@ const UINT32 cRMI_AlignSecsTimeout = 600;			// allowing for a RMI SW alignment r
 const UINT32 cRMIThreadsPerCore = 8;				// current guesstimate is that 1 server core can support this many RMI SW threads ( 1 core per Non-RMI SW thread)
                                                     // predicated on assuming that the qualifying of read pairs for SW requires around 20% of per core time, the other 80% is spent on SW
 
+const UINT32 cMinTransInstancesPerSeqLen = 250;		// when transcriptome processing then clamping number of error corrected sequences for any given transcript read length to be no more than this nunber of sequences allowing length differentials of 1%
+const UINT32 cMaxTransInstancesPerSeqLen = 500;	// when transcriptome processing then clamping number of error corrected sequences for any given transcript read length to be no more than this nunber of sequences allowing length differentials of 15%
+													// proportionally increased from cMinTransInstancesPerSeqLen to cMaxTransInstancesPerSeqLen for transcript length differentials in the range 2 to 14%
+const int cMaxAdapterSeqLen = 50;					// adapter sequence lengths allowed up to this maximum length
+const int cMaxAdapterSeqs = 20;						// allowing for at most this many different adapter sequences for end trimming 
+const char szDflt5Adaptor[] = "aagcagtggtatcaacgcagagtac";	// default 5' adapter sequence if none explicitly specified when transcriptome processing
+const char szDflt3Adaptor[] = "gtactctgcgttgataccactgctt";	// default 3' adapter sequence if none explicitly specified when transcriptome processing
+
 typedef enum TAG_ePBPMode {								// processing mode
 	ePBPMErrCorrect,									// error correct
 	ePBPMConsensus,										// generate consensus from previously generated multiple alignments
@@ -292,16 +300,42 @@ class CPBErrCorrect
 
 	int LoadSeqs(int MinSeqLen,					 // only accept for indexing sequences of at least this length
 				 int MaxSeqLen,                  // and no longer than this length (bp)
-				int NumTargFiles,char **pszTargFiles,	// parse, and index sequences in this file into memory resident suffix array; file expected to contain either fasta or fastq sequences
+				int Adapter5Len,				// length of 5' adapter when end trimming adapters
+				etSeqBase *pAdapter5Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
+				int Adapter3Len,				// length of 3' adapter when end trimming adapters
+				etSeqBase *pAdapter3Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
+				int NumTargFiles,char **pszTargFiles,	// parse, and index sequences in these files into memory resident suffix array; file expected to contain either fasta or fastq sequences
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
+
+	int					// sequence length after any adapter trimming 
+		AdapterTrim(bool bTrim3,			// if false then trim the 5' end, if true then trim the 3' end
+			int MaxTrimLen,					// maximally trim this many bp from end
+			int AdapterSeqLen,				// adapter sequence is this length
+			etSeqBase *pAdapterSeq,			// end trim with this adapter sequence
+			int SeqLen,						// sequence to trim is this length
+			etSeqBase *pSeq);				// inplace trimming this sequence
+
+	bool					// true if able to locate an internal adapter sequence 
+		IsAdapterInternal(int AdapterSeqLen,		// adapter sequence is this length
+				etSeqBase *pAdapterSeq,			// adapter sequence
+				int SeqLen,						// sequence to check is this length
+				etSeqBase *pSeq);				// sequence to check
 
 	int ProcessBioseqFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
 						  int MaxSeqLen,        // and no longer than this length (bp)
+				int Adapter5Len,				// length of 5' adapter when end trimming adapters
+				etSeqBase *pAdapter5Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
+				int Adapter3Len,				// length of 3' adapter when end trimming adapters
+				etSeqBase *pAdapter3Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
 				 char *pszFile,					// file containing sequences
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
 
 	int ProcessFastaFile(int MinSeqLen,			// only accept for indexing sequences of at least this length (bp)
                 int MaxSeqLen,                  // and no longer than this length (bp)
+				int Adapter5Len,				// length of 5' adapter when end trimming adapters
+				etSeqBase *pAdapter5Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
+				int Adapter3Len,				// length of 3' adapter when end trimming adapters
+				etSeqBase *pAdapter3Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
 				char *pszFile,					// file containing sequences
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
 
@@ -550,6 +584,8 @@ public:
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
+		int NumAdapterSeqs,			// number of adapter sequences to trim when loading sequences if transcriptome processing
+		char *pszAdapterSeqs[],		// when loading reads then end trim for these adapter sequences when loading sequences if transcriptome processing
 		int MinPBSeqLen,			// only accepting PacBio reads of at least this length to be error corrected (defaults to 10Kbp) and if
 		int MaxPBSeqLen,			// no more than this length (defaults to 30Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 

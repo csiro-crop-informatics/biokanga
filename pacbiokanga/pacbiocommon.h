@@ -22,6 +22,8 @@ const int cDfltConsolidateSeedCoreLen = 25;             // default seed cores of
 
 const int cDfltDeltaCoreOfs = 2;						// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps
 const int cDfltConsolidateDeltaCoreOfs = 5;				// offset by this many bp the core windows of coreSeqLen along the probe sequence when checking for overlaps if consolidating transcripts
+const int cMaxDeltaCoreOfs = 25;						// allowing at most this delta core offset
+
 const int cDfltMaxSeedCoreDepth = 15000;                // only extend a seed core if there are no more than this number of matching cores in all targeted sequences
 const int cDfltMaxConsolidateSeedCoreDepth = 75000;     // only extend a seed core if there are no more than this number of matching cores in all targeted sequences if consolidating transcripts
 

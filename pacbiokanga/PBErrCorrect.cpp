@@ -81,6 +81,8 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int TransciptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
+		int NumAdapterSeqs,			// number of adapter sequences to trim when loading sequences when loading sequences if transcriptome processing
+		char *pszAdapterSeqs[],		// when loading reads then end trim for these adapter sequences when loading sequences if transcriptome processing
 		int MinPBSeqLen,			// only accepting PacBio reads of at least this length (defaults to 10Kbp) and if
 		int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
@@ -158,6 +160,10 @@ char szOutFile[_MAX_PATH+1];				// where to write (ePBPMConsensus or ePBPMErrCor
 char szOutMAFile[_MAX_PATH+1];				// where to write optional multialignments
 char szChkPtsFile[_MAX_PATH+1];				// used for error correcting checkpointing
 
+int NumAdapterSeqs;							// number of adapter sequences specified for end trim
+char szAdapterSeqs[cMaxAdapterSeqs][cMaxAdapterSeqLen+1];		// when loading reads then end trim for these adapter sequences
+char *pszAdapterSeqs[cMaxAdapterSeqs];
+
 int SampleInRate;							// sample input sequences at this rate per 100
 int SampleAcceptRate;						// sample accepted input sequences at this rate per 1000
 
@@ -200,7 +206,7 @@ struct arg_int *minfilthomolen = arg_int0("H","minfilthomolen","<int>",			"filte
 struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 14, range 12 to 50)");
 struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",				"require at least this many accepted seed cores between overlapping sequences to use SW (default 10, range 1 to 50)");
 
-struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 2, range 1 to 10)");
+struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 2, range 1 to 25)");
 struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",				"explore cores of less than this maximum depth (default 15000, range 1000 to 20000)");
 
 struct arg_int *matchscore = arg_int0("x","matchscore","<int>",					"SW score for matching bases (default 3, range 1 to 50)");
@@ -229,6 +235,9 @@ struct arg_int *maxrmi = arg_int0("n","maxrmi","<int>",							"maximum number of
 struct arg_str  *rmihost = arg_str0("u", "rmihost", "<string>",					"listening on this host name or IPv4/IPv5 address for connections by SW service providers (default 127.0.0.1)");
 struct arg_str  *rmiservice = arg_str0("U", "rmiservice", "<string>",			"Listen on this service name or port for connections by SW service providers (default 43123)");
 
+// struct arg_str *adapterseqs = arg_str0("e", "adapterseqs", "<string>",				"when loading reads then adapter trim (default 'aagcagtggtatcaacgcagagtac')");
+
+
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",				"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");
@@ -238,7 +247,7 @@ struct arg_end *end = arg_end(200);
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,minfilthomolen,senseonlyovlps,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
-					transcriptomelens,minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
+					transcriptomelens,/* adapterseqs, */ minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
 					outfile,mafile,scaffovrlapsfile,sampleinrate,sampleacceptrate,threads,
 					end};
@@ -411,6 +420,10 @@ if (!argerrors)
 	szHostName[0] = '\0';
 	MaxRMI = 0;
 	MaxNonRMI = 0;
+	NumAdapterSeqs = 0;
+    szAdapterSeqs[0][0]='\0';
+	pszAdapterSeqs[0] = NULL;
+	
 	if(!(PMode == ePBMConsolidate || PMode == ePBPMConsensus) && rmihost->count)
 		{
 		strncpy(szHostName,rmihost->sval[0],sizeof(szHostName)-1);
@@ -484,9 +497,9 @@ if (!argerrors)
 			DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : cDfltDeltaCoreOfs;
 		else
 			DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : cDfltConsolidateDeltaCoreOfs;
-		if(DeltaCoreOfs < 1 || DeltaCoreOfs > 10)
+		if(DeltaCoreOfs < 1 || DeltaCoreOfs > cMaxDeltaCoreOfs)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..10",DeltaCoreOfs);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..%d",DeltaCoreOfs, cMaxDeltaCoreOfs);
 			return(1);
 			}
 
@@ -512,6 +525,23 @@ if (!argerrors)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..100000",MaxSeedCoreDepth);
 			return(1);
+			}
+
+		if(TranscriptomeLens > 0 && PMode == ePBMConsolidate)
+			{
+			strcpy(szAdapterSeqs[0],szDflt5Adaptor);
+			strcpy(szAdapterSeqs[1],szDflt3Adaptor);
+			pszAdapterSeqs[0] = szAdapterSeqs[0];
+			pszAdapterSeqs[1] = szAdapterSeqs[1];
+			NumAdapterSeqs = 2;
+			}
+		else
+			{
+			szAdapterSeqs[0][0] = '\0';
+			szAdapterSeqs[1][0] = '\0';
+			pszAdapterSeqs[0] = NULL;
+			pszAdapterSeqs[1] = NULL;
+			NumAdapterSeqs = 0;
 			}
 
 		if(PMode == ePBPMErrCorrect)
@@ -807,9 +837,9 @@ if (!argerrors)
 			}
 
 		DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : 10;
-		if(DeltaCoreOfs < 1 || DeltaCoreOfs > 10)
+		if(DeltaCoreOfs < 1 || DeltaCoreOfs > cMaxDeltaCoreOfs)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..10",DeltaCoreOfs);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..%d",DeltaCoreOfs,cMaxDeltaCoreOfs);
 			return(1);
 			}
 
@@ -1030,17 +1060,17 @@ if (!argerrors)
 	char *pszMode;
 	switch(PMode) {
 		case ePBPMErrCorrect:		// error correction
-			pszMode = (char *)"Error correct PacBio and generate consensus sequences";
+			pszMode = (char *)"Error correct PacBio sequences";
 			break;
-		case ePBPMConsensus:		// generate consensus  from previously generated multiple alignments
-			pszMode = (char *)"Generate consensus sequence from previously generated multiple alignments";
+		case ePBPMConsensus:		// generate consensus  from previously error corrected reads
+			pszMode = (char *)"Generate consensus sequence from previously error corrected PacBio reads";
 			break;
-		case ePBPMOverlapDetail:		// Generate overlap detail from previously generated consensus sequences
-			pszMode = (char *)"Generate overlap detail from previously generated consensus sequences";
+		case ePBPMOverlapDetail:		// Generate overlap detail for pairs of previously error corrected PacBio sequences
+			pszMode = (char *)"Generate overlap detail for pairs of previously error corrected sequences";
 			break;
 
 		case ePBMConsolidate:		// consolidate one or more error corrected sequences into single representative sequence (transcript)
-			pszMode = (char *)"Consolidate one or more error corrected sequences into a single representative sequence";
+			pszMode = (char *)"Consolidate one or more error corrected sequences (transcripts) into a single representative sequence";
 			break;
 
 		}
@@ -1099,6 +1129,11 @@ if (!argerrors)
 				{
 				gDiagnostics.DiagOutMsgOnly(eDLInfo, "Error correcting transcriptome reads, putative overlapping reads must have max length differential: %d%%", TranscriptomeLens);
 				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio overlap required for error correction contribution: must be near full length");
+				if(PMode == ePBMConsolidate && NumAdapterSeqs > 0)
+					{
+					gDiagnostics.DiagOutMsgOnly(eDLInfo, "Trimming transcriptome reads 5' for retained adapter: '%s'", szAdapterSeqs[0]);
+					gDiagnostics.DiagOutMsgOnly(eDLInfo, "Trimming transcriptome reads 3' for retained adapter: '%s'", szAdapterSeqs[1]);
+					}
 				}
 			else
 				gDiagnostics.DiagOutMsgOnly(eDLInfo,"Minimum PacBio overlap required for error correction contribution: %d",MinPBSeqOverlap);	
@@ -1244,7 +1279,7 @@ if (!argerrors)
 #endif
 	gStopWatch.Start();
 	Rslt = ProcPacBioErrCorrect((etPBPMode)PMode,szHostName,szServiceName,MaxRMI,MaxNonRMI,SampleInRate,SampleAcceptRate,FiltMinHomoLen,bSenseOnlyOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,-1 * SWMismatchPenalty,-1 * SWGapOpenPenalty,-1 * SWGapExtnPenalty,SWProgExtnPenaltyLen,
-								TranscriptomeLens,MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
+								TranscriptomeLens,NumAdapterSeqs,pszAdapterSeqs,MinPBSeqLen, MaxPBSeqLen,MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,szOutFile,szOutMAFile,szChkPtsFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
@@ -1289,6 +1324,8 @@ ProcPacBioErrCorrect(etPBPMode PMode,		// processing mode
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
+		int NumAdapterSeqs,			// number of adapter sequences to trim when loading sequences if transcriptome processing
+		char *pszAdapterSeqs[],		// when loading reads then end trim for these adapter sequences when loading sequences if transcriptome processing
 		int MinPBSeqLen,			// only accepting PacBio reads for error correction of at least this length (defaults to 10Kbp) and if
         int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
@@ -1317,7 +1354,7 @@ if((pPBErrCorrect = new CPBErrCorrect)==NULL)
 	}
 
 Rslt = pPBErrCorrect->Process(PMode,pszHostName,pszServiceName,MaxRMI,MaxNonRMI,SampleInRate,SampleAcceptRate,FiltMinHomoLen,bSenseOnlyOvlps,DeltaCoreOfs,MaxSeedCoreDepth,MinSeedCoreLen,MinNumSeedCores,SWMatchScore,SWMismatchPenalty,SWGapOpenPenalty,SWGapExtnPenalty,SWProgExtnPenaltyLen,
-								TranscriptomeLens,MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
+								TranscriptomeLens,NumAdapterSeqs,pszAdapterSeqs,MinPBSeqLen, MaxPBSeqLen, MinPBSeqOverlap,MaxArtefactDev,MinHCSeqLen,MinHCSeqOverlap,HCRelWeighting,MinErrCorrectLen,MinConcScore,
 								NumPacBioFiles,pszPacBioFiles,NumHiConfFiles,pszHiConfFiles,pszOutFile,pszOutMAFile,pszChkPtsFile,NumThreads);
 delete pPBErrCorrect;
 return(Rslt);
@@ -1635,11 +1672,162 @@ __sync_val_compare_and_swap(&m_CASThreadPBErrCorrect,1,0);
 #endif
 }
 
+int					// sequence length after any adapter trimming 
+CPBErrCorrect::AdapterTrim(bool bTrim3,					// if false then trim the 5' end, if true then trim the 3' end
+			int MaxTrimLen,					// maximally trim this many bp from end
+			int AdapterSeqLen,				// adapter sequence is this length
+			etSeqBase *pAdapterSeq,			// end trim with this adapter sequence
+			int SeqLen,						// sequence to trim is this length
+			etSeqBase *pSeq)				// inplace trimming this sequence
+{
+int TrimIdx;
+int CmpIdx;
+int CmpLen;
+int AllowedMismatches;
+etSeqBase SeqBase;
+etSeqBase AdaptBase;
+etSeqBase *pTrimFrom;
+etSeqBase *pAdaptBase;
+etSeqBase *pSeqBase;
+
+if(MaxTrimLen < AdapterSeqLen || MaxTrimLen > SeqLen || SeqLen < AdapterSeqLen || pSeq == NULL || AdapterSeqLen < 1 || pAdapterSeq == NULL || (*pAdapterSeq & 0x07) > eBaseN)
+	return(SeqLen);
+
+if(!bTrim3)		// if trimming the 5' end
+	{
+	TrimIdx = MaxTrimLen;
+	pTrimFrom = &pSeq[TrimIdx-1];
+	for(; TrimIdx >= 1; TrimIdx -= 1, pTrimFrom -= 1)
+		{
+		pSeqBase = pTrimFrom;
+		pAdaptBase = &pAdapterSeq[AdapterSeqLen-1];
+		if(TrimIdx >= AdapterSeqLen)
+			CmpLen = AdapterSeqLen;
+		else
+			CmpLen = TrimIdx;
+		if(CmpLen <= 2)
+			AllowedMismatches = 0;
+		else
+			AllowedMismatches = 1 + (CmpLen/10);
+				
+		for(CmpIdx = 0; CmpIdx < CmpLen; CmpIdx++)
+			{
+			SeqBase = 0x07 & *pSeqBase--;
+			AdaptBase = 0x07 & *pAdaptBase--;
+			
+			if(AdaptBase < eBaseN && SeqBase != AdaptBase)
+				{
+				AllowedMismatches -= 1;
+				if(AllowedMismatches < 0)
+					break;
+				}
+			}
+		if(CmpIdx == CmpLen)
+			{
+			SeqLen -= TrimIdx;
+			memmove(pSeq,&pSeq[TrimIdx],SeqLen);
+			break;
+			}
+		}
+	}
+else            // else trimming the 3' end
+	{
+	TrimIdx = SeqLen - MaxTrimLen;
+	pTrimFrom = &pSeq[TrimIdx];
+	for(; TrimIdx < SeqLen; TrimIdx += 1, pTrimFrom += 1)
+		{
+		pSeqBase = pTrimFrom;
+		pAdaptBase = pAdapterSeq;
+		if(TrimIdx <= (SeqLen - AdapterSeqLen))
+			CmpLen = AdapterSeqLen;
+		else
+			CmpLen = SeqLen - TrimIdx;
+		if(CmpLen <= 2)
+			AllowedMismatches = 0;
+		else
+			AllowedMismatches = 1 + (CmpLen/10);
+				
+		for(CmpIdx = 0; CmpIdx < CmpLen; CmpIdx++)
+			{
+			SeqBase = 0x07 & *pSeqBase++;
+			AdaptBase = 0x07 & *pAdaptBase++;
+			
+			if(AdaptBase < eBaseN && SeqBase != AdaptBase)
+				{
+				AllowedMismatches -= 1;
+				if(AllowedMismatches < 0)
+					break;
+				}
+			}
+		if(CmpIdx == CmpLen)
+			{
+			SeqLen = TrimIdx;
+			break;
+			}
+		}
+	}
+
+return(SeqLen);  // sequence length after trimming
+}
+
+bool					// true if able to locate an internal adapter sequence 
+CPBErrCorrect::IsAdapterInternal(int AdapterSeqLen,		// adapter sequence is this length
+			etSeqBase *pAdapterSeq,			// adapter sequence
+			int SeqLen,						// sequence to check is this length
+			etSeqBase *pSeq)				// sequence to check
+{
+int ChkIdx;
+int CmpIdx;
+int CmpLen;
+int AllowedMismatches;
+etSeqBase SeqBase;
+etSeqBase AdaptBase;
+etSeqBase *pChkFrom;
+etSeqBase *pAdaptBase;
+etSeqBase *pSeqBase;
+
+if(SeqLen < AdapterSeqLen || pSeq == NULL || AdapterSeqLen < 1 || pAdapterSeq == NULL || (*pAdapterSeq & 0x07) > eBaseN)
+	return(false);
+
+pChkFrom = pSeq;
+for(ChkIdx = 0; ChkIdx < SeqLen - AdapterSeqLen; ChkIdx += 1, pChkFrom += 1)
+	{
+	pSeqBase = pChkFrom;
+	pAdaptBase = pAdapterSeq;
+	CmpLen = AdapterSeqLen;
+	if(CmpLen <= 2)
+		AllowedMismatches = 0;
+	else
+		AllowedMismatches = 1 + (CmpLen/10);
+				
+	for(CmpIdx = 0; CmpIdx < CmpLen; CmpIdx++)
+		{
+		SeqBase = 0x07 & *pSeqBase++;
+		AdaptBase = 0x07 & *pAdaptBase++;
+			
+		if(AdaptBase < eBaseN && SeqBase != AdaptBase)
+			{
+			AllowedMismatches -= 1;
+			if(AllowedMismatches < 0)
+				break;
+			}
+		}
+	if(CmpIdx == CmpLen)
+		return(true);
+	}
+
+return(false);
+}
+
 // ProcessBioseqFile
 // Process input biosequence file into suffix file
 int
 CPBErrCorrect::ProcessBioseqFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
-								 int MaxSeqLen,					// and which are no longer than this length
+				 int MaxSeqLen,					// and which are no longer than this length after any adapter trim
+				int Adapter5Len,				// length of 5' adapter when end trimming adapters
+				etSeqBase *pAdapter5Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
+				int Adapter3Len,				// length of 3' adapter when end trimming adapters
+				etSeqBase *pAdapter3Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
 				 char *pszFile,						// file containing sequences to be parsed and indexed
 				int Flags)							// default is for flags = cFlgLCSeq used with PacBio read sequences
 {
@@ -1688,10 +1876,10 @@ while((Rslt = CurEntryID = BioSeqFile.Next(CurEntryID)) > eBSFSuccess)
 		}
 
 	if (SeqLen > (UINT32)MaxSeqLen)		// only accept for indexing sequences of no more than this length)
-	{
+		{
 		NumSeqsOverlength += 1;
 		continue;
-	}
+		}
 
 
 	if(AllocLen < (SeqLen + 1))
@@ -1766,6 +1954,10 @@ return(Rslt);
 int
 CPBErrCorrect::ProcessFastaFile(int MinSeqLen,		// only accept for indexing sequences of at least this length
 					int MaxSeqLen,					// and which are no longer than this length
+				int Adapter5Len,				// length of 5' adapter when end trimming adapters
+				etSeqBase *pAdapter5Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
+				int Adapter3Len,				// length of 3' adapter when end trimming adapters
+				etSeqBase *pAdapter3Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
 				char *pszFile,						// file containing sequences
 				int Flags)							// default is for flags = cFlgLCSeq used with PacBio read sequences
 {
@@ -1789,6 +1981,12 @@ int NumSeqsAccepted;
 size_t TotAcceptedLen;
 UINT32 NumSeqsUnderlength;
 UINT32 NumSeqsOverlength;
+UINT32 Num5Trimmed;
+UINT32 Num3Trimmed;
+UINT32 NumInternAdapters;
+int AdaptBasesTrimmed;
+int AdaptBasesTrimmedDist[28];
+int Idx;
 
 if((Rslt=Fasta.Open(pszFile,true))!=eBSFSuccess)
 	{
@@ -1818,6 +2016,11 @@ NumSeqsUnderlength = 0;
 NumSeqsOverlength = 0;
 NumSeqsAccepted = 0;
 TotAcceptedLen = 0;
+Num5Trimmed = 0;
+Num3Trimmed = 0;
+NumInternAdapters = 0;
+AdaptBasesTrimmed = 0;
+memset(AdaptBasesTrimmedDist,0,sizeof(AdaptBasesTrimmedDist));
 while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffSize,(size_t)cMaxAllocBuffChunk),true,false)) > eBSFSuccess)
 	{
 	if(SeqLen == eBSFFastaDescr)		// just read a descriptor line
@@ -1825,7 +2028,7 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 		SeqID++;
 		if(bEntryCreated)				// add any previous entry
 			{
-			if((NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleInRate) / 100))
+			if(BuffOfs > 0 && (NumSeqsAccepted + NumSeqsUnderlength) <= ((SeqID * (UINT64)m_SampleInRate) / 100))
 				{
 				NumSampled += 1;
 				if(BuffOfs < (size_t)MinSeqLen || BuffOfs > (size_t)MaxSeqLen)
@@ -1898,6 +2101,52 @@ while((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs],(int)min(AvailBuffS
 			SeqNs = 0;
 		}
 
+
+	// apply any adapter sequence end trimming which may be needed and check for internal adaptors 
+	int SeqLenTrim;
+	if(Adapter5Len > 0 && pAdapter5Seq != NULL)
+		{
+		SeqLenTrim = AdapterTrim(false,80,Adapter5Len,pAdapter5Seq,SeqLen,&pSeqBuff[BuffOfs]);
+		if(SeqLenTrim < (int)SeqLen)
+			Num5Trimmed += 1;
+		AdaptBasesTrimmed = min(SeqLen-SeqLenTrim,26);
+		AdaptBasesTrimmedDist[AdaptBasesTrimmed] += 1;
+		SeqLen = SeqLenTrim;
+		if(SeqLen < 100)
+			continue;
+		}
+	if(Adapter3Len > 0 && pAdapter3Seq != NULL)
+		{
+		SeqLenTrim = AdapterTrim(true,80, Adapter3Len,pAdapter3Seq,SeqLen,&pSeqBuff[BuffOfs]);
+		if(SeqLenTrim < (int)SeqLen)
+			Num3Trimmed += 1;
+		AdaptBasesTrimmed = min(SeqLen-SeqLenTrim,26);
+		AdaptBasesTrimmedDist[AdaptBasesTrimmed] += 1;
+		SeqLen = SeqLenTrim;
+		if(SeqLen < 100)
+			continue;
+		}
+
+	if(Adapter5Len > 0 && pAdapter5Seq != NULL)
+		{
+		if(IsAdapterInternal(Adapter5Len,pAdapter5Seq,SeqLen,&pSeqBuff[BuffOfs]))
+			{
+			NumInternAdapters += 1;
+			BuffOfs = 0;
+			SeqLen = 0;
+			continue;
+			}
+		}
+	if(Adapter3Len > 0 && pAdapter3Seq != NULL)
+		{
+		if(IsAdapterInternal(Adapter3Len,pAdapter3Seq,SeqLen,&pSeqBuff[BuffOfs]))
+			{
+			NumInternAdapters += 1;
+			BuffOfs = 0;
+			SeqLen = 0;
+			continue;
+			}
+		}
 
 	if(m_FiltMinHomoLen > 0)
 		{
@@ -2033,6 +2282,25 @@ if(pSeqBuff != NULL)
 	free(pSeqBuff);
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - %d parsed, %d sampled, %d accepted, %dbp mean length, %d sequences not accepted for indexing as length under %dbp, %d as length over %dbp",
 					SeqID,NumSampled,NumSeqsAccepted,NumSeqsAccepted == 0 ? 0 :(int)(TotAcceptedLen/NumSeqsAccepted),NumSeqsUnderlength,MinSeqLen, NumSeqsOverlength, MaxSeqLen);
+
+if(Adapter5Len > 0 || Adapter3Len > 0)
+	{
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - transcriptome processing: %u 5' end trimmed, %u 3' end trimmed, %u sequences sloughed due to internal adapters located", 
+					Num5Trimmed, Num3Trimmed, NumInternAdapters);
+	for(AdaptBasesTrimmed = 0; AdaptBasesTrimmed < 27; AdaptBasesTrimmed++)
+		{
+		if(AdaptBasesTrimmed == 0)
+			Idx = sprintf(szDescription,"0:%d",AdaptBasesTrimmedDist[0]);
+		else
+			{
+			if(AdaptBasesTrimmed < 27)
+				Idx += sprintf(&szDescription[Idx], ",%d:%d",AdaptBasesTrimmed,AdaptBasesTrimmedDist[AdaptBasesTrimmed]);
+			else
+				Idx += sprintf(&szDescription[Idx], ",%d+:%d",AdaptBasesTrimmed,AdaptBasesTrimmedDist[AdaptBasesTrimmed]);
+			}
+		}
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"ProcessFastaFile - transcriptome processing: bases trimmed (len:cnt) %s",szDescription); 
+	}
 return(Rslt);
 }
 
@@ -2094,7 +2362,11 @@ return(Rslt);
 int 
 CPBErrCorrect::LoadSeqs(int MinSeqLen,					 // only accept for indexing sequences of at least this length
 						int MaxSeqLen,                  // and no longer than this length (bp)
-				int NumTargFiles,char **pszTargFiles,		// parse, and index sequences in these files into in memory suffix array; file expected to contain either fasta or fastq sequences
+				int Adapter5Len,				// length of 5' adapter when end trimming adapters
+				etSeqBase *pAdapter5Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
+				int Adapter3Len,				// length of 3' adapter when end trimming adapters
+				etSeqBase *pAdapter3Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences				
+			    int NumTargFiles,char **pszTargFiles,		// parse, and index sequences in these files into in memory suffix array; file expected to contain either fasta or fastq sequences
 				int Flags)			// which by default are low confidence PacBio read sequences
 {
 int Rslt;
@@ -2144,9 +2416,9 @@ Rslt = eBSFSuccess;
 for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 	{
 		// try opening as a fasta file, if that fails then try as a bioseq
-	Rslt = ProcessFastaFile(MinSeqLen, MaxSeqLen, glob.File(n),Flags);
+	Rslt = ProcessFastaFile(MinSeqLen, MaxSeqLen,Adapter5Len,pAdapter5Seq, Adapter3Len,pAdapter3Seq,glob.File(n),Flags);
 	if(Rslt == eBSFerrNotFasta)
-		Rslt = ProcessBioseqFile(MinSeqLen, MaxSeqLen,glob.File(n),Flags);
+		Rslt = ProcessBioseqFile(MinSeqLen, MaxSeqLen,Adapter5Len,pAdapter5Seq,Adapter3Len,pAdapter3Seq,glob.File(n),Flags);
 	if(Rslt < eBSFSuccess)
 		{
 		m_pSfxArray->Close(false);
@@ -2191,6 +2463,8 @@ CPBErrCorrect::Process(etPBPMode PMode,		// processing mode
 		int SWGapExtnPenalty,		// gap extension penalty (-50..0)
 		int SWProgExtnPenaltyLen,	// progressive gap scoring then only apply gap extension score if gap at least this length (0..63) - use if aligning PacBio
 		int TranscriptomeLens,		// 0 if disabled, processing transcript reads, putatively overlapping reads must have length differential no more than this percentage and overlaps to be nearly full length
+		int NumAdapterSeqs,			// number of adapter sequences to trim when loading sequences if transcriptome processing
+		char *pszAdapterSeqs[],		// when loading reads then end trim for these adapter sequences when loading sequences if transcriptome processing
 		int MinPBSeqLen,			// only accepting PacBio reads to be error corrected of at least this length (defaults to 10Kbp) and if 
 		int MaxPBSeqLen,			// no more than this length (defaults to 35Kbp)
 		int MinPBSeqOverlap,		// any overlap of a PacBio onto a target PacBio must be of at least this many bp to be considered for contributing towards error correction (defaults to 5Kbp) 
@@ -2426,8 +2700,29 @@ if((Rslt = m_pSfxArray->SetDatasetName((char *)"inmem")) != eBSFSuccess)
 	}
 m_pSfxArray->SetInitalSfxAllocEls(SumFileSizes);	// just a hint which is used for initial allocations by suffix processing
 
+// some inside knowledge!
+// pszAdapterSeqs[0] pts to the 5' adapter to trim
+// pszAdapterSeqs[1] pts to the 3' adapter to trim
+int Adapter5Len;
+int Adapter3Len;
+etSeqBase Adapter5Seq[100];
+etSeqBase Adapter3Seq[100];
+if(NumAdapterSeqs >= 2)
+	{
+	Adapter5Len = (int)strlen(pszAdapterSeqs[0]);
+	Adapter3Len = (int)strlen(pszAdapterSeqs[1]);
+	CSeqTrans::MapAscii2Sense(pszAdapterSeqs[0],Adapter5Len,Adapter5Seq);
+	CSeqTrans::MapAscii2Sense(pszAdapterSeqs[1],Adapter3Len,Adapter3Seq);
+	}
+else
+	{
+	Adapter5Len = 0;
+	Adapter3Len = 0;
+	Adapter5Seq[0] = eBaseEOS;
+	Adapter3Seq[0] = eBaseEOS;
+	}
 
-if((Rslt = LoadSeqs(m_MinPBSeqOverlap,m_MaxPBRdSeqLen, NumPacBioFiles,pszPacBioFiles,cFlgLCSeq)) < eBSFSuccess)
+if((Rslt = LoadSeqs(m_MinPBSeqOverlap,m_MaxPBRdSeqLen, Adapter5Len,Adapter5Seq,Adapter3Len,Adapter3Seq,NumPacBioFiles,pszPacBioFiles,cFlgLCSeq)) < eBSFSuccess)
 	{
 	Reset();
 	return(Rslt);
@@ -2451,7 +2746,7 @@ int NumHCSeqs = 0;
 if(NumHiConfFiles && pszHiConfFiles != NULL)			// load any optional high confidence sequences requested by user
 	{
 	m_FiltMinHomoLen = 0;
-	if((Rslt = LoadSeqs(m_MinHCSeqLen, m_MaxPBRdSeqLen, NumHiConfFiles,pszHiConfFiles,cFlgHCSeq)) < eBSFSuccess)
+	if((Rslt = LoadSeqs(m_MinHCSeqLen, m_MaxPBRdSeqLen,0,NULL,0,NULL, NumHiConfFiles,pszHiConfFiles,cFlgHCSeq)) < eBSFSuccess)
 		{
 		m_pSfxArray->Close(false);
 		Reset();
@@ -2474,14 +2769,14 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting comple
 
 if(MinSeedCoreLen <= cMaxKmerLen)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Initialising for over occurring ( > %d) K-mers of length %d",m_MaxSeedCoreDepth,MinSeedCoreLen);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Initialising for over occurring ( > %d) K-mers of length %d",m_MaxSeedCoreDepth,MinSeedCoreLen);
 	if((Rslt = m_pSfxArray->InitOverOccKMers((int)MinSeedCoreLen,m_MaxSeedCoreDepth))!=eBSFSuccess)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Failed to initialise for over occurring K-mers");
 		Reset();
 		return(Rslt);
 		}
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Initialised for over occurring K-mers");
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Initialised for over occurring K-mers");
 	}
 
 if((m_pPBScaffNodes = new tsPBEScaffNode [NumTargSeqs + 1]) == NULL)
@@ -2545,7 +2840,7 @@ if(m_SampleAcceptRate < 1000)
 m_NumPBScaffNodes = NumTargSeqs;
 m_MaxPBSeqLen = MaxSeqLen;
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences (max length %d) ...",NumTargSeqs, m_MaxPBSeqLen);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences (max length %d) by length descending...",NumTargSeqs, m_MaxPBSeqLen);
 
 if(m_NumPBScaffNodes > 1)
 	{
@@ -2554,9 +2849,38 @@ if(m_NumPBScaffNodes > 1)
 	m_mtqsort.qsort(m_pPBScaffNodes,m_NumPBScaffNodes,sizeof(tsPBEScaffNode),SortLenDescending);
 	}
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Sorting %d sequences completed",NumTargSeqs);
+
+UINT32 CurSeqLen;
+UINT32 NumCurSeqLen;
+UINT32 MaxNumCurSeqLen;
+
 pCurPBScaffNode = m_pPBScaffNodes;
+CurSeqLen = 0;
+NumCurSeqLen = 0;
+if(m_TranscriptomeLens > 0)
+	MaxNumCurSeqLen = cMinTransInstancesPerSeqLen + ((cMinTransInstancesPerSeqLen - cMinTransInstancesPerSeqLen) * (m_TranscriptomeLens - 1) / 14);
+else
+	MaxNumCurSeqLen = 0;
+	
 for(CurNodeID = 1; CurNodeID <= NumTargSeqs; CurNodeID++,pCurPBScaffNode++)
 	{
+	if(m_TranscriptomeLens > 0 && !(pCurPBScaffNode->flgHCseq || pCurPBScaffNode->flgUnderlength || pCurPBScaffNode->flgSlough))
+		{
+		if(pCurPBScaffNode->SeqLen == CurSeqLen)
+			{
+			NumCurSeqLen += 1;
+			if(NumCurSeqLen > MaxNumCurSeqLen)
+				{
+				pCurPBScaffNode->flgSlough = 1;
+				NumSloughed += 1;
+				}
+			}
+		else
+			{
+			CurSeqLen = pCurPBScaffNode->SeqLen;
+			NumCurSeqLen = 1;
+			}
+		}
 	pCurPBScaffNode->NodeID = CurNodeID;
 	m_pMapEntryID2NodeIDs[pCurPBScaffNode->EntryID-1] = CurNodeID;
 	}
@@ -3510,7 +3834,7 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 	AcquireCASLock();                    // check if sequence is to be skipped
 	if(pCurPBScaffNode->flgCurProc == 1 ||			// another thread already processing this sequence? 
 			pCurPBScaffNode->flgCpltdProc == 1 ||	// completed processing
-			pCurPBScaffNode->flgHCseq ||			// not error correcting already assumed to be high confidence sequences 
+			pCurPBScaffNode->flgHCseq == 1 ||			// not error correcting already assumed to be high confidence sequences 
 		    pCurPBScaffNode->flgUnderlength == 1 || // must be of a user specified minimum length 
 			pCurPBScaffNode->SeqLen < (UINT32)pThreadPar->MinPBSeqLen) 
 		{
@@ -4139,6 +4463,12 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 					if(iRMIRslt < 0)
 						goto RMIRestartThread;
 					}
+				if(m_PMode == ePBMConsolidate)
+					{
+					pThreadPar->pszErrCorLineBuff[1] = 't';
+					pThreadPar->pszErrCorLineBuff[2] = 'x';
+					}
+
 				if(pThreadPar->ErrCorBuffIdx > 0)
 					{
 					AcquireCASSerialise();
@@ -4224,11 +4554,11 @@ for(CurNodeID = (LowestCpltdProcNodeID+1); CurNodeID <= m_NumPBScaffNodes; CurNo
 				UINT32 BaseIdx = 0;
 				int BasesLine = 0;
 
-				pThreadPar->ErrCorBuffIdx += sprintf(&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx],">ecseq%u_1 %d|%d\n",pCurPBScaffNode->NodeID,pCurPBScaffNode->SeqLen,1);
+				pThreadPar->ErrCorBuffIdx += sprintf(&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx],">txseq%u_1 %d|%d\n",pCurPBScaffNode->EntryID,pCurPBScaffNode->SeqLen,1);
 				while(BaseIdx < pCurPBScaffNode->SeqLen)
 					{
 					BasesLine = pCurPBScaffNode->SeqLen - BaseIdx > 80 ? 80 : pCurPBScaffNode->SeqLen - BaseIdx;
-					CSeqTrans::MapSeq2Ascii(&pThreadPar->pProbeSeq[BaseIdx],BasesLine,&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx]);
+					CSeqTrans::MapSeq2LCAscii(&pThreadPar->pProbeSeq[BaseIdx],BasesLine,&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx]);
 					BaseIdx += BasesLine;
 					pThreadPar->ErrCorBuffIdx += BasesLine;
 					pThreadPar->ErrCorBuffIdx += sprintf(&pThreadPar->pszErrCorLineBuff[pThreadPar->ErrCorBuffIdx],"\n");

@@ -14,6 +14,8 @@
 
 #pragma once
 
+#define USEPBfilter 1
+
 #include "SQLiteSummaries.h"
 
 typedef struct TAG_sSubProcess {

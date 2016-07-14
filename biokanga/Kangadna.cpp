@@ -988,7 +988,7 @@ if(tolower(PPCRdsHdr.Magic[0]) != 'p' ||
 	tolower(PPCRdsHdr.Magic[2]) != 'd' ||
 	tolower(PPCRdsHdr.Magic[3]) != 's')
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadPackedSeqsFromFile: File header does not have magic signiture of 'prds' - %s",pszTypeSeqFile);
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"LoadPackedSeqsFromFile: File header does not have magic signature of 'prds' - %s",pszTypeSeqFile);
 	Reset(false);
 	return(eBSFerrNotBioseq);
 	}

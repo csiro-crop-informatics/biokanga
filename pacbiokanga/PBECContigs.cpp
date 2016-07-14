@@ -118,7 +118,7 @@ struct arg_int *minhcseqlen = arg_int0("p","minhcseqlen","<int>",		"minimum indi
 struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 35, range 10 to 50)");
 struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",				"require at least this many accepted seed cores between overlapping sequences to use SW (default 30, range 1 to 50)");
 
-struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 10, range 1 to 10)");
+struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 10, range 1 to 25)");
 struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",				"explore cores of less than this maximum depth (default 10000, range 1000 to 20000)");
 
 struct arg_int *matchscore = arg_int0("x","matchscore","<int>",					"SW score for matching bases (default 1, range 1 to 50)");
@@ -317,9 +317,9 @@ if (!argerrors)
 		}
 
 	DeltaCoreOfs = deltacoreofs->count ? deltacoreofs->ival[0] : 10;
-	if(DeltaCoreOfs < 1 || DeltaCoreOfs > 10)
+	if(DeltaCoreOfs < 1 || DeltaCoreOfs > cMaxDeltaCoreOfs)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..10",DeltaCoreOfs);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset seed cores '-d%d' must be in range 1..%d",DeltaCoreOfs,cMaxDeltaCoreOfs);
 		return(1);
 		}
 

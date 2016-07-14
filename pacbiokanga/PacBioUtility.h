@@ -6,22 +6,31 @@ const int cMaxQuerySeqLen = (cAllocQuerySeqLen * 32);    // can handle query seq
 const int cMaxReadAheadQuerySeqs = 4000;	// read ahead and enqueue up to at most this many query sequences
 
 
-const etSeqBase cSmartBellAdapterSeq[] = // "ATCTCTCTCTTTTCCTCCTCCTCCGTTGTTGTTGTTGAGAGAGAT" PacBio SMRTBell hairpin sequence
-			{ eBaseA,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseT,eBaseT,eBaseT
+const int cMinSWQuickQueryLen = 20;				// SWQuick() accepting query sequences down to this length
+const int cMaxSWQuickQueryLen = 1000;			// SWQuick() accepting query sequences up to this length
+const int cMaxSWQuickHits = 1000;				// SWQuick() will process for at most this many target hits
+ 
+//  PacBio SMRTBell hairpin sequence
+//Sense: ATCTCTCTC TTTTCCTCCTCCTCCGTTGTTGTTGTT GAGAGAGAT
+//Cpl:   TAGAGAGAG AAAAGGAGGAGGAGGCAACAACAACAA CTCTCTCTA
+//Rev:   TAGAGAGAG TTGTTGTTGTTGCCTCCTCCTCCTTTT CTCTCTCTA
+//RevCpl:ATCTCTCTC AACAACAACAACGGAGGAGGAGGAAAA GAGAGAGAT
+const etSeqBase cSmartBellAdapterSeq[] = { eBaseA,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseC,eBaseT,eBaseT,eBaseT,eBaseT
 			,eBaseC,eBaseC,eBaseT,eBaseC,eBaseC,eBaseT,eBaseC,eBaseC,eBaseT,eBaseC,eBaseC,eBaseG,eBaseT
 			,eBaseT,eBaseG,eBaseT,eBaseT,eBaseG,eBaseT,eBaseT,eBaseG,eBaseT,eBaseT,eBaseG,eBaseA,eBaseG
 			,eBaseA,eBaseG,eBaseA,eBaseG,eBaseA,eBaseT}; // PacBio SMRTBell hairpin sequence
 const int cSmartBellAdapterSeqLen = sizeof(cSmartBellAdapterSeq); // number of bases in PacBio SMRTBell hairpin sequence
 
+const int cMaxSMRTBellHits = 5;				  // processing for at most this many SMRTBell adapters in any read
 const int cHomopolymerTruncLen = 4;           // default is to truncate homopolymers of longer than this length to this length, min 1
 const int cMinSmartBellTetramers = 7;		  // default is to require at least this many SMRTBell hairpin sequence tetramers to be discovered and in expected order				
 
 
 #pragma pack(1)
-typedef struct TAG_sSMRTBellHit {
+typedef struct TAG_sSMRTBellHitz {
 	int NumTetramers;		// number of SMRTBell sequence tetramers identified
 	int LocOfs;				// offset + 1 within the pacbio read at which the initial tetramer was identified
-} tsSMRTBellHit;
+} tsSMRTBellHitz;
 
 typedef struct TAG_sQuerySeq {
     int SeqID;						// monotonically increasing unique sequence identifier
@@ -45,6 +54,16 @@ typedef struct TAG_sLoadQuerySeqsThreadPars {
 	int Rslt;						// returned result code
 } tsLoadQuerySeqsThreadPars;
 
+typedef struct TAG_sSWQuickHit {
+	int HiScore;					// hit has this maximal score
+	int QueryOfs;					// query sequence offset (0..n) at which maximal score located
+	int TargOfs;					// target sequence offset (0..n) at which maximal score located
+} tsSWQuickHit;
+
+typedef struct TAG_sSMRTBellHit {
+	int HiScore;					// hit has this maximal score
+	int TargOfs;					// target sequence offset (0..n) at which maximal score located
+} tsSMRTBellHit;
 
 #pragma pack()
 
@@ -116,19 +135,26 @@ public:
 			char *pszQueryIdent,			// where to return query identifier
 			int *pQuerySeqLen);				// where to return query sequence length
 
-	int										// identified SMRTBell at this offset + 1, 0 if non-detected
-		DetectSMRTBell(int StartOfs,		// search from this offset
-						int *pNumTetramers,	// returned number of tetramers from SmartBell sequence detected and which were in expected order 
-						int InSeqLen,		// number of bases in sequence to search for SmartBell
-						etSeqBase *pInSeq,		// sequence to search for SmartBell
-						int MinTetramers = cMinSmartBellTetramers);	 // only report SmartBell if at least this many tetramers in expected order detected
-
 	int													// number of putatve SMRTBell hairpins identified
 		IdentifySMRTBells(int MaxSMRTBells,	// identify at most this many SMRTBells to return in pSMRTBells
 						int SeqLen,			// length of sequence to search for SMRTBell hairpins
 						etSeqBase *pSeq,	// identify all putative SMRTBell hairpins in this sequence
-						tsSMRTBellHit *pSMRTBells, // returned identified SMRTBells
-						int MinTetramers = cMinSmartBellTetramers);	// only report SmartBell if at least this many tetramers in expected order detected
+						tsSMRTBellHit *pSMRTBells); // returned identified SMRTBells
+						
+	int								// number of target hits returned
+		SWQuick(int QueryLen,			// relatively short query sequence to search for; typically a SMRTBell or some adapter sequence
+				etSeqBase *pQuerySeq,	// query sequence
+				int TargLen,			// length of sequence to search, expected to be at least the query sequence length
+				etSeqBase *pTargSeq,	// identify all queries in this target sequence
+				int MaxTargHits,		// return at most this many target hits
+				tsSWQuickHit *pTargHits, // returned putative target hits
+				int MinScore,			// only report hits having at least this score
+				int MatchScore,			// score for exact base matches
+				int MismatchScore,		// score for mismatches
+				int InsertScore,		// score for 1st inserted base of any contiguous run of insertions into the target
+				int InsertAffineScore,  // score for 2nd and subsequent inserted bases in any contiguous insertion run
+				int DeleteScore,		// score for 1st deleted base of any contiguous deletions from the target
+				int DeleteAffineScore);  // score for 2nd and subsequent deleted bases in any contiguous deletion run
 
 	// Identify PacBio ISO-seq primers at 5' and 3' ends of error corrected reads (still to be implemented!!!! )
 	int										// identified SMRTBell at this offset + 1, 0 if non-detected
@@ -139,11 +165,10 @@ public:
 					int MinTetramers);			// only report SmartBell if at least this many tetramers in expected order detected
 
 
-	int		// length after hompolymer reduction
+	int										// length after hompolymer reduction
 		ReduceHomopolymers(int InSeqLen,	// number of bases in sequence
 						   etSeqBase *pInSeq,		// sequence which may contain homopolymers
-						   etSeqBase *pOutSeq,		// homopolymer reduced sequence copied into this sequence buffer
-						   int TruncLen);			// homopolymers longer than this length (min 1) to be truncated at this length
+						   int TruncLen);			// homopolymers longer than this length (min 12) to be truncated at this length
 
 };
 
