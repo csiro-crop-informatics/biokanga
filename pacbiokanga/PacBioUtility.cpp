@@ -711,7 +711,8 @@ return(InSeqLen);
 }
 
 int													// number of putatve SMRTBell hairpins identified
-CPacBioUtility::IdentifySMRTBells(int MaxSMRTBells,	// identify at most this many SMRTBells to return in pSMRTBells
+CPacBioUtility::IdentifySMRTBells(int SMRTBellSensitivity, // sensitivity of SMRTBell detection - 5: max, 1: min
+						int MaxSMRTBells,	// identify at most this many SMRTBells to return in pSMRTBells
 						int SeqLen,					// length of sequence to search for SMRTBell hairpins
 						etSeqBase *pSeq,			// identify all putative SMRTBell hairpins in this sequence
 						tsSMRTBellHit *pSMRTBells)	// returned identified SMRTBells
@@ -724,6 +725,9 @@ int MinScore;
 int Hits;
 int NumTargsSense;
 int NumTargsAnti;
+
+int	MinSMRTBellScore;
+int	MinFlankScore;
 
 tsSMRTBellHit *pExchg;
 tsSMRTBellHit Swap;
@@ -743,10 +747,37 @@ int NumTargsFAnti;
 etSeqBase AdapterAntisense[1000];
 etSeqBase RHSAntisense[1000];
 
+switch(SMRTBellSensitivity) {
+	case 0: case 1:		// minimum sensitivity, maximum specificity
+		MinSMRTBellScore = 17;
+		MinFlankScore = 150;
+		break;
+
+	case 2:
+		MinSMRTBellScore = 16;
+		MinFlankScore = 125;
+		break;
+
+	case 3:						// default
+		MinSMRTBellScore = 15;
+		MinFlankScore = 100;
+		break;
+
+	case 4:
+		MinSMRTBellScore = 14;
+		MinFlankScore = 87;
+		break;
+
+	default:			// any other sensitivity treated as being maximal sensitivity but minimal specificity
+		MinSMRTBellScore = 13;
+		MinFlankScore = 75;
+		break;
+	}
+
 NumTargsFSense = 0;
 NumTargsFAnti = 0;
 NumSMRTBells = 0;
-NumTargsSense = SWQuick(cSmartBellAdapterSeqLen,(etSeqBase *)cSmartBellAdapterSeq,SeqLen,pSeq,15,QuickHitsSense,15,2,-20,-4,-3,-4,-3);
+NumTargsSense = SWQuick(cSmartBellAdapterSeqLen,(etSeqBase *)cSmartBellAdapterSeq,SeqLen,pSeq,15,QuickHitsSense,MinSMRTBellScore,2,-20,-4,-3,-4,-3);
 if(NumTargsSense > 0)
 	{
 	pQuickHit = QuickHitsSense;
@@ -757,7 +788,7 @@ if(NumTargsSense > 0)
 		if(LHE < 100 || RHS+100 >= SeqLen)
 			continue;
 		Len = min(500,min(LHE,SeqLen-RHS));
-		MinScore = (100 * Len) / 500;
+		MinScore = (MinFlankScore * Len) / 500;
 		memcpy(RHSAntisense,&pSeq[RHS],Len);
 		CSeqTrans::ReverseComplement(Len,RHSAntisense);
 		if((Hits = SWQuick(Len,&pSeq[LHE-Len],Len,RHSAntisense,1,QuickHitsExtd,MinScore,2,-20,-4,-3,-4,-3)) > 0)
@@ -796,7 +827,7 @@ if(MaxSMRTBells > 0)
 	{
 	memcpy(AdapterAntisense,cSmartBellAdapterSeq,cSmartBellAdapterSeqLen);
 	CSeqTrans::ReverseComplement(cSmartBellAdapterSeqLen,AdapterAntisense);
-	NumTargsAnti = SWQuick(cSmartBellAdapterSeqLen,(etSeqBase *)AdapterAntisense,SeqLen,pSeq,15,QuickHitsAnti,15,2,-20,-4,-3,-4,-3);
+	NumTargsAnti = SWQuick(cSmartBellAdapterSeqLen,(etSeqBase *)AdapterAntisense,SeqLen,pSeq,15,QuickHitsAnti,MinSMRTBellScore,2,-20,-4,-3,-4,-3);
 	if(NumTargsAnti > 0)
 		{
 		pQuickHit = QuickHitsAnti;
@@ -807,7 +838,7 @@ if(MaxSMRTBells > 0)
 			if(LHE < 100 || RHS+100 >= SeqLen)
 				continue;
 			Len = min(500,min(LHE,SeqLen-RHS));
-			MinScore = (100 * Len) / 500;
+			MinScore = (MinFlankScore * Len) / 500;
 			memcpy(RHSAntisense,&pSeq[RHS],Len);
 			CSeqTrans::ReverseComplement(Len,RHSAntisense);
 			if((Hits = SWQuick(Len,&pSeq[LHE-Len],Len,RHSAntisense,1,&QuickHitsExtd[NumSMRTBells],MinScore,2,-20,-4,-3,-4,-3)) > 0)

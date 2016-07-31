@@ -103,10 +103,10 @@ am_biokanga_OBJECTS = biokanga.$(OBJEXT) csv2sqlite.$(OBJEXT) \
 	Assemble.$(OBJEXT) LocKMers.$(OBJEXT) genkmarkers.$(OBJEXT) \
 	gensnpmarkers.$(OBJEXT) kmermarkers.$(OBJEXT) \
 	MarkerKMers.$(OBJEXT) PEScaffold.$(OBJEXT) \
-	SSRdiscovery.$(OBJEXT) deNovoAssemb.$(OBJEXT) \
-	ArtefactReduce.$(OBJEXT) Scaffolder.$(OBJEXT) \
-	ReadStats.$(OBJEXT) Blitz.$(OBJEXT) RemapLoci.$(OBJEXT) \
-	LocateROI.$(OBJEXT)
+	SSRdiscovery.$(OBJEXT) FilterSAMAlignments.$(OBJEXT) \
+	deNovoAssemb.$(OBJEXT) ArtefactReduce.$(OBJEXT) \
+	Scaffolder.$(OBJEXT) ReadStats.$(OBJEXT) Blitz.$(OBJEXT) \
+	RemapLoci.$(OBJEXT) LocateROI.$(OBJEXT)
 biokanga_OBJECTS = $(am_biokanga_OBJECTS)
 biokanga_LDADD = $(LDADD)
 biokanga_DEPENDENCIES = ../libbiokanga/libbiokanga.a \
@@ -274,7 +274,7 @@ biokanga_SOURCES = biokanga.cpp biokanga.h csv2sqlite.cpp SimReads.cpp Markers.c
                   maploci2features.cpp MapLoci2Feat.cpp MapLoci2Feat.h \
 		  mergeoverlaps.cpp MergeReadPairs.cpp MergeReadPairs.h fastaextract.cpp Assemble.cpp \
                   LocKMers.cpp LocKMers.h genkmarkers.cpp gensnpmarkers.cpp kmermarkers.cpp MarkerKMers.cpp MarkerKMers.h \
-		  PEScaffold.cpp PEScaffold.h SSRdiscovery.cpp SSRdiscovery.h \
+		  PEScaffold.cpp PEScaffold.h SSRdiscovery.cpp SSRdiscovery.h FilterSAMAlignments.cpp FilterSAMAlignments.h \
                   deNovoAssemb.cpp deNovoAssemb.h ArtefactReduce.cpp ArtefactReduce.h Scaffolder.cpp Scaffolder.h \
                   ReadStats.cpp ReadStats.h Blitz.cpp Blitz.h RemapLoci.cpp RemapLoci.h LocateROI.cpp LocateROI.h 
 
@@ -376,6 +376,7 @@ include ./$(DEPDIR)/ArtefactReduce.Po
 include ./$(DEPDIR)/Assemble.Po
 include ./$(DEPDIR)/Blitz.Po
 include ./$(DEPDIR)/FastaNxx.Po
+include ./$(DEPDIR)/FilterSAMAlignments.Po
 include ./$(DEPDIR)/Kangadna.Po
 include ./$(DEPDIR)/LocKMers.Po
 include ./$(DEPDIR)/LocateROI.Po

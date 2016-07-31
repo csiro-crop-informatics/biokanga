@@ -36,6 +36,7 @@
 
 int
 ProcPacBioFilter(etPBPMode PMode,	// processing mode
+		int SMRTBellSensitivity,	// sensitivity of SMRTBell detection - 5: max, 1: min
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
@@ -68,6 +69,7 @@ int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failu
 
 int Idx;
 int PMode;					// processing mode
+int SMRTBellSensitivity;	// sensitivity of SMRTBell detection - 5: max, 1: min
 int Trim5;					// 5' trim accepted reads by this many bp
 int Trim3;					// 3' trim accepted reads by this many bp
 int MinReadLen;				// read sequences must be at least this length after any end trimming
@@ -94,6 +96,8 @@ struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of di
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
 struct arg_int *pmode = arg_int0("m","pmode","<int>",			"processing mode - 0 SMRTBell trimming, 1 remove contaminate containing sequences");
+struct arg_int *smrtbellsensitivity = arg_int0("s","smrtbellsensitivity","<int>",			"sensitivity of SMRTBell detection (default 3, range 1: min to 5: max)");
+
 struct arg_int *trim5 = arg_int0("z","trim5","<int>",			"5' trim accepted reads by this many bp (default 0, range 0 to 10000)");
 struct arg_int *trim3 = arg_int0("Z","trim3","<int>",			"3' trim accepted reads by this many bp (default 0, range 0 to 10000)");
 struct arg_int *minreadlen = arg_int0("l","minreadlen","<int>",		"read sequences must be at least this length after any end trimming (default 1000, range 500 to 50000)");
@@ -114,7 +118,7 @@ struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"exper
 struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
-					pmode,trim5,trim3,minreadlen,summrslts,experimentname,experimentdescr,
+					pmode,smrtbellsensitivity,trim5,trim3,minreadlen,summrslts,experimentname,experimentdescr,
 					contamarate,contamovlplen,contamfile,	inputfiles,outfile,threads,
 					end};
 
@@ -261,6 +265,18 @@ if (!argerrors)
 		return(1);
 		}
 
+	if(PMode == ePBPMFilter)
+		{
+		SMRTBellSensitivity = smrtbellsensitivity->count ? smrtbellsensitivity->ival[0] : 3;
+		if(SMRTBellSensitivity < 1 || SMRTBellSensitivity > 5)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SMRTBell detection sensitivity threshold '-s%d' must be in range 1..5",SMRTBellSensitivity);
+			return(1);
+			}
+		}
+	else
+		SMRTBellSensitivity = 0;
+
 	Trim5 = trim5->count ? trim5->ival[0] : cDfltTrim5;
 	if(Trim5 < 0 || Trim5 > 10000)
 		{
@@ -387,11 +403,13 @@ if (!argerrors)
 	}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"processing mode: '%s'",pszMode);
-
+	if(PMode == ePBPMFilter)
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"SMRTBell detection sensitivity: %d",SMRTBellSensitivity);	
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"5' trim accepted reads by: %dbp",Trim5);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"3' trim accepted reads by: %dbp",Trim3);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"read sequences must be at least this length after any end trimming: %dbp",MinReadLen);
 
+	
 	if(PMode == ePBPMContam)
 		{
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"PacBio sequences minimum accuracy rate: %d",ContamARate);
@@ -415,6 +433,7 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PMode),"pmode",&PMode);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SMRTBellSensitivity),"smrtbellsensitivity",&SMRTBellSensitivity);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim5),"trim5",&Trim5);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim3),"trim3",&Trim3);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinReadLen),"minreadlen",&MinReadLen);
@@ -443,7 +462,7 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = ProcPacBioFilter((etPBPMode)PMode,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,
+	Rslt = ProcPacBioFilter((etPBPMode)PMode,SMRTBellSensitivity,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,
 												szContamFile,NumInputFiles,pszInputFiles,szOutFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
@@ -470,6 +489,7 @@ return 0;
 
 int
 ProcPacBioFilter(etPBPMode PMode,	// processing mode
+		int SMRTBellSensitivity, // sensitivity of SMRTBell detection - 5: max, 1: min
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
@@ -489,7 +509,7 @@ if((pPacBioer = new CPBFilter)==NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CPBFilter");
 	return(eBSFerrObj);
 	}
-Rslt = pPacBioer->Process(PMode,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,pszContamFile,NumInputFiles,pszInputFiles,pszOutFile,NumThreads);
+Rslt = pPacBioer->Process(PMode,SMRTBellSensitivity,Trim5,Trim3,MinReadLen,ContamARate,ContamOvlpLen,pszContamFile,NumInputFiles,pszInputFiles,pszOutFile,NumThreads);
 delete pPacBioer;
 return(Rslt);
 }
@@ -666,6 +686,7 @@ pthread_rwlock_unlock(&m_hRwLock);
 
 int
 CPBFilter::Process(etPBPMode PMode,	// processing mode
+		int SMRTBellSensitivity, // sensitivity of SMRTBell detection - 5: max, 1: min
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end timming
@@ -810,7 +831,7 @@ if((Rslt = m_PacBioUtility.StartAsyncLoadSeqs(NumInputFiles,pszInputFiles)) < eB
 	return(Rslt);
 	}
 
-Rslt = ProcessFiltering(cDfltMaxPacBioSeqLen,NumThreads);
+Rslt = ProcessFiltering(SMRTBellSensitivity,cDfltMaxPacBioSeqLen,NumThreads);
 
 Reset();
 return(Rslt);
@@ -837,7 +858,8 @@ pthread_exit(NULL);
 }
 
 int
-CPBFilter::ProcessFiltering(int MaxSeqLen,			// max length sequence expected
+CPBFilter::ProcessFiltering(int SMRTBellSensitivity, // sensitivity of SMRTBell detection - 5: max, 1: min
+							int MaxSeqLen,			// max length sequence expected
 							int NumOvlpThreads)	// filtering using at most this many threads
 {
 tsThreadPBFilter *pThreadPutOvlps;
@@ -896,6 +918,7 @@ for (ThreadIdx = 1; ThreadIdx <= NumOvlpThreads; ThreadIdx++, pThreadPar++)
 	{
 	pThreadPar->ThreadIdx = ThreadIdx;
 	pThreadPar->pThis = this;
+	pThreadPar->SMRTBellSensitivity = SMRTBellSensitivity;
 #ifdef _WIN32
 	pThreadPar->threadHandle = (HANDLE)_beginthreadex(NULL, 0x0fffff, PBFilterThread, pThreadPar, 0, &pThreadPar->threadID);
 #else
@@ -1031,7 +1054,7 @@ while((pQuerySeq = m_PacBioUtility.DequeueQuerySeq(60,sizeof(szQuerySeqIdent),&S
 		{
 		int NumBellHits;
 		// Note: more chance of finding 5' and 3' end SMRTBells if no end trimming ... End trim later ...
-		NumBellHits = m_PacBioUtility.IdentifySMRTBells(cMaxSMRTBellHits,QuerySeqLen,pQuerySeq,BellHits);
+		NumBellHits = m_PacBioUtility.IdentifySMRTBells(pThreadPar->SMRTBellSensitivity,cMaxSMRTBellHits,QuerySeqLen,pQuerySeq,BellHits);
 		if(NumBellHits > 0)
 			{
 			AcquireLock(true);

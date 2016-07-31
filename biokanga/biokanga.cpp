@@ -34,10 +34,10 @@
 
 // when required to static compile
 #ifdef _LINKSTATIC_
-const char *cpszProgVer = "3.9.9S";		// increment with each release
+const char *cpszProgVer = "4.0.0S";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset - Static Linked";
 #else
-const char *cpszProgVer = "3.9.9";		// increment with each release
+const char *cpszProgVer = "4.0.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset";
 #endif
 
@@ -45,6 +45,7 @@ const char *cpszProcOverview = "BioKanga NGS Processing Toolset";
 extern int Blitz(int argc, char* argv[]);
 extern int LocateROI(int argc, char* argv[]);
 extern int RemapLoci(int argc, char* argv[]);
+extern int FilterSAMAlignments(int argc, char* argv[]);
 extern int SimReads(int argc, char* argv[]);
 extern int fasta2nxx(int argc, char* argv[]);
 extern int ArtefactReduce(int argc, char* argv[]);
@@ -124,6 +125,7 @@ tsSubProcess SubProcesses[] = {
 	{"markerseqs","Marker Seqs","Generate marker sequences from SNP loci",GenMarkerSeqs},
 	{"blitz", "Blat like Local align", "\tBlat like local align genomic sequences", Blitz },
 	{"remaploci","Remap Alignment Loci", "Remap alignment loci", RemapLoci },
+	{"filtchrom","Filter SAM/BAM by chrom", "Filter SAM/BAM alignments by chromosome", FilterSAMAlignments },
 	{"locateroi","Locate Regions of Interest", "Locate and report regions of interest", LocateROI },
 	{"psl2sqlite","SQLite Blat Alignments","Generate SQLite Blat alignment Database from Blat generated PSL alignments",PSL2SQLite},
 	{"snpm2sqlite","SQLite SNP Markers","Generate SQLite Marker Database from SNP markers  ",Markers2SQLite},

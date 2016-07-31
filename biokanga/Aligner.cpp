@@ -685,7 +685,7 @@ if(m_hNoneAlignFile != -1 || m_gzNoneAlignFile != NULL)
 
 // user interested in the multialigned?
 // these only include those reads which would otherwise have been accepted but aligned to multiple loci
-if(PEproc == ePEdefault && (m_hMultiAlignFile != -1 || m_gzMultiAlignFile != NULL))
+if(m_hMultiAlignFile != -1 || m_gzMultiAlignFile != NULL)
 	{
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting of multialigned reads started..");
 	if((Rslt=ReportMultiAlign()) < eBSFSuccess)
@@ -3666,7 +3666,7 @@ if(m_hNoneAlignFile != -1 || m_gzNoneAlignFile != NULL)
 		for(SeqIdx = 0; SeqIdx < pReadHit->ReadLen; SeqIdx++,pSeq++,pSeqVal++)
 			*pSeq = (*pSeqVal & 0x07);
 
-		LineLen += sprintf(&m_pszLineBuff[LineLen],">lcl|nonealign %s %d|%d|%d\n",pReadHit->Read,pReadHit->ReadID,pReadHit->NumReads,pReadHit->ReadLen);
+		LineLen += sprintf(&m_pszLineBuff[LineLen],">lcl|na|%d %s %d|%d|%d\n",pReadHit->ReadID,pReadHit->Read,pReadHit->ReadID,pReadHit->NumReads,pReadHit->ReadLen);
 		if((LineLen + (2 * cMaxFastQSeqLen)) > cAllocLineBuffSize)
 			{
 			if(m_hNoneAlignFile != -1)
@@ -3759,7 +3759,7 @@ if(m_hMultiAlignFile != -1 || m_gzMultiAlignFile != NULL)
 		for(SeqIdx = 0; SeqIdx < pReadHit->ReadLen; SeqIdx++,pSeq++,pSeqVal++)
 			*pSeq = (*pSeqVal & 0x07);
 
-		LineLen += sprintf(&m_pszLineBuff[LineLen],">lcl|multialign %s %d|%d|%d\n",pReadHit->Read,pReadHit->ReadID,pReadHit->NumReads,pReadHit->ReadLen);
+		LineLen += sprintf(&m_pszLineBuff[LineLen],">lcl|ml|%d %s %d|%d|%d\n",pReadHit->ReadID,pReadHit->Read,pReadHit->ReadID,pReadHit->NumReads,pReadHit->ReadLen);
 		if((LineLen + (2 * cMaxFastQSeqLen)) > cAllocLineBuffSize)
 			{
 			if(m_hMultiAlignFile != -1)
@@ -5168,10 +5168,11 @@ UINT32 *pInsertLens;
 if(m_hInsertLensFile == -1 || !m_bPEInsertLenDist)		// only process PE insert distributions if actually aligning PEs and user requested the insert distributions
 	return(0);
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting PE insert lengths for each transcript or assembly sequence");
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting PE insert lengths for each transcript or assembly sequence, sorting reads");
 SortReadHits(eRSMPEHitMatch,false);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed sort");
 
-pInsertLens = new UINT32 [5000000];	// big assumption that transcript will have no more than 1M paired end hits - check is made and only 1st 5M inserts are processed!
+pInsertLens = new UINT32 [1000000 + 10];	// big assumption that target transcript or chromosome will have no more than 1M paired end hits - check is made and only 1st 1M inserts are processed!
 
 BuffOfs = sprintf(szDistBuff,"\"TargSeq\",\"TargLen\",\"TotPEs\",\"MedianInsertLen\",\"MeanInsertLen\",\"Insert <100bp\"");
 for(Idx = 0; Idx < 50; Idx++)
@@ -5186,9 +5187,10 @@ NumTargIDs = 0;
 NumPEs = 0;
 SumInsertLens = 0;
 memset(LenDist,0,sizeof(LenDist));
+memset(pInsertLens,0,sizeof(UINT32) * 1000001);
 while((pPE1ReadHit = IterSortedReads(pPE1ReadHit))!=NULL)
 	{
-	if((pPE2ReadHit = IterSortedReads(pPE1ReadHit)) == NULL)
+	if((pPE2ReadHit = IterSortedReads(pPE1ReadHit)) == NULL) // expecting PE2 to immediately follow PE1
 		break;
 
 	// both ends of pair must be accepted as aligned and both must be aligned as PE
@@ -5196,11 +5198,11 @@ while((pPE1ReadHit = IterSortedReads(pPE1ReadHit))!=NULL)
 		break;
 
 	// both pPE1ReadHit and pPE2ReadHit have been accepted as being PE aligned
-	if(pPE1ReadHit->HitLoci.Hit.Seg[0].ChromID != (UINT32)CurTargID)  // processing a different transcript or assembly sequence?
+	if(pPE1ReadHit->HitLoci.Hit.Seg[0].ChromID != (UINT32)CurTargID)  // now processing a different transcript or assembly sequence?
 		{
 		if(NumTargIDs && NumPEs)
 			{
-			MedianInsert = MedianInsertLen(min(5000000,NumPEs),pInsertLens);
+			MedianInsert = MedianInsertLen(min(1000000,NumPEs),pInsertLens);
 			BuffOfs += sprintf(&szDistBuff[BuffOfs],"\"%s\",%u,%u,%u,%u",szTargChromName,TargChromLen,NumPEs,MedianInsert,(UINT32)(SumInsertLens/NumPEs));
 			for(Idx = 0; Idx < 52; Idx++)
 				BuffOfs += sprintf(&szDistBuff[BuffOfs],",%d",LenDist[Idx]);
@@ -5219,6 +5221,13 @@ while((pPE1ReadHit = IterSortedReads(pPE1ReadHit))!=NULL)
 		NumPEs = 0;
 		SumInsertLens = 0;
 		memset(LenDist,0,sizeof(LenDist));
+		memset(pInsertLens,0,sizeof(UINT32) * 1000001);
+		}
+
+	if(NumPEs >= 1000000)
+		{
+		pPE1ReadHit = pPE2ReadHit;
+		continue;
 		}
 
 	PE1Start = AdjAlignStartLoci(&pPE1ReadHit->HitLoci.Hit) + 1;
@@ -5250,7 +5259,7 @@ if(NumTargIDs)
 	{
 	if(NumPEs)
 		{
-		MedianInsert = MedianInsertLen(min(5000000,NumPEs),pInsertLens);
+		MedianInsert = MedianInsertLen(min(1000000,NumPEs),pInsertLens);
 		BuffOfs += sprintf(&szDistBuff[BuffOfs],"\"%s\",%u,%u,%u,%u",szTargChromName,TargChromLen,NumPEs,MedianInsert,(UINT32)(SumInsertLens/NumPEs));
 		for(Idx = 0; Idx < 52; Idx++)
 			BuffOfs += sprintf(&szDistBuff[BuffOfs],",%u",LenDist[Idx]);

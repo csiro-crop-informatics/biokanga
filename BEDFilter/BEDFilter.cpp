@@ -346,6 +346,9 @@ if(m_pszOutBuff != NULL)
 m_BuffIdx = 0;
 m_AllocBuffSize = 0;
 
+m_szFiltChrom[0] = 0;
+m_bFiltChrom = false;
+
 m_NumIncludeChroms = 0;			
 m_ppszIncludeChroms = NULL;		
 m_NumExcludeChroms = 0;			

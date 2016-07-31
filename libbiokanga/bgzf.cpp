@@ -55,19 +55,19 @@ typedef knetFile *_bgzf_file_t;
 #define _bgzf_write(fp, buf, len) knet_write(fp, buf, len)
 #else // ~defined(_USE_KNETFILE)
 #if defined(_WIN32) || defined(_MSC_VER)
-#define ftello(fp) ftell(fp)
-#define fseeko(fp, offset, whence) fseek(fp, offset, whence)
+#define ftello64(fp) _ftelli64(fp)
+#define fseeko64(fp, offset, whence) _fseeki64(fp, offset, whence)
 #else // ~defined(_WIN32)
-extern off_t ftello(FILE *stream);
-extern int fseeko(FILE *stream, off_t offset, int whence);
+extern off64_t ftello64(FILE *stream);
+extern int fseeko64(FILE *stream, off64_t offset, int whence);
 #endif // ~defined(_WIN32)
 typedef FILE *_bgzf_file_t;
 #define _bgzf_open(fn, mode) fopen(fn, mode)
 #define _bgzf_dopen(fp, mode) fdopen(fp, mode)
 #define _bgzf_close(fp) fclose(fp)
 #define _bgzf_fileno(fp) fileno(fp)
-#define _bgzf_tell(fp) ftello(fp)
-#define _bgzf_seek(fp, offset, whence) fseeko(fp, offset, whence)
+#define _bgzf_tell(fp) ftello64(fp)
+#define _bgzf_seek(fp, offset, whence) fseeko64(fp, offset, whence)
 #define _bgzf_read(fp, buf, len) fread(buf, 1, len, fp)
 #define _bgzf_write(fp, buf, len) fwrite(buf, 1, len, fp)
 #endif // ~define(_USE_KNETFILE)
@@ -76,7 +76,7 @@ typedef FILE *_bgzf_file_t;
 #define BLOCK_FOOTER_LENGTH 8
 
 
-/* BGZF/GZIP header (speciallized from RFC 1952; little endian):
+/* BGZF/GZIP header (specialized from RFC 1952; little endian):
  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
  | 31|139|  8|  4|              0|  0|255|      6| 66| 67|      2|BLK_LEN|
  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
@@ -357,11 +357,6 @@ compressed_block = (UINT8*)fp->compressed_block;
 memcpy(compressed_block, header, BLOCK_HEADER_LENGTH);
 remaining = block_length - BLOCK_HEADER_LENGTH;
 count = _bgzf_read((FILE *)fp->fp, &compressed_block[BLOCK_HEADER_LENGTH], remaining);
-if (count != remaining) 
-	{
-	fp->errcode |= BGZF_ERR_IO;
-	return -1;
-	}
 size += count;
 if ((count = inflate_block(fp, (int)block_length)) < 0) 
 	return -1;
@@ -505,7 +500,7 @@ int bgzf_check_EOF(BGZF *fp)
 {
 static UINT8 magic[29] = "\037\213\010\4\0\0\0\0\0\377\6\0\102\103\2\0\033\0\3\0\0\0\0\0\0\0\0\0";
 UINT8 buf[28];
-off_t offset;
+INT64 offset;
 offset = _bgzf_tell((_bgzf_file_t)fp->fp);
 if (_bgzf_seek((FILE *)fp->fp, -28, SEEK_END) < 0) 
 	return 0;
@@ -528,7 +523,7 @@ if (fp->is_write || where != SEEK_SET)
 
 block_offset = pos & 0xFFFF;
 block_address = pos >> 16;
-if (_bgzf_seek((FILE *)fp->fp, (long)block_address, SEEK_SET) < 0) 
+if (_bgzf_seek((FILE *)fp->fp, block_address, SEEK_SET) < 0) 
 	{
 	fp->errcode |= BGZF_ERR_IO;
 	return -1;

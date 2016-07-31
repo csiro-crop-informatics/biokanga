@@ -154,68 +154,38 @@ if(m_pInBGZF != NULL)
 
 if(m_pBAM != NULL)
 	{
-#ifdef _WIN32
 	free(m_pBAM);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
-#else
-	if(m_pBAM != MAP_FAILED)
-		munmap(m_pBAM,m_AllocBAMSize);
-#endif
 	m_pBAM = NULL;
 	}
 
 if(m_pBAI != NULL)
 	{
-#ifdef _WIN32
 	free(m_pBAI);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
-#else
-	if(m_pBAI != MAP_FAILED)
-		munmap(m_pBAI,m_AllocBAISize);
-#endif
 	m_pBAI = NULL;
 	}
 
 if(m_pBAIChunks != NULL)
 	{
-#ifdef _WIN32
 	free(m_pBAIChunks);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
-#else
-	if(m_pBAIChunks != MAP_FAILED)
-		munmap(m_pBAIChunks,m_AllocBAIChunks * sizeof(tsBAIChunk));
-#endif
 	m_pBAIChunks = NULL;
 	}
 
 
 if(m_pChunkBins != NULL)
 	{
-#ifdef _WIN32
 	free(m_pChunkBins);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
-#else
-	if(m_pChunkBins != MAP_FAILED)
-		munmap(m_pChunkBins,cNumSAIBins * sizeof(tsBAIbin));
-#endif
 	m_pChunkBins = NULL;
 	}
 
 if(m_p16KOfsVirtAddrs != NULL)
 	{
-#ifdef _WIN32
 	free(m_p16KOfsVirtAddrs);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
-#else
-	if(m_p16KOfsVirtAddrs != MAP_FAILED)
-		munmap(m_p16KOfsVirtAddrs,m_Alloc16KOfsVirtAddrsSize);
-#endif
 	m_p16KOfsVirtAddrs = NULL;
 	}
 
 if(m_pRefSeqs != NULL)
 	{
-#ifdef _WIN32
 	free(m_pRefSeqs);				// was allocated with malloc/realloc, or mmap/mremap, not c++'s new....
-#else
-	if(m_pRefSeqs != MAP_FAILED)
-		munmap(m_pRefSeqs,m_AllocRefSeqsSize);
-#endif
 	m_pRefSeqs = NULL;
 	}
 
@@ -262,8 +232,9 @@ m_LocateRefSeqHistDepth = 0;
 m_szLastNotLocatedRefSeqName[0] = '\0';
 }
 
-bool									// open and check if a SAM or BAM format file, returns true if was a SAM or BAM
-CSAMfile::IsSAM(char *pszSAMFile)	// expected to be a SAM(gz) or if extension '.BAM' then a BAM file
+eSAMFileType						// open and check if a SAM or BAM format file, returns file type if was a SAM or BAM, or returns eSFTSAMUnknown if errors
+CSAMfile::IsSAM(char *pszSAMFile,	// expected to be a SAM(gz) or if extension '.BAM' then a BAM file
+			  bool bErrMessages)		// true if error messages to be reported
 {
 int FileNameLen;
 int hInSAMfile;
@@ -273,9 +244,13 @@ char szBAMHdr[1000];
 BGZF* pInBGZF;						// BAM is BGZF compressed
 int CurBAMLen;
 
-
 if(pszSAMFile == NULL || pszSAMFile[0] == '\0')
-	return(false);
+	{
+	if(bErrMessages)
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: No file specified");
+	return(eSFTSAMUnknown);
+	}
+
 // classify file type by extension
 // if file has suffix of '.bam' then classify as eSFTBAM
 // if file has suffix of '.gz' then classify as eSFTSAMgz
@@ -299,29 +274,46 @@ if(SAMType != eSFTSAMgz)
 	hInSAMfile = open(pszSAMFile,O_RDONLY,S_IREAD);
 #endif
 	if(hInSAMfile < 0)
-		return(false);			
+		{
+		if(bErrMessages)
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: Unable to open file: '%s'",pszSAMFile);
+		return(eSFTSAMUnknown);
+		}			
 	}
 else
 	{
 	gzInSAMfile = gzopen(pszSAMFile,"rb");
 	if(gzInSAMfile == NULL)
-		return(false);	
+		{
+		if(bErrMessages) gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: Unable to open file: '%s'",pszSAMFile);
+		return(eSFTSAMUnknown);
+		}	
 	}
 
 if(SAMType >= eSFTBAM)
 	{
+	bool bHasEOFmarker;
 	// BAM will using BGZF compression ..
 	if((pInBGZF = bgzf_dopen(hInSAMfile, "r"))==NULL)
-		return(false);	
+		{
+		if(bErrMessages) gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: Unable to open file expected to have BGZF compression: '%s'",pszSAMFile);
+		return(eSFTSAMUnknown);
+		}	
 	hInSAMfile = -1;
 
 	// try reading the header, bgzf_read will confirm it does start with "BAM\1" ....
 	if((CurBAMLen = (int)bgzf_read(pInBGZF,szBAMHdr,100)) < 100)		// will be -1 if errors ...
 		{
+		if(bErrMessages) gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: opened file with BGZF compression but invalid BAM header: '%s'",pszSAMFile);
 		bgzf_close(pInBGZF);
-		return(false);	
+		return(eSFTSAMUnknown);	
 		}
+
+	// check if has EOF marker
+	bHasEOFmarker = bgzf_check_EOF(pInBGZF) == 1 ? true : false;
 	bgzf_close(pInBGZF);
+	if(!bHasEOFmarker)
+		gDiagnostics.DiagOut(eDLWarn,gszProcName,"IsSAM: opened file with BGZF compression, valid BAMheader, but no EOF block - may cause problems!: '%s'",pszSAMFile);
 	}
 else
 	{
@@ -331,8 +323,9 @@ else
 		{
 		if((CurBAMLen = gzread(gzInSAMfile,szBAMHdr,100)) < 100)
 			{
+			if(bErrMessages)  gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: opened file with GZ compression, invalid SAM header: '%s'",pszSAMFile);
 			gzclose(gzInSAMfile);
-			return(false);
+			return(eSFTSAMUnknown);
 			}
 		gzclose(gzInSAMfile);
 		}
@@ -340,16 +333,20 @@ else
 		{
 		if((CurBAMLen = read(hInSAMfile,szBAMHdr,100)) < 100)
 			{
+			if(bErrMessages) gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: opened file, invalid SAM header: '%s'",pszSAMFile);
 			close(hInSAMfile);
-			return(false);
+			return(eSFTSAMUnknown);
 			}
 		close(hInSAMfile);
 		}
 	if(strnicmp((const char *)szBAMHdr,"@HD\tVN:",6))
-		return(false);
+		{
+		if(bErrMessages)  gDiagnostics.DiagOut(eDLFatal,gszProcName,"IsSAM: opened file, invalid SAM header: '%s'",pszSAMFile);
+		return(eSFTSAMUnknown);
+		}
 	}
 
-return(true);
+return(SAMType);
 }
 
 
@@ -357,33 +354,21 @@ return(true);
 int					// open and initiate processing for SAM/BAM reads processing
 CSAMfile::Open(char *pszSAMFile)	// SAM(gz) or BAM file name
 {
-int FileNameLen;
-eSAMFileType SAMType;
 if(pszSAMFile == NULL || pszSAMFile[0] == '\0')
 	return(eBSFerrParams);
 
 Reset();
 
-// classify file type by extension
-// if file has suffix of '.bam' then classify as eSFTBAM
-// if file has suffix of '.gz' then classify as eSFTSAMgz
-// if file has any other extension then classify as SAM
-// 
-FileNameLen = (int)strlen(pszSAMFile);
-if(FileNameLen > 3 && !stricmp(&pszSAMFile[FileNameLen-3],".gz"))
-   SAMType = eSFTSAMgz;
-else
+if((m_SAMFileType = IsSAM(pszSAMFile, true)) == eSFTSAMUnknown)
 	{
-	if(FileNameLen > 4 && !stricmp(&pszSAMFile[FileNameLen-4],".bam"))
-		SAMType = eSFTBAM;
-	else
-		SAMType = eSFTSAM;
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Open: unable to determine SAM file type for '%s'",m_szSAMfileName);
+	Reset();
+	return(eBSFerrOpnFile);
 	}
 
-m_SAMFileType = SAMType;
 strcpy(m_szSAMfileName,pszSAMFile);
 
-if(SAMType != eSFTSAMgz)
+if(m_SAMFileType != eSFTSAMgz)
 	{
 #ifdef _WIN32
 	m_hInSAMfile = open(m_szSAMfileName,( O_RDONLY | _O_BINARY | _O_SEQUENTIAL),_S_IREAD);
@@ -409,7 +394,7 @@ else
 	}
 
 // make initial mem allocation
-if(SAMType == eSFTSAM || SAMType == eSFTSAMgz)
+if(m_SAMFileType == eSFTSAM || m_SAMFileType == eSFTSAMgz)
 	m_AllocBAMSize = cAllocSAMSize;
 else
 	m_AllocBAMSize = cAllocBAMSize;
@@ -432,7 +417,7 @@ m_NumRefSeqNames = 0;
 m_CurRefSeqsLen = 0;
 
 // for BAM then alloc to hold reference sequence names
-if(SAMType >= eSFTBAM)
+if(m_SAMFileType >= eSFTBAM)
 	{
 	// BAM will using BGZF compression ..
 	if((m_pInBGZF = bgzf_dopen(m_hInSAMfile, "r"))==NULL)
@@ -460,7 +445,7 @@ else
 	{
 	// try reading in intial header and check that it does look like a SAM
 	// accepting as SAM if first line starts with '@HD\tVN:'
-	if(SAMType == eSFTSAMgz)
+	if(m_SAMFileType == eSFTSAMgz)
 		{
 		if((m_CurBAMLen = gzread(m_gzInSAMfile,m_pBAM,100)) < 100)
 			{
@@ -1112,7 +1097,7 @@ if(m_SAMFileType == eSFTSAM || m_SAMFileType == eSFTSAMgz)
 	while((LenRemaining = (int)(m_CurBAMLen - m_CurInBAMIdx)) > 0 || !m_bInEOF) 
 		{
 		// read next line(s) sloughing lines which are whitespace only or header lines starting with '@' as their first none-whitespace character
-		if(!m_bInEOF && LenRemaining < (10 * cMaxBAMLineLen))		// try and buffer at least a few lines of source
+		if(!m_bInEOF && LenRemaining < (2 * cMaxBAMLineLen))		// try and buffer at least a few lines of source
 			{
 			if(LenRemaining && m_CurInBAMIdx > 0)
 				{
@@ -1148,7 +1133,7 @@ else  // reading from BAM
 	LenRead = 0;
 	while((LenRemaining = (int)(m_CurBAMLen - m_CurInBAMIdx)) > 0 || !m_bInEOF)
 		{
-		if(!m_bInEOF && LenRemaining < (10 * cMaxBAMLineLen))		// try and keep buffer full
+		if(!m_bInEOF && LenRemaining < (2 * cMaxBAMLineLen))		// try and keep buffer full
 			{
 			if(LenRemaining && m_CurInBAMIdx > 0)
 				{
@@ -1611,7 +1596,7 @@ if(m_SAMFileType >= eSFTBAM_BAI)
 if(m_SAMFileType >= eSFTBAM_BAI)
 	{
 	m_MaxIdxRefSeqLen = m_SAMFileType == eSFTBAM_BAI ? cMaxSAIRefSeqLen : cMaxCSIRefSeqLen;
-	m_Alloc16KOfsVirtAddrsSize = m_MaxIdxRefSeqLen / 0x01000;
+	m_Alloc16KOfsVirtAddrsSize = ((m_MaxIdxRefSeqLen + 1) * sizeof(UINT64)) / (size_t)0x3fff;
 	
 	if((m_p16KOfsVirtAddrs = (UINT64 *)malloc(m_Alloc16KOfsVirtAddrsSize))==NULL)
 		{
@@ -1904,10 +1889,11 @@ else     // no alignments to this sequence
 	m_CurBAILen += 4;	
 	}
 
-if((m_CurBAILen + 1000) > m_AllocBAISize)
+if(bFinal || (m_CurBAILen + 1000) > m_AllocBAISize)
 	{
-	if((Rslt = WriteIdxToDisk()) < eBSFSuccess)
-		return(Rslt);
+	if(m_CurBAILen)
+		if((Rslt = WriteIdxToDisk()) < eBSFSuccess)
+			return(Rslt);
 	m_CurBAILen = 0;
 	}
 return(eBSFSuccess);
@@ -2594,15 +2580,16 @@ else
 			close(m_hOutBAIfile);
 			m_hOutBAIfile = -1;
 			}
-		else
-			{
-			if(m_pBGZF != NULL)
-				{
-				bgzf_flush(m_pBGZF);
-				bgzf_close(m_pBGZF);
-				m_pBGZF = NULL;
-				}
 
+		if(m_pBGZF != NULL)
+			{
+			bgzf_flush(m_pBGZF);
+			bgzf_close(m_pBGZF);
+			m_pBGZF = NULL;
+			}
+
+		if(m_pgzOutCSIfile != NULL)
+			{
 			bgzf_flush(m_pgzOutCSIfile);
 			bgzf_close(m_pgzOutCSIfile);
 			m_pgzOutCSIfile = NULL;

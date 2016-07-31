@@ -34,8 +34,9 @@ const int cNumSAIBins = 37450;          // total number of SAI bins (bins are re
 
 const int cMaxLocateRefSeqHist = 10;		// search history for reference sequence identifiers is maintained to this depth
 
-typedef enum TAG_eSAMFileType {
-	eSFTSAM = 0,		// SAM raw text file
+typedef enum TAG_etSAMFileType {
+	eSFTSAMUnknown=0,		// SAM type is unknown
+	eSFTSAM,			 // SAM raw text file
 	eSFTSAMgz,			// SAM which was compressed with gzip
 	eSFTBAM,			// BAM bgzf compressed file
 	eSFTBAM_BAI,		// BAM bgzf plus associated BAI file
@@ -218,8 +219,9 @@ public:
 
 	void Reset(bool bSync = false);			// if bSync true then fsync before closing output file handles
 
-	static bool										// open and check if a SAM or BAM format file, returns true if SAM or BAM
-		IsSAM(char *pszSAMFile);			// expected to be a SAM(gz) or if extension '.BAM' then a BAM file
+	static eSAMFileType						// open and check if a SAM or BAM format file, returns file type or eSFTSAMUnknown if errors
+		IsSAM(char *pszSAMFile,			// expected to be a SAM(gz) or if extension '.BAM' then a BAM file
+			  bool bErrMessages);		// true if error messages to be reported
 
 	UINT32									// returns estimated number of sequences in SAM or BAM file
 		EstSizes(char *pszFile,				// SAM or BAM file path+name to estimate sizes

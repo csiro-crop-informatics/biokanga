@@ -136,7 +136,8 @@ public:
 			int *pQuerySeqLen);				// where to return query sequence length
 
 	int													// number of putatve SMRTBell hairpins identified
-		IdentifySMRTBells(int MaxSMRTBells,	// identify at most this many SMRTBells to return in pSMRTBells
+		IdentifySMRTBells(int SMRTBellSensitivity, // sensitivity of SMRTBell detection - 5: max, 1: min
+						int MaxSMRTBells,	// identify at most this many SMRTBells to return in pSMRTBells
 						int SeqLen,			// length of sequence to search for SMRTBell hairpins
 						etSeqBase *pSeq,	// identify all putative SMRTBell hairpins in this sequence
 						tsSMRTBellHit *pSMRTBells); // returned identified SMRTBells

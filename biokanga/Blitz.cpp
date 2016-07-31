@@ -43,7 +43,7 @@ Process(etBLZPMode PMode,				// processing mode
 		int QueryLenAlignedPct,			// only report alignment paths if the percentage of total aligned bases to the query sequence length is at least this percentage (1..100)
 		int  MaxPathsToReport,			// report at most this many alignment paths for any query
 		etBLZRsltsFomat RsltsFormat,	// output results format
-		char *pszInputFile,				// name of input file containting query sequences
+		char *pszInputFile,				// name of input file containing query sequences
 		char *pszSfxFile,				// target as suffix array
 		char *pszOutFile,				// where to write alignments
 		int NumThreads);				// number of worker threads to use

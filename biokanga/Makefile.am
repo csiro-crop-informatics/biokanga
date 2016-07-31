@@ -5,7 +5,7 @@ biokanga_SOURCES= biokanga.cpp biokanga.h csv2sqlite.cpp SimReads.cpp Markers.cp
                   maploci2features.cpp MapLoci2Feat.cpp MapLoci2Feat.h \
 		  mergeoverlaps.cpp MergeReadPairs.cpp MergeReadPairs.h fastaextract.cpp Assemble.cpp \
                   LocKMers.cpp LocKMers.h genkmarkers.cpp gensnpmarkers.cpp kmermarkers.cpp MarkerKMers.cpp MarkerKMers.h \
-		  PEScaffold.cpp PEScaffold.h SSRdiscovery.cpp SSRdiscovery.h \
+		  PEScaffold.cpp PEScaffold.h SSRdiscovery.cpp SSRdiscovery.h FilterSAMAlignments.cpp FilterSAMAlignments.h \
                   deNovoAssemb.cpp deNovoAssemb.h ArtefactReduce.cpp ArtefactReduce.h Scaffolder.cpp Scaffolder.h \
                   ReadStats.cpp ReadStats.h Blitz.cpp Blitz.h RemapLoci.cpp RemapLoci.h LocateROI.cpp LocateROI.h 
 

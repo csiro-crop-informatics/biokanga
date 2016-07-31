@@ -26,7 +26,7 @@ const int cDfltMinReadLen = 1000;				// default is to only report reads of at le
 
 const int cDfltMaxPacBioSeqLen = 0x1ffff;			// default is to allow for PacBio reads of <= 128Kbp
 const int cAllocOutBuffSize = 0x0fffff;				// m_pOutBuff allocate output buffer size 
-const int cMaxInfiles = 50;							// can accept at most this many input filespecs
+const int cMaxInfiles = 200;							// can accept at most this many input filespecs
 
 const int cMinContamSeqLen    = 1000;			    // minimum contaminate sequence length accepted - contaminates normally expected to be clone vectors in the 4-8Kbp size range  
 const int cMinContamOvlpLen   = 500;			    // requiring contaminants to end overlap by at least this many bp or else be fully contained or containing  
@@ -60,6 +60,7 @@ typedef struct TAG_sThreadPBFilter {
 
 	UINT32 SWAlignInstance;			// if contaminate filtering then will be set to the instance of SWAlign to use when aligning to the contaminate sequences
 	CSSW *pSW;						// Smith-Waterman class
+	int SMRTBellSensitivity; // sensitivity of SMRTBell detection - 5: max, 1: min
 
 	UINT32 AlignErrMem;				// number of times alignments failed because of memory allocation errors
 	UINT32 AlignExcessLen;			// number of times alignments failed because length of probe * target was excessive
@@ -103,8 +104,9 @@ class CPBFilter
 	void Init(void);							// initialise state to that immediately following construction
 	void Reset(void);							// reset state
 
-	int ProcessFiltering(int MaxSeqLen,			// max length sequence expected
-							int NumOvlpThreads);	// filtering using at most this many threads
+	int ProcessFiltering(int SMRTBellSensitivity, // sensitivity of SMRTBell detection - 5: max, 1: min
+						int MaxSeqLen,			// max length sequence expected
+						int NumOvlpThreads);	// filtering using at most this many threads
 
 	int			// eBSFSuccess or error code if write failed
 		WriteFastaFile(int SeqID,	// primary sequence identifier
@@ -141,6 +143,7 @@ public:
 
 	int
 	Process(etPBPMode PMode,	// processing mode
+		int SMRTBellSensitivity, // sensitivity of SMRTBell detection - 5: max, 1: min
 		int Trim5,					// 5' trim accepted reads by this many bp
 		int Trim3,					// 3' trim accepted reads by this many bp
 		int MinReadLen,				// read sequences must be at least this length after any end trimming

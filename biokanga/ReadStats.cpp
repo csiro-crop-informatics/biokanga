@@ -1373,7 +1373,7 @@ for(Idx = 0; Idx < NumPE1InputFiles; Idx++)
 
 			// get estimate of number of sequences, mean sequence length, and mean descriptor length
 		// check if a SAM or BAM file
-		if(CSAMfile::IsSAM(pszInFile))
+		if(CSAMfile::IsSAM(pszInFile, false) != eSFTSAMUnknown)
 			{
 			bIsSAM = true;
 			if(m_bPEProc)		// can handle PE with ends in separate files
@@ -2617,7 +2617,7 @@ bIsPE1Fastq = false;
 
 // if not paired ends then check if a SAM/BAM file 
 if(m_bPEProc == false)
-	bIsSAMfile = CSAMfile::IsSAM(pPE1File->szFileName);
+	bIsSAMfile = CSAMfile::IsSAM(pPE1File->szFileName, false) == eSFTSAMUnknown ? false : true;
 
 if(bIsSAMfile)
 	{
