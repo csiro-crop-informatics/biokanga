@@ -212,8 +212,8 @@ ProcSWService(int argc, char** argv)
 			}
 
 		// clamp service instances according to available physical memory
-		// allow at most 4GB per service instance
-		int ClampedServInsts = min(MaxServInsts,(MaxAvailServMemGB + 3)/4);
+		// allow a minimum of 6GB per service instance
+		int ClampedServInsts = min(MaxServInsts,(MaxAvailServMemGB + 5)/6);
 		if(ClampedServInsts < MaxServInsts)
 			{
 			gDiagnostics.DiagOut(eDLWarn, gszProcName, "Warning: Insufficient physical memory on this host, clamping service instances from %d to be a maximum of %d",MaxServInsts, ClampedServInsts);

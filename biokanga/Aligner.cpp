@@ -3304,12 +3304,12 @@ CAligner::ReportAlignStats(void)		// report basic alignment statistics
 {
 int Rslt;
 char szChromName[128];
-int NumUniques = 0;
-int NumPlusHits = 0;
-int NumNoMatches = 0;
-int NumChimeric = 0;
-int NumMultiMatches = 0;
-int NumHamming = 0;
+UINT32 NumUniques = 0;
+UINT32 NumPlusHits = 0;
+UINT32 NumNoMatches = 0;
+UINT32 NumChimeric = 0;
+UINT32 NumMultiMatches = 0;
+UINT32 NumHamming = 0;
 tsReadHit *pReadHit = NULL;
 bool bSimReads = false;
 UINT32 NumReads1EdgeAligned = 0;
@@ -3533,22 +3533,22 @@ if(m_MLMode >= eMLall)
 	NumNoMatches = m_TotNonAligned;
 NumNoMatches += m_NumSloughedNs;
 NARNs = m_NumSloughedNs;
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"From %d source reads there are %d accepted alignments, %d on '+' strand, %d on '-' strand", m_OrigNumReadsLoaded,NumUniques,NumPlusHits,NumUniques-NumPlusHits);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"From %u source reads there are %u accepted alignments, %u on '+' strand, %u on '-' strand", m_OrigNumReadsLoaded,NumUniques,NumPlusHits,NumUniques-NumPlusHits);
 if(bSimReads)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"There are %d (%d 2 edge, %d 1 edge) high confidence aligned simulated reads with %d misaligned",NumReads2EdgeAligned + NumReads1EdgeAligned,NumReads2EdgeAligned,NumReads1EdgeAligned,NumReadsMisaligned);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"There are %u (%u 2 edge, %u 1 edge) high confidence aligned simulated reads with %u misaligned",NumReads2EdgeAligned + NumReads1EdgeAligned,NumReads2EdgeAligned,NumReads1EdgeAligned,NumReadsMisaligned);
 if(NumIndels)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %d contained microInDels", NumIndels);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %u contained microInDels", NumIndels);
 if(NumSpliced)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %d contained splice junctions", NumSpliced);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %u contained splice junctions", NumSpliced);
 if(NumChimeric)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %d were chimeric", NumChimeric);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Of the accepted aligned reads, %u were chimeric", NumChimeric);
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %d multiloci aligned reads could not accepted as hits because they were unresolvable",NumMultiMatches);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %d aligned reads were not accepted as hits because of insufficient Hamming edit distance",NumHamming);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %u multiloci aligned reads could not accepted as hits because they were unresolvable",NumMultiMatches);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %u aligned reads were not accepted as hits because of insufficient Hamming edit distance",NumHamming);
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %d '+' and %d '-' strand aligned reads not accepted because of flank trimming (%d were trimmed) requirements",m_ElimPlusTrimed,m_ElimMinusTrimed,NumTrimmed);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %u '+' and %u '-' strand aligned reads not accepted because of flank trimming (%u were trimmed) requirements",m_ElimPlusTrimed,m_ElimMinusTrimed,NumTrimmed);
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Unable to align %d source reads of which %d were not aligned as they contained excessive number of indeterminate 'N' bases",NumNoMatches,NARNs);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Unable to align %u source reads of which %u were not aligned as they contained excessive number of indeterminate 'N' bases",NumNoMatches,NARNs);
 
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Read nonalignment reason summary:");
@@ -8184,7 +8184,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 
 // let user know that Kanga is working hard...
 ApproxNumReadsAligned(&PrevReadsAligned,&PrevReadsLoaded);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %d loaded",PrevReadsAligned,PrevReadsLoaded);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",PrevReadsAligned,PrevReadsLoaded);
 
 // wait for all threads to have completed
 for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
@@ -8194,7 +8194,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 		{
 		ApproxNumReadsAligned(&CurReadsAligned,&CurReadsLoaded);
 		if(CurReadsAligned > PrevReadsAligned || CurReadsLoaded > PrevReadsLoaded)
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %d loaded",CurReadsAligned,CurReadsLoaded);
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",CurReadsAligned,CurReadsLoaded);
 		PrevReadsAligned = CurReadsAligned;
 		PrevReadsLoaded = CurReadsLoaded;
 		}
@@ -8208,7 +8208,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 		{
 		ApproxNumReadsAligned(&CurReadsAligned,&CurReadsLoaded);
 		if(CurReadsAligned > PrevReadsAligned || CurReadsLoaded > PrevReadsLoaded)
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %d loaded",CurReadsAligned,CurReadsLoaded);
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",CurReadsAligned,CurReadsLoaded);
 		PrevReadsAligned = CurReadsAligned;
 		PrevReadsLoaded = CurReadsLoaded;
 		ts.tv_sec += 60 * 10;
