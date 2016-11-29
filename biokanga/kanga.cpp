@@ -64,6 +64,8 @@ Process(etPMode PMode,					// processing mode
 		int MaxSubs,					// maximum number of substitutions allowed per 100bp of actual read length
 		int Trim5,						// trim this number of bases from 5' end of reads when loading the reads
 		int Trim3,						// trim this number of bases from 3' end of reads when loading the reads
+		int MinAcceptReadLen,			// only accepting reads for alignment if at least this length after any end trimming
+		int MaxAcceptReadLen,			// only accepting reads for alignment if no longer than this length after any end trimming
 		int MinFlankExacts,				// trim matched reads on 5' and 3' flanks until at least this number of exactly matching bases in flanks
 		int PCRPrimerCorrect,			// initially align with MaxSubs+PCRPrimerCorrect subs allowed but then attempt to correct 5' PCR primer artefacts until read within MaxSubs
 		int MaxRptSAMChroms,			// report all SAM chroms or sequences if number of reference chroms <= this limit (defaults to 10000)
@@ -134,6 +136,8 @@ int MinFlankExacts;			// trim matched reads on 5' and 3' flanks until at least t
 int PCRPrimerCorrect;		// initially align with MaxSubs+PCRPrimerCorrect subs allowed but then attempt to correct 5' PCR primer artefacts until read within MaxSubs
 int Trim5;					// trim this number of bases from 5' end of reads when loading the reads
 int Trim3;					// trim this number of bases from 3' end of reads when loading the reads
+int MinAcceptReadLen;				// only accepting reads for alignment if at least this length after any end trimming
+int MaxAcceptReadLen;				// only accepting reads for alignment if no longer than this length after any end trimming
 int MaxRptSAMSeqsThres;		// report all SAM chroms or sequences to SAM header if number of reference chroms <= this limit (defaults to 10000)
 int AlignStrand;			// align on to watson, crick or both strands of target
 int MinChimericLen;			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
@@ -227,8 +231,8 @@ struct arg_file *statsfile = arg_file0("O","stats","<file>",	"output aligner ind
 struct arg_file *nonealignfile = arg_file0("j","nonealign","<file>",	"output unalignable reads to this file ");
 struct arg_file *multialignfile = arg_file0("J","multialign","<file>",	"output multialigned reads to this file");
 
-struct arg_file *siteprefsfile = arg_file0("L","siteprefs","<file>", "output aligned reads start site octamer preferencing to this file");
-struct arg_int *siteprefsofs = arg_int0("l","siteprefsofs","<int>", "offset read start sites when processing site octamer preferencing, range -100..100 (default is -4)");
+struct arg_file *siteprefsfile = arg_file0("8","siteprefs","<file>", "output aligned reads start site octamer preferencing to this file");
+struct arg_int *siteprefsofs = arg_int0("9","siteprefsofs","<int>", "offset read start sites when processing site octamer preferencing, range -100..100 (default is -4)");
 
 struct arg_file *lociconstraintsfile = arg_file0("5","lociconstraints","<file>", "Optional loci base constraints CSV file");
 struct arg_file *contamsfile = arg_file0("H","contaminants","<file>", "Optional contaminant sequences multifasta file");
@@ -271,6 +275,9 @@ struct arg_dbl *qvalue = arg_dbl0("P","qvalue","<dbl>",		"QValue controlling FDR
 struct arg_int *trim5 = arg_int0("y","trim5","<int>",		"trim this number of bases from 5' end of reads when loading raw reads (default is 0)");
 struct arg_int *trim3 = arg_int0("Y","trim3","<int>",		"trim this number of bases from 3' end of reads when loading raw reads (default is 0)");
 
+struct arg_int *minacceptreadlen = arg_int0("l","minacceptreadlen","<int>",		"after any end trimming only accept read for further processing if read is at least this length (default is 50bp, range 15..2000)");
+struct arg_int *maxacceptreadlen = arg_int0("L","maxacceptreadlen","<int>",		"after any end trimming only accept read for further processing if read is at no longer than this length (default is 500bp, range minacceptreadlen..2000)");
+
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",		"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");
@@ -279,7 +286,7 @@ struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					summrslts,experimentname,experimentdescr,
-					pmode,alignstrand,minchimericlen,pecircularised,peinsertlendist,microindellen,splicejunctlen,solid,pcrartefactwinlen,qual,mlmode,trim5,trim3,maxmlmatches,rptsamseqsthres,clampmaxmulti,bisulfite,
+					pmode,alignstrand,minchimericlen,pecircularised,peinsertlendist,microindellen,splicejunctlen,solid,pcrartefactwinlen,qual,mlmode,trim5,trim3,minacceptreadlen,maxacceptreadlen,maxmlmatches,rptsamseqsthres,clampmaxmulti,bisulfite,
 					mineditdist,maxsubs,maxns,minflankexacts,pcrprimercorrect,minsnpreads,markerlen,markerpolythres,qvalue,snpnonrefpcnt,format,title,priorityregionfile,nofiltpriority,bestmatches,
 					pe1inputfiles,peproc,pairminlen,pairmaxlen,pairstrand,pe2inputfiles,sfxfile,snpfile,centroidfile,
 					outfile,nonealignfile,multialignfile,statsfile,siteprefsfile,siteprefsofs,lociconstraintsfile,contamsfile,ExcludeChroms,IncludeChroms,threads,
@@ -436,6 +443,9 @@ if (!argerrors)
 	szSitePrefsFile[0] = '\0';
 	MinChimericLen = 0;
 	bLocateBestMatches = false;
+
+	MinAcceptReadLen = cDfltMinAcceptReadLen;
+	MaxAcceptReadLen = cDfltMaxAcceptReadLen;
 	
 	bSOLiD = solid->count ? true : false;
 
@@ -709,6 +719,19 @@ if (!argerrors)
 		exit(1);
 		}
 
+	MinAcceptReadLen = minacceptreadlen->count ? minacceptreadlen->ival[0] : cDfltMinAcceptReadLen;
+	if(MinAcceptReadLen < cMinSeqLen || MinAcceptReadLen > cMaxSeqLen)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum accepted read length '-l%d' specified outside of range %d..%d\n",Trim5,cMinSeqLen,cMaxSeqLen);
+		exit(1);
+		}
+	MaxAcceptReadLen = maxacceptreadlen->count ? maxacceptreadlen->ival[0] : cDfltMaxAcceptReadLen;
+	if(MaxAcceptReadLen < MinAcceptReadLen || MaxAcceptReadLen > cMaxSeqLen)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum accepted read length '-L%d' specified outside of range %d..%d\n",MaxAcceptReadLen,MinAcceptReadLen,cMaxSeqLen);
+		exit(1);
+		}
+
 	MinEditDist = mineditdist->count ? mineditdist->ival[0] : 1;
 	if(MinEditDist < 1 || MinEditDist > 2)
 		{
@@ -960,7 +983,7 @@ if (!argerrors)
 	SitePrefsOfs = siteprefsofs->count ? siteprefsofs->ival[0] : cDfltRelSiteStartOfs;
 	if(abs(SitePrefsOfs) > cMaxSitePrefOfs)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset read start sites '-l%d' when processing site octamer preferencing must be in range -100..100\n",SitePrefsOfs);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: offset read start sites '-9%d' when processing site octamer preferencing must be in range -100..100\n",SitePrefsOfs);
 		exit(1);
 		}
 
@@ -1063,6 +1086,9 @@ if (!argerrors)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"No PCR differential amplification artefact reduction");
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"trim 5' ends raw reads by : %d",Trim5);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"trim 3' ends raw reads by : %d",Trim3);
+
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"after any end trimming reads must be at least this length : %dbp",MinAcceptReadLen);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"after any end trimming reads must be no longer than this length : %dbp",MaxAcceptReadLen);
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"maximum aligner induced substitutions : %d subs per 100bp of actual read length",MaxSubs);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"minimum Hamming edit distance : %d",MinEditDist);
@@ -1311,6 +1337,9 @@ if (!argerrors)
 
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim5),"trim5",&Trim5);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Trim3),"trim3",&Trim3);
+
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MinAcceptReadLen),"minacceptreadlen",&MinAcceptReadLen);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MaxAcceptReadLen),"maxacceptreadlen",&MaxAcceptReadLen);
 		
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szTrackTitle),"title",szTrackTitle);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(NumIncludeChroms),"NumIncludeChroms",&NumIncludeChroms);
@@ -1357,7 +1386,7 @@ if (!argerrors)
 				    (eALStrand)AlignStrand,MinChimericLen,microInDelLen,SpliceJunctLen,
 					MinSNPreads,QValue,SNPNonRefPcnt,MarkerLen,MarkerPolyThres,PCRartefactWinLen,(etMLMode)MLMode,
 					MaxMLmatches,bClampMaxMLmatches,bLocateBestMatches,
-					MaxNs,MinEditDist,MaxSubs,Trim5,Trim3,MinFlankExacts,PCRPrimerCorrect, MaxRptSAMSeqsThres,
+					MaxNs,MinEditDist,MaxSubs,Trim5,Trim3,MinAcceptReadLen,MaxAcceptReadLen,MinFlankExacts,PCRPrimerCorrect, MaxRptSAMSeqsThres,
 					(etFMode)FMode,SAMFormat,SitePrefsOfs,NumThreads,szTrackTitle,
 					NumPE1InputFiles,pszPE1InputFiles,NumPE2InputFiles,pszPE2InputFiles,szPriorityRegionFile,bFiltPriorityRegions,szRsltsFile, szSNPFile, szMarkerFile, szSNPCentroidFile, szTargFile,
 					szStatsFile,szMultiAlignFile,szNoneAlignFile,szSitePrefsFile,szLociConstraintsFile,szContamFile,NumIncludeChroms,pszIncludeChroms,NumExcludeChroms,pszExcludeChroms);
@@ -1423,6 +1452,8 @@ Process(etPMode PMode,					// processing mode
 		int MaxSubs,					// maximum number of substitutions allowed per 100bp of actual read length
 		int Trim5,						// trim this number of bases from 5' end of reads when loading the reads
 		int Trim3,						// trim this number of bases from 3' end of reads when loading the reads
+		int MinAcceptReadLen,			// only accepting reads for alignment if at least this length after any end trimming
+		int MaxAcceptReadLen,			// only accepting reads for alignment if no longer than this length after any end trimming
 		int MinFlankExacts,				// trim matched reads on 5' and 3' flanks until at least this number of exactly matching bases in flanks
 		int PCRPrimerCorrect,			// initially align with MaxSubs+PCRPrimerCorrect subs allowed but then attempt to correct 5' PCR primer artefacts until read within MaxSubs
 		int MaxRptSAMChroms,			// report all SAM chroms or sequences if number of reference chroms <= this limit (defaults to 10000)
@@ -1491,6 +1522,8 @@ Rslt = pAligner->Align(PMode,			// processing mode
 			MaxSubs,					// maximum number of substitutions allowed per 100bp of actual read length
 			Trim5,						// trim this number of bases from 5' end of reads when loading the reads
 			Trim3,						// trim this number of bases from 3' end of reads when loading the reads
+			MinAcceptReadLen,			// only accepting reads for alignment if at least this length after any end trimming
+			MaxAcceptReadLen,			// only accepting reads for alignment if no longer than this length after any end trimming
 			MinFlankExacts,				// trim matched reads on 5' and 3' flanks until at least this number of exactly matching bases in flanks
 			PCRPrimerCorrect,			// initially align with MaxSubs+PCRPrimerCorrect subs allowed but then attempt to correct 5' PCR primer artefacts until read within MaxSubs
 			MaxRptSAMChroms,			// report all SAM chroms or sequences if number of reference chroms <= this limit (defaults to 10000)

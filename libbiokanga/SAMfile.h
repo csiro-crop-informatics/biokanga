@@ -52,7 +52,7 @@ typedef struct TAG_sBAMauxData {
 		UINT8 val_type;			// Value type: if SAM then one of AifZHB, if BAM then can be one of AcCsSiIfZHB
 		int NumVals;			// number of values in value[]
 		UINT8 array_type;       // type of values in value[] - with SAM or BAM then one of cCsSiIf
- 		UINT8 value[cMaxBAMAuxValLen*sizeof(int32)];	// allow tag values to be at most this long 
+ 		UINT8 value[cMaxBAMAuxValLen*sizeof(UINT32)];	// allow tag values to be at most this long 
 } tsBAMauxData;
 
 typedef struct TAG_tBAMalign {

@@ -10,7 +10,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.0.4";		// increment with each release
+const char *cpszProgVer = "1.1.1";		// increment with each release
 
 const unsigned int cMaxProcSeqLen = 2000;	// max length fasta sequence that will be processed, longer sequences are truncated (with warning) to cMaxRefSeqLen
 
@@ -55,7 +55,7 @@ Process(etPMode PMode,					// processing mode
 		etRMode RMode,					// sequence permutation mode
 		etFMode FMode,					// output format mode
 		bool bPermConf,					// if true then permutate the conformational characteristic values
-		teStructStats ConfParam,		// which conformational parameter is of interest
+		teOctStructStats ConfParam,		// which conformational parameter is of interest
 		char *pszStructParamsFile,		// structural parameters file to use
 		int TruncLength,				// truncate sequences longer than this
 		int TrimPercentile,				// trim percentile when calculating summary stats
@@ -115,7 +115,7 @@ public:
 	int	ProcessFastaStruct(etPMode PMode,		// processing mode
 				etRMode RMode,					// sequence permutation mode
 				bool bPermConf,					// if true then permutate the conformational characteristic values
-				teStructStats ConfP,			// which conformational parameter is of interest
+				teOctStructStats ConfP,			// which conformational parameter is of interest
 				char *pszStructParamsFile,		// structural parameters file to use
 				int TruncLength,				// truncate sequences longer than this
 				int TrimPercentile,				// trim percentile when calculating summary stats
@@ -127,7 +127,7 @@ public:
 	int ProcessBioseqStruct(etPMode PMode,	// processing mode
 		etRMode RMode,				// sequence permutation mode
 		bool bPermConf,				// if true then permutate the conformational characteristic values
-		teStructStats ConfParam,	// conformational parameter of interest
+		teOctStructStats ConfParam,	// conformational parameter of interest
 		char *pszStructParamsFile,  // structural parameters file to use
 		int WindowSize,				// conformation within this sized overlapping windows
 		char *pszBioseqFile,		// reference bioseq file
@@ -200,13 +200,13 @@ etPMode PMode;				// processing mode
 etRMode RMode;				// sequence permutation mode
 etFMode FMode;				// output format mode
 
-bool bPermConf;				// true if conformation characteristic values to be permutated
+bool bPermConf;				// true if conformation characteristic values to be permuted
 
-unsigned int iNumNucs;		 // number of nucleotides to process - 0 if all
-int TrimPercentile; // trim percentile when calculating summary stats 
-int ConfWinLen;					// conformational processing window length
+unsigned int iNumNucs;		// number of nucleotides to process - 0 if all
+int TrimPercentile;			// trim percentile when calculating summary stats 
+int ConfWinLen;				// conformational processing window length
 
-teStructStats ConfParam;	 // which conformational parameter is of interest
+teOctStructStats ConfParam;	 // which conformational parameter is of interest
 
 
 char szResultsFile[_MAX_PATH];
@@ -234,7 +234,7 @@ struct arg_lit *pconf = arg_lit0("P","permconf",                "permute conform
 struct arg_int *fmode = arg_int0("M","format","<int>",           "output format: 0 - csv");
 
 
-struct arg_int *confparam = arg_int0("c","conf","<int>",		"conformational characteristic: 0-energy,1-minorgroove,2-twist,3-roll,4-tilt,5-rise,6-slide,7-shift,8-rmsd,9-ORChid (default 5)");
+struct arg_int *confparam = arg_int0("c","conf","<int>",		"conformational characteristic: 0-energy,1-minor groove,2-inferenced major groove,3-twist,4-roll,5-tilt,6-rise,7-slide,8-shift,9-rmsd,10-ORChid (default 1)");
 struct arg_int *confwinlen = arg_int0("C","confwinlen","<int>",	"generate min/max conformational characteristics using window of this length (default is full sequence length)");
 
 struct arg_file *InFile = arg_file1("i","in,input","<file>",	"input sequences from this fasta (mode 0) or bioseq (mode 1 and 2) file");
@@ -365,7 +365,7 @@ if (!argerrors)
 
 	if(PMode != ePMHamm && (PMode != ePMfastaconfstats && PMode != 	ePMextdfastaconfstats))
 		{
-		ConfParam = (teStructStats)(confparam->count ? confparam->ival[0] : eSSrise); 
+		ConfParam = (teOctStructStats)(confparam->count ? confparam->ival[0] : eSSminorgroove); 
 		if(ConfParam < eSSenergy || ConfParam >= eSSNumStatParams)
 			{
 			printf("\nError: conformation parameter '-c%d' specified outside of range %d..%d",ConfParam,eSSenergy,(int)eSSNumStatParams-1);
@@ -540,6 +540,9 @@ if (!argerrors)
 			case eSSminorgroove:				
 				pszDescr = " minor groove";
 				break;
+			case eSSmajorgroove:				
+				pszDescr = "major groove inferenced from octamer twist + rise";
+				break;
 			case eSStwist:					
 				pszDescr = "twist";
 				break;
@@ -670,7 +673,7 @@ Process(etPMode PMode,					// processing mode
 		etRMode RMode,					// sequence permutation mode
 		etFMode FMode,					// output format mode
 		bool bPermConf,					// if true then permutate the conformational characteristic values
-		teStructStats ConfParam,		// which conformational parameter is of interest
+		teOctStructStats ConfParam,		// which conformational parameter is of interest
 		char *pszStructParamsFile,		// structural parameters file to use
 		int	 NumNucs,					// number of nucleotides, starting at StartOfs, to process 
 		int TrimPercentile,				// trim percentile when calculating summary stats
@@ -944,7 +947,7 @@ int
 CProcessConformation::ProcessFastaStruct(etPMode PMode,		// processing mode
 		etRMode RMode,					// sequence permutation mode
 		bool bPermConf,					// if true then permutate the conformational characteristic values
-		teStructStats ConfP,			// which conformational parameter is of interest
+		teOctStructStats ConfP,			// which conformational parameter is of interest
 		char *pszStructParamsFile,		// structural parameters file to use
 		int TruncLength,				// truncate sequences longer than this
 		int TrimPercentile,				// trim percentile when calculating summary stats
@@ -958,10 +961,7 @@ unsigned int EntryID;
 int Conf;
 int SeqLen;
 int NumSteps;							// number of conformational steps  to report on - will always be NumNucs -1 steps
-INT64 AccumConfValue;
 int FreqBin;
-double RunningMean;
-double RunningVariance;
 int SumFreqCnts;
 int TrimmedCnts;
 int Idx;
@@ -1095,9 +1095,6 @@ if(PMode != ePMfastaconf && PMode != ePMHamm)			// fasta sequence conformation s
 		}
 	}
 
-RunningMean = 0;
-RunningVariance = 0;
-
 BuffOfs = 0;
 EntryID = 0;
 NumSeqs = 0;
@@ -1119,7 +1116,10 @@ if(PMode == ePMHamm)
 				pszConfDescr = "Energy";
 				break;
 			case eSSminorgroove:		// minor groove int (dimensions * 10000) e.g 10.784 ==> 107840
-				pszConfDescr = "Minorgroove";
+				pszConfDescr = "Minor groove";
+				break;
+			case eSSmajorgroove:				
+				pszConfDescr = "Major groove inferenced from octamer twist + rise";
 				break;
 			case eSStwist:				// twist int(angle * 10000) e.g 	37.6262 ==> 376262
 				pszConfDescr = "Twist";
@@ -1232,7 +1232,7 @@ while((Rslt = SeqLen = m_pFasta->ReadSequence(m_pSeq,cMaxProcSeqLen + 10)) > eBS
 		{
 		for(Conf = eSSenergy; Conf < eSSNumStatParams; Conf += 1)
 			{
-			if((Rslt = m_pTwister->GetSequenceConformation((teStructStats)Conf,	// process for this conformational parameter
+			if((Rslt = m_pTwister->GetSequenceConformation((teOctStructStats)Conf,	// process for this conformational parameter
 							  0,								// initial starting offset (0..n) in pSeq
 							  NumSteps,			                // number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
   							  SeqLen,							// number of nucleotides
@@ -1287,7 +1287,7 @@ while((Rslt = SeqLen = m_pFasta->ReadSequence(m_pSeq,cMaxProcSeqLen + 10)) > eBS
 		pDescrStat = DescrStats;
 		for(Conf = eSSenergy; Conf < eSSNumStatParams; Conf += 1)
 			{
-			if((Rslt = m_pTwister->GetSequenceConformation((teStructStats)Conf,	// process for this conformational parameter
+			if((Rslt = m_pTwister->GetSequenceConformation((teOctStructStats)Conf,	// process for this conformational parameter
 							  0,								// initial starting offset (0..n) in pSeq
 							  NumSteps,			                // number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
   							  SeqLen,							// number of nucleotides
@@ -1345,6 +1345,29 @@ while((Rslt = SeqLen = m_pFasta->ReadSequence(m_pSeq,cMaxProcSeqLen + 10)) > eBS
 		continue;
 		}
 
+
+	if(EntryID == 1)
+		{
+		BuffOfs += sprintf(&szBuff[BuffOfs],"\"%s:ID\",\"Entry\",\"Min\",\"Mean\",\"Max\",\"StdDev\",\"Steps\"",m_pTwister->MapStructParam2Txt(ConfP));
+		for(int SeqIdx = 0; SeqIdx < TruncLength; SeqIdx += 1)
+			BuffOfs += sprintf(&szBuff[BuffOfs],",\"Step_%d\"",SeqIdx+1);
+		BuffOfs += sprintf(&szBuff[BuffOfs],"\n");
+		if(write(m_hRslts,szBuff,BuffOfs)!=BuffOfs)
+			{
+			Reset();
+			return(eBSFerrWrite);
+			}
+		BuffOfs = 0;
+		}
+
+	tsStructStats ConfStats;
+	if((Rslt = m_pTwister->CalcTwistStats(0,NumSteps,SeqLen,m_pSeq,ConfP,&ConfStats))!=eBSFSuccess)		// where to return conformational values
+		{
+		gDiagnostics.DiagOut(eDLFatal,"ProcessFastaStruct","ProcessSequence failed");
+		Reset();
+		return(Rslt);
+		}
+
 	if((Rslt = m_pTwister->GetSequenceConformation(ConfP,	// process for this conformational parameter
 						  0,								// initial starting offset (0..n) in pSeq
 						  NumSteps,			                // number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
@@ -1356,13 +1379,15 @@ while((Rslt = SeqLen = m_pFasta->ReadSequence(m_pSeq,cMaxProcSeqLen + 10)) > eBS
 				Reset();
 				return(Rslt);
 				}
-	BuffOfs += sprintf(&szBuff[BuffOfs],"%d,\"%s\"",EntryID,szDescr);
 
-	AccumConfValue = 0;
-	for(int Step = 0; Step < NumSteps; Step += 1)
+	BuffOfs += sprintf(&szBuff[BuffOfs],"%d,\"%s\",%1.6f,%1.6f,%1.6f,%1.6f,%d",
+						EntryID,szDescr,(double)ConfStats.Min/10000.0f,(double)ConfStats.Mean/10000.0f,(double)ConfStats.Max/10000.0f,(double)ConfStats.StdDev/10000.0f,NumSteps);
+	for(int Step = 0; Step < TruncLength; Step += 1)
 		{
-		AccumConfValue += m_pConfValues[Step];
-		BuffOfs += sprintf(&szBuff[BuffOfs],",%1.6f",((double)m_pConfValues[Step]/10000.0f));
+		if(Step < NumSteps)
+			BuffOfs += sprintf(&szBuff[BuffOfs],",%1.6f",(double)m_pConfValues[Step]/10000.0f);
+		else
+			BuffOfs += sprintf(&szBuff[BuffOfs],",%1.6f",0.0);
 		if(BuffOfs + 200 > sizeof(szBuff))
 			{
 			if(write(m_hRslts,szBuff,BuffOfs)!=BuffOfs)
@@ -1373,11 +1398,7 @@ while((Rslt = SeqLen = m_pFasta->ReadSequence(m_pSeq,cMaxProcSeqLen + 10)) > eBS
 			BuffOfs = 0;
 			}
 		}
-
-
-	BuffOfs += sprintf(&szBuff[BuffOfs],",%1.6f,%1.6f\n",(double)AccumConfValue/10000.0f,((double)AccumConfValue / NumSteps)/10000.0f);
-	RunningMean  += (double)AccumConfValue/10000.0f;
-	RunningVariance += pow(((RunningMean/EntryID) - (double)AccumConfValue/10000.0f),2);
+	BuffOfs += sprintf(&szBuff[BuffOfs],"\n");
 	}
 
 if(PMode == ePMHamm)
@@ -1405,7 +1426,10 @@ if(PMode == ePMHamm)
 				pszConfDescr = "Energy";
 				break;
 			case eSSminorgroove:		// minor groove int (dimensions * 10000) e.g 10.784 ==> 107840
-				pszConfDescr = "Minorgroove";
+				pszConfDescr = "Minor groove";
+				break;
+			case eSSmajorgroove:				
+				pszConfDescr = "Major groove inferenced from octamer twist + rise";
 				break;
 			case eSStwist:				// twist int(angle * 10000) e.g 	37.6262 ==> 376262
 				pszConfDescr = "Twist";
@@ -1474,7 +1498,7 @@ if(PMode != ePMfastaconf  && PMode != ePMHamm)
 	int *pConfCnts;
 	double ConfValue;
 
-	// a) apply any timming if TrimPercentile > 0
+	// a) apply any trimming if TrimPercentile > 0
 	if(TrimPercentile > 0)
 		{
 		int ToTrim = (int)(((INT64)EntryID * TrimPercentile)/200);
@@ -1625,7 +1649,7 @@ if(PMode != ePMfastaconf  && PMode != ePMHamm)
 				}
 			}
 
-		BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",\"Mean\"",m_pTwister->MapStructParam2Txt((teStructStats)Conf));
+		BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",\"Mean\"",m_pTwister->MapStructParam2Txt((teOctStructStats)Conf));
 		for(int Step = 0; Step < ShortSteps; Step++)
 			{
 			BuffOfs += sprintf(&szBuff[BuffOfs],",%1.6f",m_ConfRange[Conf].pStats[Step].Mean);
@@ -1639,7 +1663,7 @@ if(PMode != ePMfastaconf  && PMode != ePMHamm)
 				BuffOfs = 0;
 				}
 			}
-		BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",\"StdDev\"",m_pTwister->MapStructParam2Txt((teStructStats)Conf));
+		BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",\"StdDev\"",m_pTwister->MapStructParam2Txt((teOctStructStats)Conf));
 		for(int Step = 0; Step < ShortSteps; Step++)
 			{
 			BuffOfs += sprintf(&szBuff[BuffOfs],",%1.6f",m_ConfRange[Conf].pStats[Step].StdDev);
@@ -1653,7 +1677,7 @@ if(PMode != ePMfastaconf  && PMode != ePMHamm)
 				BuffOfs = 0;
 				}
 			}
-		BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",\"Median\"",m_pTwister->MapStructParam2Txt((teStructStats)Conf));
+		BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",\"Median\"",m_pTwister->MapStructParam2Txt((teOctStructStats)Conf));
 		for(int Step = 0; Step < ShortSteps; Step++)
 			{
 			BuffOfs += sprintf(&szBuff[BuffOfs],",%1.6f",m_ConfRange[Conf].pStats[Step].Median);
@@ -1705,7 +1729,7 @@ if(PMode != ePMfastaconf  && PMode != ePMHamm)
 				{
 				DeltaHistBin = (cNumMedFreqBins - StartHistBin)/ (1 + NumHistBins);
 				BinValue = (m_ConfRange[Conf].Min + (StartHistBin * (double)m_ConfRange[Conf].Range / cNumMedFreqBins))/10000.0f; 
-				BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",%1.6f",m_pTwister->MapStructParam2Txt((teStructStats)Conf),BinValue);
+				BuffOfs += sprintf(&szBuff[BuffOfs],"\n\"%s\",%1.6f",m_pTwister->MapStructParam2Txt((teOctStructStats)Conf),BinValue);
 				FreqBin = 0;
 				for(int Step = 0; Step < ShortSteps; Step += 1,FreqBin += cNumMedFreqBins)
 					{
@@ -1768,7 +1792,7 @@ int
 CProcessConformation::ProcessBioseqStruct(etPMode PMode,	// processing mode
 		etRMode RMode,				// sequence permutation mode
 		bool bPermConf,				// if true then permutate the conformational characteristic values
-		teStructStats ConfParam,	// conformational parameter of interest
+		teOctStructStats ConfParam,	// conformational parameter of interest
 		char *pszStructParamsFile,  // structural parameters file to use
 		int WindowSize,				// conformation within this sized overlapping windows
 		char *pszBioseqFile,		// reference bioseq file
@@ -2158,7 +2182,7 @@ for(CurPermuteMode = 0; CurPermuteMode <= (int)RMode; CurPermuteMode++)
 				break;
 			}
 
-		if((Rslt = m_pTwister->GetSequenceConformation((teStructStats)ConfParam,	// process for this conformational parameter
+		if((Rslt = m_pTwister->GetSequenceConformation((teOctStructStats)ConfParam,	// process for this conformational parameter
 							  0,						// initial starting offset (0..n) in pSeq
 							  0,						// number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
   							  SeqLen,					// total length of sequence

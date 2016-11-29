@@ -27,7 +27,7 @@ AC_OUTPUT(Makefile libbiokanga/Makefile libBKPLPlot/Makefile genhyperconserved/M
 	 genWiggle/Makefile gencentroidmetrics/Makefile proccentroids/Makefile DNAseqSitePotential/Makefile SimulateMNase/Makefile
 	 filterreads/Makefile prednucleosomes/Makefile RNAseqSitePotential/Makefile
 	 genDESeq/Makefile fasta2struct/Makefile kangarg/Makefile genultras/Makefile
- 	 LocateROI/Makefile genstructprofile/Makefile predconfnucs/Makefile gennucstats/Makefile fastafilter/Makefile
+ 	 LocateROI/Makefile genstructprofile/Makefile genstructstats/Makefile predconfnucs/Makefile gennucstats/Makefile fastafilter/Makefile
 	 BEDMerge/Makefile BEDFilter/Makefile genElementProfiles/Makefile genzygosity/Makefile genGenomeFromAGP/Makefile genmarkers/Makefile
 	 HammingDist/Makefile genreadsde/Makefile ufilter/Makefile uhamming/Makefile genseqcandidates/Makefile GFFfilter/Makefile loci2dist/Makefile
          genNormWiggle/Makefile GTFfilter/Makefile genDiffExpr/Makefile dmpbioseq/Makefile genpseudogenome/Makefile usimdiffexpr/Makefile RNAFragSim/Makefile mergeoverlaps/Makefile

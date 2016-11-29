@@ -105,8 +105,9 @@ am_biokanga_OBJECTS = biokanga.$(OBJEXT) csv2sqlite.$(OBJEXT) \
 	MarkerKMers.$(OBJEXT) PEScaffold.$(OBJEXT) \
 	SSRdiscovery.$(OBJEXT) FilterSAMAlignments.$(OBJEXT) \
 	deNovoAssemb.$(OBJEXT) ArtefactReduce.$(OBJEXT) \
-	Scaffolder.$(OBJEXT) ReadStats.$(OBJEXT) Blitz.$(OBJEXT) \
-	RemapLoci.$(OBJEXT) LocateROI.$(OBJEXT)
+	Scaffolder.$(OBJEXT) AlignsBootstrap.$(OBJEXT) \
+	ReadStats.$(OBJEXT) Blitz.$(OBJEXT) RemapLoci.$(OBJEXT) \
+	LocateROI.$(OBJEXT)
 biokanga_OBJECTS = $(am_biokanga_OBJECTS)
 biokanga_LDADD = $(LDADD)
 biokanga_DEPENDENCIES = ../libbiokanga/libbiokanga.a \
@@ -276,7 +277,8 @@ biokanga_SOURCES = biokanga.cpp biokanga.h csv2sqlite.cpp SimReads.cpp Markers.c
                   LocKMers.cpp LocKMers.h genkmarkers.cpp gensnpmarkers.cpp kmermarkers.cpp MarkerKMers.cpp MarkerKMers.h \
 		  PEScaffold.cpp PEScaffold.h SSRdiscovery.cpp SSRdiscovery.h FilterSAMAlignments.cpp FilterSAMAlignments.h \
                   deNovoAssemb.cpp deNovoAssemb.h ArtefactReduce.cpp ArtefactReduce.h Scaffolder.cpp Scaffolder.h \
-                  ReadStats.cpp ReadStats.h Blitz.cpp Blitz.h RemapLoci.cpp RemapLoci.h LocateROI.cpp LocateROI.h 
+		  AlignsBootstrap.cpp AlignsBootstrap.h \
+		  ReadStats.cpp ReadStats.h Blitz.cpp Blitz.h RemapLoci.cpp RemapLoci.h LocateROI.cpp LocateROI.h 
 
 
 # set the include path found by configure
@@ -372,6 +374,7 @@ distclean-compile:
 	-rm -f *.tab.c
 
 include ./$(DEPDIR)/Aligner.Po
+include ./$(DEPDIR)/AlignsBootstrap.Po
 include ./$(DEPDIR)/ArtefactReduce.Po
 include ./$(DEPDIR)/Assemble.Po
 include ./$(DEPDIR)/Blitz.Po

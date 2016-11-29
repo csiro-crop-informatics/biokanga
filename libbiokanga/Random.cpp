@@ -11,21 +11,29 @@
 //
 // See http://www.agner.org/random/ for full details
 
-/************************** MERSENNE.CPP ******************** AgF 2001-10-18 *
-*  Random Number generator 'Mersenne Twister'                                *
-*                                                                            *
-*  This random number generator is described in the article by               *
-*  M. Matsumoto & T. Nishimura, in:                                          *
-*  ACM Transactions on Modeling and Computer Simulation,                     *
-*  vol. 8, no. 1, 1998, pp. 3-30.                                            *
-*  Details on the initialization scheme can be found at                      *
-*  http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html                  *
-*                                                                            *
-*  Experts consider this an excellent random number generator.               *
-*                                                                            *
-*  © 2001 - 2004 A. Fog.                                                     *
-*  GNU General Public License www.gnu.org/copyleft/gpl.html                  *
-*****************************************************************************/
+/**************************   mersenne.cpp   **********************************
+* Author:        Agner Fog
+* Date created:  2001
+* Last modified: 2008-11-16
+* Project:       randomc.h
+* Platform:      Any C++
+* Description:
+* Random Number generator of type 'Mersenne Twister'
+*
+* This random number generator is described in the article by
+* M. Matsumoto & T. Nishimura, in:
+* ACM Transactions on Modeling and Computer Simulation,
+* vol. 8, no. 1, 1998, pp. 3-30.
+* Details on the initialization scheme can be found at
+* http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
+*
+* Further documentation:
+* The file ran-instructions.pdf contains further documentation and 
+* instructions.
+*
+* Copyright 2001-2008 by Agner Fog. 
+* GNU General Public License http://www.gnu.org/licenses/gpl.html
+*******************************************************************************/
 
 typedef enum  TArch {LITTLE_ENDIAN1, BIG_ENDIAN1, NONIEEE, EXTENDEDPRECISIONLITTLEENDIAN, ENDIANUNKNOWN} eTarch;
 static eTarch GetEndian(void)
@@ -33,7 +41,7 @@ static eTarch GetEndian(void)
 eTarch Architecture;                  // conversion to float depends on computer architecture
 
   // detect computer architecture
-union {double f; uint32 i[3];} convert;
+union {double f; UINT32 i[3];} convert;
 
 convert.i[2] = 0;
 convert.f = 1.0;
@@ -50,7 +58,7 @@ else
 return(Architecture);
 }
 
-static double ToDouble(uint32 x)
+static double ToDouble(UINT32 x)
 {
    // The fastest way to convert random bits to floating point is as follows:
   // Set the binary exponent of a floating point number to 1+bias and set
@@ -61,7 +69,7 @@ static double ToDouble(uint32 x)
   // in the variable Architecture. The following switch statement can be
   // omitted if the architecture is known. (generally an Intel  PC running Windows or Linux uses
   // LITTLE_ENDIAN1 architecture):
-union {double f; uint32 i[3];} convert;
+union {double f; UINT32 i[3];} convert;
   convert.f = 1.0;
   switch (GetEndian()) {
 	  case EXTENDEDPRECISIONLITTLEENDIAN:		// 80bit
@@ -84,366 +92,243 @@ union {double f; uint32 i[3];} convert;
 	} 
   // This somewhat slower method works for all architectures, including 
   // non-IEEE floating point representation:
-  return (double)x * (1.0/((double)(uint32)(-1L)+1.0));
+  return (double)x * (1.0/((double)(UINT32)(-1L)+1.0));
 }
 
-void TRandomMersenne::RandomInit(uint32 seed) {
-  // re-seed generator
-  mt[0]= seed;
-  for (mti=1; mti < MERS_N; mti++) {
-    mt[mti] = (1812433253UL * (mt[mti-1] ^ (mt[mti-1] >> 30)) + mti);}
+void CRandomMersenne::Init0(int seed) {
+   // Seed generator
+   const uint32_t factor = 1812433253UL;
+   mt[0]= seed;
+   for (mti=1; mti < MERS_N; mti++) {
+      mt[mti] = (factor * (mt[mti-1] ^ (mt[mti-1] >> 30)) + mti);
+   }
 }
 
-  
-void TRandomMersenne::RandomInitByArray(uint32 seeds[], int length) {
-  // seed by more than 32 bits
-  int i, j, k;
-  RandomInit(19650218UL);
-  if (length <= 0) return;
-  i = 1;  j = 0;
-  k = (MERS_N > length ? MERS_N : length);
-  for (; k; k--) {
-    mt[i] = (mt[i] ^ ((mt[i-1] ^ (mt[i-1] >> 30)) * 1664525UL)) + seeds[j] + j;
-    i++; j++;
-    if (i >= MERS_N) {mt[0] = mt[MERS_N-1]; i=1;}
-    if (j >= length) j=0;}
-  for (k = MERS_N-1; k; k--) {
-    mt[i] = (mt[i] ^ ((mt[i-1] ^ (mt[i-1] >> 30)) * 1566083941UL)) - i;
-    if (++i >= MERS_N) {mt[0] = mt[MERS_N-1]; i=1;}}
-  mt[0] = 0x80000000UL;} // MSB is 1; assuring non-zero initial array
+void CRandomMersenne::RandomInit(int seed) {
+   // Initialize and seed
+   Init0(seed);
 
-  
-uint32 TRandomMersenne::BRandom() {
-  // generate 32 random bits
-  uint32 y;
-
-  if (mti >= MERS_N) {
-    // generate MERS_N words at one time
-    const uint32 LOWER_MASK = (1LU << MERS_R) - 1; // lower MERS_R bits
-    const uint32 UPPER_MASK = -1L  << MERS_R;      // upper (32 - MERS_R) bits
-    static const uint32 mag01[2] = {0, MERS_A};
-    
-    int kk;
-    for (kk=0; kk < MERS_N-MERS_M; kk++) {    
-      y = (mt[kk] & UPPER_MASK) | (mt[kk+1] & LOWER_MASK);
-      mt[kk] = mt[kk+MERS_M] ^ (y >> 1) ^ mag01[y & 1];}
-
-    for (; kk < MERS_N-1; kk++) {    
-      y = (mt[kk] & UPPER_MASK) | (mt[kk+1] & LOWER_MASK);
-      mt[kk] = mt[kk+(MERS_M-MERS_N)] ^ (y >> 1) ^ mag01[y & 1];}      
-
-    y = (mt[MERS_N-1] & UPPER_MASK) | (mt[0] & LOWER_MASK);
-    mt[MERS_N-1] = mt[MERS_M-1] ^ (y >> 1) ^ mag01[y & 1];
-    mti = 0;}
-
-  y = mt[mti++];
-
-  // Tempering (May be omitted):
-  y ^=  y >> MERS_U;
-  y ^= (y << MERS_S) & MERS_B;
-  y ^= (y << MERS_T) & MERS_C;
-  y ^=  y >> MERS_L;
-  return y;}
-
-  
-double TRandomMersenne::Random() {
-  // output random float number in the interval 0 <= x < 1
-  uint32 r = BRandom(); // get 32 random bits
-  return(ToDouble(r));
+   // Randomize some more
+   for (int i = 0; i < 37; i++) BRandom();
 }
 
-  
-int TRandomMersenne::IRandom(int min, int max) {
-  // output random integer in the interval min <= x <= max
-  int r; 
-  r = int((max - min + 1) * Random()) + min; // multiply interval with random and truncate
-  if (r > max) r = max;
-  if (max < min) return 0x80000000;
-  return r;}
 
-/************************** MOTHER.CPP ****************** AgF 1999-03-03 *
-*  'Mother-of-All' random number generator                               *
-*                                                                        *
-*  This is a multiply-with-carry type of random number generator         *
-*  invented by George Marsaglia.  The algorithm is:                      *
-*  S = 2111111111*X[n-4] + 1492*X[n-3] + 1776*X[n-2] + 5115*X[n-1] + C   *
-*  X[n] = S modulo 2^32                                                  *
-*  C = floor(S / 2^32)                                                   *
-*                                                                        *
-*  IMPORTANT:
-*  This implementation uses a long double for C. Note that not all       *
-*  computers and compilers support the long double (80-bit) floating     *
-*  point format. It is recommended to use a Borland or Gnu compiler on   *
-*  a PC. The Microsoft compiler doesn't support the long double format.  *
-*  You will get an error message if your system doesn't support this.    *
-*                                                                        *
-* © 2002 A. Fog. GNU General Public License www.gnu.org/copyleft/gpl.html*
-*************************************************************************/
+void CRandomMersenne::RandomInitByArray(int const seeds[], int NumSeeds) {
+   // Seed by more than 32 bits
+   int i, j, k;
 
-// constructor:
-TRandomMotherOfAll::TRandomMotherOfAll(uint32 seed) {
-  // Check that compiler supports 80-bit long double:
-  assert(sizeof(long double)>9);
-  // initialize
-  RandomInit(seed);}
+   // Initialize
+   Init0(19650218);
+
+   if (NumSeeds <= 0) return;
+
+   // Randomize mt[] using whole seeds[] array
+   i = 1;  j = 0;
+   k = (MERS_N > NumSeeds ? MERS_N : NumSeeds);
+   for (; k; k--) {
+      mt[i] = (mt[i] ^ ((mt[i-1] ^ (mt[i-1] >> 30)) * 1664525UL)) + (uint32_t)seeds[j] + j;
+      i++; j++;
+      if (i >= MERS_N) {mt[0] = mt[MERS_N-1]; i=1;}
+      if (j >= NumSeeds) j=0;}
+   for (k = MERS_N-1; k; k--) {
+      mt[i] = (mt[i] ^ ((mt[i-1] ^ (mt[i-1] >> 30)) * 1566083941UL)) - i;
+      if (++i >= MERS_N) {mt[0] = mt[MERS_N-1]; i=1;}}
+   mt[0] = 0x80000000UL;  // MSB is 1; assuring non-zero initial array
+
+   // Randomize some more
+   mti = 0;
+   for (int i = 0; i <= MERS_N; i++) BRandom();
+}
+
+
+uint32_t CRandomMersenne::BRandom() {
+   // Generate 32 random bits
+   uint32_t y;
+
+   if (mti >= MERS_N) {
+      // Generate MERS_N words at one time
+      const uint32_t LOWER_MASK = (1LU << MERS_R) - 1;       // Lower MERS_R bits
+      const uint32_t UPPER_MASK = 0xFFFFFFFF << MERS_R;      // Upper (32 - MERS_R) bits
+      static const uint32_t mag01[2] = {0, MERS_A};
+
+      int kk;
+      for (kk=0; kk < MERS_N-MERS_M; kk++) {    
+         y = (mt[kk] & UPPER_MASK) | (mt[kk+1] & LOWER_MASK);
+         mt[kk] = mt[kk+MERS_M] ^ (y >> 1) ^ mag01[y & 1];}
+
+      for (; kk < MERS_N-1; kk++) {    
+         y = (mt[kk] & UPPER_MASK) | (mt[kk+1] & LOWER_MASK);
+         mt[kk] = mt[kk+(MERS_M-MERS_N)] ^ (y >> 1) ^ mag01[y & 1];}      
+
+      y = (mt[MERS_N-1] & UPPER_MASK) | (mt[0] & LOWER_MASK);
+      mt[MERS_N-1] = mt[MERS_M-1] ^ (y >> 1) ^ mag01[y & 1];
+      mti = 0;
+   }
+   y = mt[mti++];
+
+   // Tempering (May be omitted):
+   y ^=  y >> MERS_U;
+   y ^= (y << MERS_S) & MERS_B;
+   y ^= (y << MERS_T) & MERS_C;
+   y ^=  y >> MERS_L;
+
+   return y;
+}
+
+
+double CRandomMersenne::Random() {
+   // Output random float number in the interval 0 <= x < 1
+   // Multiply by 2^(-32)
+   return (double)BRandom() * (1./(65536.*65536.));
+}
+
+
+int CRandomMersenne::IRandom(int min, int max) {
+   // Output random integer in the interval min <= x <= max
+   // Relative error on frequencies < 2^-32
+   if (max <= min) {
+      if (max == min) return min; else return 0x80000000;
+   }
+   // Multiply interval with random and truncate
+   int r = int((double)(uint32_t)(max - min + 1) * Random() + min); 
+   if (r > max) r = max;
+   return r;
+}
+
+
+int CRandomMersenne::IRandomX(int min, int max) {
+   // Output random integer in the interval min <= x <= max
+   // Each output value has exactly the same probability.
+   // This is obtained by rejecting certain bit values so that the number
+   // of possible bit values is divisible by the interval length
+   if (max <= min) {
+      if (max == min) return min; else return 0x80000000;
+   }
+#ifdef  INT64_SUPPORTED
+   // 64 bit integers available. Use multiply and shift method
+   uint32_t interval;                    // Length of interval
+   uint64_t longran;                     // Random bits * interval
+   uint32_t iran;                        // Longran / 2^32
+   uint32_t remainder;                   // Longran % 2^32
+
+   interval = uint32_t(max - min + 1);
+   if (interval != LastInterval) {
+      // Interval length has changed. Must calculate rejection limit
+      // Reject when remainder >= 2^32 / interval * interval
+      // RLimit will be 0 if interval is a power of 2. No rejection then
+      RLimit = uint32_t(((uint64_t)1 << 32) / interval) * interval - 1;
+      LastInterval = interval;
+   }
+   do { // Rejection loop
+      longran  = (uint64_t)BRandom() * interval;
+      iran = (uint32_t)(longran >> 32);
+      remainder = (uint32_t)longran;
+   } while (remainder > RLimit);
+   // Convert back to signed and return result
+   return (int32_t)iran + min;
+
+#else
+   // 64 bit integers not available. Use modulo method
+   uint32_t interval;                    // Length of interval
+   uint32_t bran;                        // Random bits
+   uint32_t iran;                        // bran / interval
+   uint32_t remainder;                   // bran % interval
+
+   interval = uint32_t(max - min + 1);
+   if (interval != LastInterval) {
+      // Interval length has changed. Must calculate rejection limit
+      // Reject when iran = 2^32 / interval
+      // We can't make 2^32 so we use 2^32-1 and correct afterwards
+      RLimit = (uint32_t)0xFFFFFFFF / interval;
+      if ((uint32_t)0xFFFFFFFF % interval == interval - 1) RLimit++;
+   }
+   do { // Rejection loop
+      bran = BRandom();
+      iran = bran / interval;
+      remainder = bran % interval;
+   } while (iran >= RLimit);
+   // Convert back to signed and return result
+   return (int32_t)remainder + min;
+
+#endif
+}
+
+
+/**************************   mother.cpp   ************************************
+* Author:        Agner Fog
+* Date created:  1999
+* Last modified: 2008-11-16
+* Project:       randomc.h
+* Platform:      This implementation uses 64-bit integers for intermediate calculations.
+*                Works only on compilers that support 64-bit integers.
+* Description:
+* Random Number generator of type 'Mother-Of-All generator'.
+*
+* This is a multiply-with-carry type of random number generator
+* invented by George Marsaglia.  The algorithm is:             
+* S = 2111111111*X[n-4] + 1492*X[n-3] + 1776*X[n-2] + 5115*X[n-1] + C
+* X[n] = S modulo 2^32
+* C = floor(S / 2^32)
+*
+* Further documentation:
+* The file ran-instructions.pdf contains further documentation and 
+* instructions.
+*
+* Copyright 1999-2008 by Agner Fog. 
+* GNU General Public License http://www.gnu.org/licenses/gpl.html
+******************************************************************************/
+
+// Output random bits
+uint32_t CRandomMother::BRandom() {
+  uint64_t sum;
+  sum = (uint64_t)2111111111UL * (uint64_t)x[3] +
+     (uint64_t)1492 * (uint64_t)(x[2]) +
+     (uint64_t)1776 * (uint64_t)(x[1]) +
+     (uint64_t)5115 * (uint64_t)(x[0]) +
+     (uint64_t)x[4];
+  x[3] = x[2];  x[2] = x[1];  x[1] = x[0];
+  x[4] = (uint32_t)(sum >> 32);                  // Carry
+  x[0] = (uint32_t)sum;                          // Low 32 bits of sum
+  return x[0];
+} 
 
 
 // returns a random number between 0 and 1:
-double TRandomMotherOfAll::Random() {
-  long double c;
-  c = (long double)2111111111.0 * x[3] +
-      1492.0 * (x[3] = x[2]) +
-      1776.0 * (x[2] = x[1]) +
-      5115.0 * (x[1] = x[0]) +
-      x[4];
-
-// sjs: on IBM p690 seems to support long doubles but __NO_LONG_DOUBLE_MATH has been defined????
-// if long doubles truely not supported then there would have been an earlier assert when sizeof(long double) > 9 checked
-//
-#ifdef __NO_LONG_DOUBLE_MATH
-  x[4] = floor(c);
-#else
-  x[4] = floorl(c);
-#endif
-
-  x[0] = c - x[4];
-  x[4] = x[4] * (1./(65536.0 *65536.0));
-  return x[0];}
+double CRandomMother::Random() {
+   return (double)BRandom() * (1./(65536.*65536.));
+}
 
 
 // returns integer random number in desired interval:
-int TRandomMotherOfAll::IRandom(int min, int max) {
-  int iinterval = max - min + 1;
-  if (iinterval <= 0) return 0x80000000; // error
-  int i = int(iinterval * Random());     // truncate
-  if (i >= iinterval) i = iinterval-1;
-  return min + i;}
+int CRandomMother::IRandom(int min, int max) {
+   // Output random integer in the interval min <= x <= max
+   // Relative error on frequencies < 2^-32
+   if (max <= min) {
+      if (max == min) return min; else return 0x80000000;
+   }
+   // Assume 64 bit integers supported. Use multiply and shift method
+   uint32_t interval;                  // Length of interval
+   uint64_t longran;                   // Random bits * interval
+   uint32_t iran;                      // Longran / 2^32
+
+   interval = (uint32_t)(max - min + 1);
+   longran  = (uint64_t)BRandom() * interval;
+   iran = (uint32_t)(longran >> 32);
+   // Convert back to signed and return result
+   return (int32_t)iran + min;
+}
 
 
 // this function initializes the random number generator:
-void TRandomMotherOfAll::RandomInit (uint32 seed) {
+void CRandomMother::RandomInit (int seed) {
   int i;
-  uint32 s = seed;
+  uint32_t s = seed;
   // make random numbers and put them into the buffer
-  for (i=0; i<5; i++) {
+  for (i = 0; i < 5; i++) {
     s = s * 29943829 - 1;
-    x[i] = s * (1./(65536.0 *65536.0));}
+    x[i] = s;
+  }
   // randomize some more
-  for (i=0; i<19; i++) Random();}
-
-
-/************************* RANROTB.CPP ****************** AgF 1999-03-03 *
-*  Random Number generator 'RANROT' type B                               *
-*                                                                        *
-*  This is a lagged-Fibonacci type of random number generator with       *
-*  rotation of bits.  The algorithm is:                                  *
-*  X[n] = ((X[n-j] rotl r1) + (X[n-k] rotl r2)) modulo 2^b               *
-*                                                                        *
-*  The last k values of X are stored in a circular buffer named          *
-*  randbuffer.                                                           *
-*  The code includes a self-test facility which will detect any          *
-*  repetition of previous states.                                        *
-*                                                                        *
-*  The theory of the RANROT type of generators and the reason for the    *
-*  self-test are described at www.agner.org/random                       *
-*                                                                        *
-* © 2002 A. Fog. GNU General Public License www.gnu.org/copyleft/gpl.html*
-*************************************************************************/
-
-
-
-// If your system doesn't have a rotate function for 32 bits integers,
-// then use the definition below. If your system has the _lrotl function 
-// then remove this.
-#ifndef _WIN32
-uint32 _lrotl (uint32 x, int r) {
-	return (x << r) | (x >> (sizeof(x)*8-r));}
-#endif
-
-// constructor:
-TRanrotBGenerator::TRanrotBGenerator(uint32 seed) {
-  RandomInit(seed);
+  for (i=0; i<19; i++) BRandom();
 }
-
-
-// returns a random number between 0 and 1:
-double TRanrotBGenerator::Random() {
-  uint32 x;
-  // generate next random number
-  x = randbuffer[p1] = _lrotl(randbuffer[p2], R1) + _lrotl(randbuffer[p1], R2);
-  // rotate list pointers
-  if (--p1 < 0) p1 = KK - 1;
-  if (--p2 < 0) p2 = KK - 1;
-  // perform self-test
-  if (randbuffer[p1] == randbufcopy[0] &&
-    memcmp(randbuffer, randbufcopy+KK-p1, KK*sizeof(uint32)) == 0) {
-      // self-test failed
-      if ((p2 + KK - p1) % KK != JJ) {
-        // note: the way of printing error messages depends on system
-        // In Windows you may use FatalAppExit
-        printf("Random number generator not initialized");}
-      else {
-        printf("Random number generator returned to initial state");}
-      exit(1);}
-  return(ToDouble(x));
-}
-
-// returns integer random number in desired interval:
-int TRanrotBGenerator::IRandom(int min, int max) {
-  int iinterval = max - min + 1;
-  if (iinterval <= 0) return -1; // error
-  int i = (int)(iinterval * Random()); // truncate
-  if (i >= iinterval) i = iinterval-1;
-  return min + i;}
-  
-
-void TRanrotBGenerator::RandomInit (uint32 seed) {
-  // this function initializes the random number generator.
-  int i;
-  uint32 s = seed;
-
-  // make random numbers and put them into the buffer
-  for (i=0; i<KK; i++) {
-    s = s * 2891336453 + 1;
-    randbuffer[i] = s;}
-
-  // check that the right data formats are used by compiler:
-  union {
-    double randp1;
-    uint32 randbits[2];};
-  randp1 = 1.5;
-  assert(randbits[1]==0x3FF80000); // check that IEEE double precision float format used
-
-  // initialize pointers to circular buffer
-  p1 = 0;  p2 = JJ;
-  // store state for self-test
-  memmove (randbufcopy, randbuffer, KK*sizeof(uint32));
-  memmove (randbufcopy+KK, randbuffer, KK*sizeof(uint32));
-  // randomize some more
-  for (i=0; i<9; i++) Random();
-}
-
-/************************* RANROTW.CPP ****************** AgF 1999-03-03 *
-*  Random Number generator 'RANROT' type W                               *
-*  This version is used when a resolution higher that 32 bits is desired.*
-*                                                                        *
-*  This is a lagged-Fibonacci type of random number generator with       *
-*  rotation of bits.  The algorithm is:                                  *
-*  Z[n] = (Y[n-j] + (Y[n-k] rotl r1)) modulo 2^(b/2)                     *
-*  Y[n] = (Z[n-j] + (Z[n-k] rotl r2)) modulo 2^(b/2)                     *
-*  X[n] = Y[n] + Z[n]*2^(b/2)                                            *
-*                                                                        *
-*  The last k values of Y and Z are stored in a circular buffer named    *
-*  randbuffer.                                                           *
-*  The code includes a self-test facility which will detect any          *
-*  repetition of previous states.                                        *
-*  The function uses a fast method for conversion to floating point.     *
-*  This method relies on floating point numbers being stored in the      *
-*  standard 64-bit IEEE format or the 80-bit long double format.         *
-*                                                                        *
-*  The theory of the RANROT type of generators and the reason for the    *
-*  self-test are described at www.agner.org/random/theory                *
-*                                                                        *
-* ©2002 A. Fog. GNU General Public License www.gnu.org/copyleft/gpl.html *
-*************************************************************************/
-
-// If your system doesn't have a rotate function for 32 bits integers,
-// then use the definition below. If your system has the _lrotl function 
-// then remove this.
-// uint32 _lrotl (uint32 x, int r) {
-//   return (x << r) | (x >> (sizeof(x)*8-r));}
-
-
-// constructor:
-TRanrotWGenerator::TRanrotWGenerator(uint32 seed) {
-  RandomInit(seed);
- }
-
-
-uint32 TRanrotWGenerator::BRandom() {
-  // generate next random number
-  uint32 y, z;
-  // generate next number
-  z = _lrotl(randbuffer[p1][0], R1) + randbuffer[p2][0];
-  y = _lrotl(randbuffer[p1][1], R2) + randbuffer[p2][1];
-  randbuffer[p1][0] = y; randbuffer[p1][1] = z;
-  // rotate list pointers
-  if (--p1 < 0) p1 = KK - 1;
-  if (--p2 < 0) p2 = KK - 1;
-  // perform self-test
-  if (randbuffer[p1][0] == randbufcopy[0][0] &&
-    memcmp(randbuffer, randbufcopy[KK-p1], 2*KK*sizeof(uint32)) == 0) {
-      // self-test failed
-      if ((p2 + KK - p1) % KK != JJ) {
-        // note: the way of printing error messages depends on system
-        // In Windows you may use FatalAppExit
-        printf("Random number generator not initialized");}
-      else {
-        printf("Random number generator returned to initial state");}
-      exit(1);}
-  randbits[0] = y;
-  randbits[1] = z;
-  return y;}
-
-
-long double 
-TRanrotWGenerator::Random() {
-   // returns a random number between 0 and 1.
-  uint32 z = BRandom();  // generate 32 random bits
-  randp1 = 1.0;
-  switch (GetEndian()) {
-	  case EXTENDEDPRECISIONLITTLEENDIAN:
-		// 80 bits floats = 63 bits resolution
-		randbits[1] = z >> 1 | 0x80000000;
-		randbits[0] = z << 31;  
-		break;
-	  case LITTLE_ENDIAN1:
-		// 64 bits floats = 52 bits resolution
-		randbits[1] = ((z >> 10) & 0x000FFFFF) | 0x3FF00000;
-		randbits[0] = z << 22;  
-        break;
-	  case BIG_ENDIAN1:
-		// 64 bits floats = 52 bits resolution
-		randbits[1] = z << 22;
-		randbits[0] = ((z >> 10) & 0x000FFFFF) | 0x3FF00000;
-		break;
-	case NONIEEE: default:
-		// not a recognized floating point format. 32 bits resolution
-		return (double)z * (1./((double)(uint32)(-1L)+1.));}
-  return randp1 - 1.0;
-}
-
-
-int TRanrotWGenerator::IRandom(int min, int max) {
-  // get integer random number in desired interval
-  int iinterval = max - min + 1;
-  if (iinterval <= 0) return 0x80000000;  // error
-  int i = int(iinterval * Random());      // truncate
-  if (i >= iinterval) i = iinterval-1;
-  return min + i;}
-
-
-void TRanrotWGenerator::RandomInit (uint32 seed) {
-  // this function initializes the random number generator.
-  int i, j;
-
-  // make random numbers and put them into the buffer
-  for (i=0; i<KK; i++) {
-    for (j=0; j<2; j++) {
-      seed = seed * 2891336453UL + 1;
-      randbuffer[i][j] = seed;}}
-  // set exponent of randp1
-  randp1 = 1.0; 
-  // initialize pointers to circular buffer
-  p1 = 0;  p2 = JJ;
-  // store state for self-test
-  memmove (randbufcopy, randbuffer, 2*KK*sizeof(uint32));
-  memmove (randbufcopy[KK], randbuffer, 2*KK*sizeof(uint32));
-  // randomize some more
-  for (i=0; i<31; i++) BRandom();
-}
-
-
-
-
 

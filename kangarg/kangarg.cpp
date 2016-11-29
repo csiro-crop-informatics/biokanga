@@ -329,7 +329,7 @@ int
 GenRandChrom(char *pszDescription,
 			int KMerLen,			// what length kmer to generate for - 1..15
 			UINT32 MaxAllocBaseCnts,	// cnts allocated
-			tsKMerCnts *pBaseCnts,UINT32 ChromLen,CFasta *pOutFasta,UINT32 SeqBuffLen,UINT8 *pSeqBuff,TRandomMersenne *pRandomiser)
+			tsKMerCnts *pBaseCnts,UINT32 ChromLen,CFasta *pOutFasta,UINT32 SeqBuffLen,UINT8 *pSeqBuff,CRandomMersenne *pRandomiser)
 {
 UINT32 TotBaseCnts;		// to hold total base counts or current chromosome length
 UINT32 TotKMerCnts;	    // total number of cnts for current length KMer-1
@@ -562,7 +562,7 @@ if(RandSeed < 0)
 #endif
 	RandSeed = (int)(Now & 0x07fffffff);
 	}
-TRandomMersenne RandomiserBase(RandSeed);
+CRandomMersenne RandomiserBase(RandSeed);
 
 
 m_AllocdKmerCntsSize = m_KmerCntInsts * sizeof(tsKMerCnts);

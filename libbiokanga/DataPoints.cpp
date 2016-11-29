@@ -609,7 +609,7 @@ tsFDSDataset *pDataset;
 
 sFDSChromDataset *pChromDataset;
 sDSFDirEl *pDirEl;
-tsStructParam *pStructConf = (tsStructParam *)pDataPts;
+tsOctStructParam *pStructConf = (tsOctStructParam *)pDataPts;
 
 int DataSegLen;
 int PackedBytes;

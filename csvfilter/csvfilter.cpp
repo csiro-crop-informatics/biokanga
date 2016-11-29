@@ -2090,7 +2090,7 @@ else
 if(NumAccepted > pParams->SelectN)		// need to reduce number of rows output?
 	{
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Limiting number of accepted elements by randomly selecting elements to report");
-	TRandomCombined<TRanrotWGenerator,TRandomMersenne> RG((int)time(0));
+	TRandomCombined<CRandomMother,CRandomMersenne> RG((int)time(0));
 	int ToRemove;
 	while(NumAccepted > pParams->SelectN)
 		{

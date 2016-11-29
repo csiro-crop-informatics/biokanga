@@ -34,10 +34,10 @@
 
 // when required to static compile
 #ifdef _LINKSTATIC_
-const char *cpszProgVer = "4.0.1S";		// increment with each release
+const char *cpszProgVer = "4.1.2S";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset - Static Linked";
 #else
-const char *cpszProgVer = "4.0.1";		// increment with each release
+const char *cpszProgVer = "4.1.2";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset";
 #endif
 
@@ -70,6 +70,7 @@ extern int fastaextract(int argc, char* argv[]);
 extern int mergeoverlaps(int argc, char* argv[]);
 extern int pescaffold(int argc, char* argv[]);
 extern int SSRdiscovery(int argc, char* argv[]);
+extern int AlignsBootstrap(int argc, char* argv[]);
 
 
 // inplace text cleaning; any leading/trailing or internal quote characters are removed; excessive whitespace is reduced to single
@@ -127,6 +128,7 @@ tsSubProcess SubProcesses[] = {
 	{"remaploci","Remap Alignment Loci", "Remap alignment loci", RemapLoci },
 	{"filtchrom","Filter SAM/BAM by chrom", "Filter SAM/BAM alignments by chromosome", FilterSAMAlignments },
 	{"locateroi","Locate Regions of Interest", "Locate and report regions of interest", LocateROI },
+	{"alignsbs","Alignment Bootstraps", "Alignments bootstrapper", AlignsBootstrap },
 	{"psl2sqlite","SQLite Blat Alignments","Generate SQLite Blat alignment Database from Blat generated PSL alignments",PSL2SQLite},
 	{"snpm2sqlite","SQLite SNP Markers","Generate SQLite Marker Database from SNP markers  ",Markers2SQLite},
 	{"snps2sqlite","SQLite SNPs","Generate SQLite SNP Database from aligner identified SNPs",SNPs2SQLite},

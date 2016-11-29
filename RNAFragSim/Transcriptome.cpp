@@ -115,7 +115,7 @@ return(eBSFSuccess);
 }
 
 
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RGseeds((int)time(0));
+TRandomCombined<CRandomMother,CRandomMersenne> RGseeds((int)time(0));
 
 int
 CTranscriptome::Fragmentate(char *pszTransFile,	// transcripts and their abundance are from this CSV file

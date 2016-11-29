@@ -11,14 +11,14 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const unsigned int cProgVer = 306;		// increment with each release
+const unsigned int cProgVer = 307;		// increment with each release
 
 
 const int cMAtotMaxSeqAlignLen = 0x0fffffff; // total (over all aligned species) max seq length that can be buffered in concatenated seqs
 
 const int cMinCoreLen = 1;				// allow core lengths to be specified down to cMinCoreLen
 const int cDfltMinCoreLen= 50;			// if core lengths not specified then default to cDfltMinCoreLen
-const int cMaxMinCoreLen = 10000;		// minimum core lengths can be specified upto this length
+const int cMaxMinCoreLen = 10000;		// minimum core lengths can be specified up to this length
 
 const int cMinIdentity = 50;			// accept down to 50% identity
 const int cMaxIdentity = 100;			// can't do any better than 100% identity!
@@ -57,8 +57,8 @@ typedef struct TAG_sLenRangeClass {
 	int ID;					// uniquely identifies this range
 	int Min;				// minimum length in this range
 	int Max;				// maximum length in this range
-	const char *pszDescr;			// descriptive text
-	}tsLenRangeClass;
+	char szDescr[10];			// descriptive text
+	} tsLenRangeClass;
 
 
 typedef struct TAG_sExcludeSpeciesChrom {
@@ -176,73 +176,46 @@ LoadContiguousBlocks(int RefSpeciesID,	// reference species identifier
 int
 Process(bool bTargDeps,				// true if process only if any independent src files newer than target
 		int ProcMode,					// processing mode 0: default, 1: summary stats only
-				 char *pszInputFile,		// bio multialignment (.algn) file to process
-					char *pszOutputFile,	// where to write out stats
-					char *pszOutputCoreFile, // where to write out the hypercore loci 
-					char *pszBiobedFile,	// biobed file containing regional features - exons, introns etc
-					int NumIncludeFiles,	// number of include region files
-					char **ppszIncludeFiles,// biobed files containing regions to include - default is to exclude none
-					int NumExcludeFiles,	// number of exclude region files
-					char **ppszExcludeFiles,// biobed file containing regions to exclude - default is to include all
- 					char *pszUniqueSpeciesSeqs, // ignore alignment block if these species sequences are not unique
-					int WindowSize,			// sampling window size
-					int NumCoreSpecies,		// number of core species to be in alignment
-					int MinAlignSpecies,	// minimum number of species required in an alignment (includes core species)
-					char *pszSpeciesList,	// space or comma separated list of species, priority ordered
-					int MinHyperLen,		// minimum hyper core length required
-					int MinUltraLen,		// minimum ultra core length required
-					int MaxHyperMismatches,	// hyper cores can have upto this number of total mismatches
-					int VMismatches,		// number of mismatches in an alignment col to count as a missmatch against MaxMismatches
-					int MinIdentity,		// minimum identity required when processing hyperconserved
-					int NumDistSegs,		// number of match distribution profile segments
-					int RegLen,				// regulatory region length - up/dn stream of 5/3' 
-					bool bMultipleFeatBits,	// if true then accept alignments in which multiple feature bits are set
-					bool bInDelsAsMismatches, // treat InDels as if mismatches
-					bool bSloughRefInDels,	// slough columns in which the reference base is an InDel
-					bool bFiltLoConfidence,	// filter out low confidence subsequences
-					bool bFilt1stLast,		// treat 1st and last subsequences as being low confidence
-					int MinSubSeqLen,		// subsequences of less than this length are treated as being low confidence
-					int MinIdent,			// treat subsequences of less than this identity as being low confidence
-					int NumIncludeChroms,	// number of chromosomes explicitly defined to be included
-					char **ppszIncludeChroms,	// ptr to array of reg expressions defining chroms to include - overides exclude
-					int NumExcludeChroms,	// number of chromosomes explicitly defined to be excluded
-					char **ppszExcludeChroms);	// ptr to array of reg expressions defining chroms to exclude
+		int NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+		int BinDelta,				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
+		char *pszInputFile,		// bio multialignment (.algn) file to process
+		char *pszOutputFile,	// where to write out stats
+		char *pszOutputCoreFile, // where to write out the hypercore loci 
+		char *pszBiobedFile,	// biobed file containing regional features - exons, introns etc
+		int NumIncludeFiles,	// number of include region files
+		char **ppszIncludeFiles,// biobed files containing regions to include - default is to exclude none
+		int NumExcludeFiles,	// number of exclude region files
+		char **ppszExcludeFiles,// biobed file containing regions to exclude - default is to include all
+ 		char *pszUniqueSpeciesSeqs, // ignore alignment block if these species sequences are not unique
+		int WindowSize,			// sampling window size
+		int NumCoreSpecies,		// number of core species to be in alignment
+		int MinAlignSpecies,	// minimum number of species required in an alignment (includes core species)
+		char *pszSpeciesList,	// space or comma separated list of species, priority ordered
+		int MinHyperLen,		// minimum hyper core length required
+		int MinUltraLen,		// minimum ultra core length required
+		int MaxHyperMismatches,	// hyper cores can have upto this number of total mismatches
+		int VMismatches,		// number of mismatches in an alignment col to count as a missmatch against MaxMismatches
+		int MinIdentity,		// minimum identity required when processing hyperconserved
+		int NumDistSegs,		// number of match distribution profile segments
+		int RegLen,				// regulatory region length - up/dn stream of 5/3' 
+		bool bMultipleFeatBits,	// if true then accept alignments in which multiple feature bits are set
+		bool bInDelsAsMismatches, // treat InDels as if mismatches
+		bool bSloughRefInDels,	// slough columns in which the reference base is an InDel
+		bool bFiltLoConfidence,	// filter out low confidence subsequences
+		bool bFilt1stLast,		// treat 1st and last subsequences as being low confidence
+		int MinSubSeqLen,		// subsequences of less than this length are treated as being low confidence
+		int MinIdent,			// treat subsequences of less than this identity as being low confidence
+		int NumIncludeChroms,	// number of chromosomes explicitly defined to be included
+		char **ppszIncludeChroms,	// ptr to array of reg expressions defining chroms to include - overides exclude
+		int NumExcludeChroms,	// number of chromosomes explicitly defined to be excluded
+		char **ppszExcludeChroms);	// ptr to array of reg expressions defining chroms to exclude
 
 
 int NormaliseInDelColumns(tsProcParams *pProcParams,int AlignLen);
 
-// length range classes
-tsLenRangeClass LenRangeClasses[] = {
-	{1,0,4,"0-4"},
-	{2,5,9,"5-9"},
-	{3,10,14,"10-14"},
-	{4,15,19,"15-19"},
-	{5,20,29,"20-29"},
-    {6,30,49,"30-49"},
-	{7,50,74,"50-74"},
-	{8,75,99,"75-99"},
-	{9,100,124,"100-124"},
-	{10,125,149,"125-149"},
-	{11,150,174,"150-174"},
-	{12,175,199,"175-199"},
-	{13,200,249,"200-249"},
-	{14,250,299,"250-299"},
-	{15,300,349,"300-349"},
-	{16,350,399,"350-399"},
-	{17,400,449,"400-449"},
-	{18,450,499,"450-499"},
-	{19,500,599,"500-599"},
-	{20,600,699,"600-699"},
-	{21,700,799,"700-799"},
-	{22,800,899,"800-899"},
-	{23,900,999,"900-999"},
-	{24,1000,1249,"1000-1249"},
-	{25,1250,1499,"1250-1499"},
-	{26,1500,1749,"1500-1749"},
-	{27,1750,1999,"1750-1999"},
-	{28,2000,INT_MAX,"2000+"}
-};
-const int cLenRanges = sizeof(LenRangeClasses)/sizeof(tsLenRangeClass);		  // number of length range classes
+int m_NumBins = 1000;				// when generating length distributions then use this many bins - 0 defaults to using 1000
+int m_BinDelta = 1;				// when generating length distributions then each bin holds this length delta - defaults to 1
+tsLenRangeClass *m_pLenRangeClasses = NULL; // allocated to hold length ranges
 
 #ifdef _WIN32
 // required by str library
@@ -281,6 +254,8 @@ int Rslt;
 bool bTargDeps;						// true if only process if independent files newer than target
 
 int iProcMode;
+int NumBins;				// when generating length distributions then use this many bins - 0 defaults to using 1000
+int BinDelta;				// when generating length distributions then each bin holds this length delta - defaults to 1
 int iNumCoreSpecies;
 int iMinAlignSpecies;
 bool bMultipleFeatBits;
@@ -324,7 +299,7 @@ struct arg_int  *RegLen = arg_int0("L","updnstream","<int>",	"length of 5'up or 
 struct arg_file *InFile = arg_file1("i",NULL,"<file>",			"input from .algn file");
 struct arg_file *OutFile = arg_file1("o",NULL,"<file>",			"output to statistics file as CSV");
 struct arg_file *OutCoreFile = arg_file0("O",NULL,"<file>",		"output hypercore loci to file as CSV");
-struct arg_file *InBedFile = arg_file0("b","bed","<file>",		"characterise regions from biobed file");
+struct arg_file *InBedFile = arg_file0("r","regions","<file>",		"characterise regions from biobed file");
 struct arg_int  *NumCoreSpecies = arg_int0("m","numcorespecies","<int>", "number of core species in alignment, default is num of species in -s<specieslist>");
 struct arg_int  *MinAlignSpecies = arg_int0("M","minalignedspecies","<int>", "min number of species required in alignment (includes core species), default is num of species in -s<specieslist>");
 struct arg_str  *SpeciesList = arg_str1("s","species","<string>","species list, ordered by processing priority");
@@ -338,6 +313,8 @@ struct arg_int  *MaxHyperMismatches = arg_int0("X","maxmismatches","<int>",	"tot
 struct arg_int  *MinIdentity = arg_int0("y","minidentity","<int>",	"minimum percentage identity (default = 90) required in hypercore (50-100)");
 struct arg_lit  *ChromPer = arg_lit0("c","chromper",			"generate stats for each chromosome -= default is for complete genome");
 struct arg_int  *ProcMode = arg_int0("x","procmode","<int>",	"processing mode 0:default, 1:summary, 2:outspecies");
+struct arg_int  *numbins = arg_int0("b","numbins","<int>",	"when generating length distributions then use this many bins (defaults to 1000, range 10..10000)");
+struct arg_int  *bindelta = arg_int0("B","bindelta","<int>","when generating length distributions then each bin holds this length delta (default 1, range 1,2,5,10,25,50,100,250,500 or 1000)");
 
 struct arg_str  *UniqueSpeciesSeqs = arg_str0("u","uniquespecieseqs","<string>","Ignore alignment blocks in which these species are not unique (use 'any' for all, or '*' for -s<specieslist>)");
 
@@ -355,7 +332,7 @@ struct arg_end *end = arg_end(20);
 void *argtable[] = {help,version,FileLogLevel,ScreenLogLevel,LogFile,
 					
 					InFile,OutFile,OutCoreFile,InBedFile,
-					ProcMode,UniqueSpeciesSeqs,
+					ProcMode,numbins,bindelta,UniqueSpeciesSeqs,
 					NumCoreSpecies,MinAlignSpecies,SpeciesList,MultipleFeatBits,
 					InDelsAsMismatches,SloughRefInDels,FiltLoConfidence,
 					MinHyperLen,MinUltraLen,MaxHyperMismatches,MinIdentity,RegLen,
@@ -418,6 +395,9 @@ if (!argerrors)
 		iFileLogLevel = eDLNone;
 		szLogFile[0] = '\0';
 		}
+
+	NumBins = 1000;
+	BinDelta = 1;
 
 	iProcMode = ProcMode->count ? ProcMode->ival[0] : eProcModeStandard;
 	if(iProcMode < eProcModeStandard || iProcMode > eProcModeOutspecies)
@@ -544,6 +524,24 @@ if (!argerrors)
 		bSloughRefInDels = SloughRefInDels->count ? true : false;
 		}
 	
+	NumBins = numbins->count ? numbins->ival[0] : 1000;
+	if(NumBins == 0)
+		NumBins = 1000;
+	if(NumBins < 10 || NumBins > 10000)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Number of bins '-b%d' is not in range 10..10000");
+		exit(1);
+		}
+	BinDelta = bindelta->count ? bindelta->ival[0] : 1;
+	if(NumBins == 0)
+		NumBins = 1;
+	switch(BinDelta) {
+		case 1: case 2: case 5: case 10: case 25: case 50: case 100: case 250: case 500: case 1000:
+			break;
+		default:
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Bin length delta '-B%d' must be either 1,2,5,10,25,50,100,250,500 or 1000");
+			exit(1);
+		}
 
 	bMultipleFeatBits = MultipleFeatBits->count ? true : false;
 
@@ -732,6 +730,8 @@ if (!argerrors)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"biobed file containing regions to exclude: '%s'",pszExcludeFiles[Idx]);
 	if(iWindowSize)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"sampling window size: %d",iWindowSize);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Number of bins: %d",NumBins);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Bin length delta: %d",BinDelta);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"number of core species to be in alignment: %d",iNumCoreSpecies);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"minimum number of species to be in alignment: %d",iMinAlignSpecies);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"species list: '%s'",	szSpeciesList);
@@ -761,6 +761,8 @@ if (!argerrors)
 #endif
 	Rslt = Process(bTargDeps,				// true if process only if any independent src files newer than target
 					iProcMode,		// processing mode 0: default, 1: summary stats only, 2: outspecies processing
+					NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+					BinDelta,				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
 					szInputFile,		// bio multialignment (.algn) file to process
 					szOutputFile,		// where to write out stats
 					szOutCoreFile,		// where to write out the hypercore loci 
@@ -825,25 +827,60 @@ while((Chr = *pszTxt++))
 return(Len);
 }
 
+int
+InitLengthRangeClass(		int NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+		int BinDelta)				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
+{
+tsLenRangeClass *pCurRange;
+int Idx;
+if(m_pLenRangeClasses != NULL)
+	delete m_pLenRangeClasses;
+m_pLenRangeClasses = new tsLenRangeClass [NumBins+1];
+pCurRange = m_pLenRangeClasses;
+for(Idx = 0; Idx < NumBins; Idx++,pCurRange++)
+	{
+	pCurRange->ID = Idx+1;
+	pCurRange->Min = Idx * BinDelta;
+	pCurRange->Max = (Idx + 1) * BinDelta;
+	if(BinDelta == 1)
+		{
+		if(Idx == NumBins-1)
+			sprintf(pCurRange->szDescr,"%d plus",pCurRange->Min);
+		else
+			sprintf(pCurRange->szDescr,"%d",pCurRange->Min);
+		}
+	else
+		{
+		if(Idx == NumBins-1)
+			sprintf(pCurRange->szDescr,"%d plus",pCurRange->Min);
+		else
+			sprintf(pCurRange->szDescr,"%d to %d",pCurRange->Min,pCurRange->Max-1);
+		}
+	}
+
+return(NumBins);
+}
+
 // GetLengthRangeClass
 // Returns ptr to length range class for specified Length, or NULL if can't classify into a range
 tsLenRangeClass *GetLengthRangeClass(int Length)
 {
 int Idx;
-tsLenRangeClass *pRange = LenRangeClasses;
-for(Idx = 0; Idx < cLenRanges; Idx++,pRange++)
-	if(Length >= pRange->Min && Length <= pRange->Max)
+tsLenRangeClass *pRange = m_pLenRangeClasses;
+
+for(Idx = 0; Idx < m_NumBins; Idx++,pRange++)
+	if(Length >= pRange->Min && Length < pRange->Max)
 		return(pRange);
-return(NULL);
+return(&m_pLenRangeClasses[m_NumBins-1]);
 }
 
 // GetRangeClass
 // Returns ptr to length range class for specified range identifier, or NULL if can't classify into a range
 tsLenRangeClass *GetRangeClass(int RangeID)
 {
-if(RangeID < 1 || RangeID > cLenRanges)
+if(RangeID < 1 || RangeID > m_NumBins)
 	return(NULL);
-return(&LenRangeClasses[RangeID-1]);
+return(&m_pLenRangeClasses[RangeID-1]);
 }
 
 // ParseNumSpecies
@@ -1877,37 +1914,39 @@ return(true);
 int
 Process(bool bTargDeps,				// true if process only if any independent src files newer than target
 		int ProcMode,				// processing mode 0: default, 1: summary stats only, 2: outspecies
-				 char *pszInputFile,		// bio multialignment (.algn) file to process
-					char *pszOutputFile,	// where to write out stats
-					char *pszOutputCoreFile, // where to write out the hypercore loci 
-					char *pszBiobedFile,	// biobed file containing regional features - exons, introns etc
-					int NumIncludeFiles,	// number of include region files
-					char **ppszIncludeFiles,	// biobed files containing regions to include - default is to exclude none
-					int NumExcludeFiles,	// number of exclude region files
-					char **ppszExcludeFiles,	// biobed file containing regions to exclude - default is to include all
- 					char *pszUniqueSpeciesSeqs, // ignore alignment block if these species sequences are not unique
-					int WindowSize,			// sampling window size
-					int NumCoreSpecies,		// number of core species to be in alignment
-					int MinAlignSpecies,	// minimum number of species required in an alignment (includes core species)
-					char *pszSpeciesList,	// space or comma separated list of species, priority ordered
-					int MinHyperLen,		// minimum hyper core length required
-					int MinUltraLen,		// minimum ultra core length required
-					int MaxHyperMismatches,	// hyper cores can have upto this number of total mismatches
-					int VMismatches,		// number of mismatches in an alignment col to count as a missmatch against MaxMismatches
-					int MinIdentity,		// minimum identity required when processing hyperconserved
-					int NumDistSegs,		// number of match distribution profile segments
-					int RegLen,				// regulatory region length - up/dn stream of 5/3' 
-					bool bMultipleFeatBits,	// if true then accept alignments in which multiple feature bits are set
-					bool bInDelsAsMismatches, // treat InDels as if mismatches
-					bool bSloughRefInDels,			// slough columns in which the reference base is an InDel
-					bool bFiltLoConfidence,		// filter out low confidence subsequences
-					bool bFilt1stLast,			// treat 1st and last subsequences as being low confidence
-					int MinSubSeqLen,			// subsequences of less than this length are treated as being low confidence
-					int MinIdent,				// treat subsequences of less than this identity as being low confidence
-					int NumIncludeChroms,	// number of chromosomes explicitly defined to be included
-					char **ppszIncludeChroms,	// ptr to array of reg expressions defining chroms to include - overides exclude
-					int NumExcludeChroms,	// number of chromosomes explicitly defined to be excluded
-					char **ppszExcludeChroms)	// ptr to array of reg expressions defining chroms to include
+		int NumBins,				// when generating length distributions then use this many bins - 0 defaults to using 1000
+		int BinDelta,				// when generating length distributions then each bin holds this length delta - 0 defaults to auto determine from NunBins and longest sequence length
+		char *pszInputFile,		// bio multialignment (.algn) file to process
+		char *pszOutputFile,	// where to write out stats
+		char *pszOutputCoreFile, // where to write out the hypercore loci 
+		char *pszBiobedFile,	// biobed file containing regional features - exons, introns etc
+		int NumIncludeFiles,	// number of include region files
+		char **ppszIncludeFiles,	// biobed files containing regions to include - default is to exclude none
+		int NumExcludeFiles,	// number of exclude region files
+		char **ppszExcludeFiles,	// biobed file containing regions to exclude - default is to include all
+ 		char *pszUniqueSpeciesSeqs, // ignore alignment block if these species sequences are not unique
+		int WindowSize,			// sampling window size
+		int NumCoreSpecies,		// number of core species to be in alignment
+		int MinAlignSpecies,	// minimum number of species required in an alignment (includes core species)
+		char *pszSpeciesList,	// space or comma separated list of species, priority ordered
+		int MinHyperLen,		// minimum hyper core length required
+		int MinUltraLen,		// minimum ultra core length required
+		int MaxHyperMismatches,	// hyper cores can have upto this number of total mismatches
+		int VMismatches,		// number of mismatches in an alignment col to count as a missmatch against MaxMismatches
+		int MinIdentity,		// minimum identity required when processing hyperconserved
+		int NumDistSegs,		// number of match distribution profile segments
+		int RegLen,				// regulatory region length - up/dn stream of 5/3' 
+		bool bMultipleFeatBits,	// if true then accept alignments in which multiple feature bits are set
+		bool bInDelsAsMismatches, // treat InDels as if mismatches
+		bool bSloughRefInDels,			// slough columns in which the reference base is an InDel
+		bool bFiltLoConfidence,		// filter out low confidence subsequences
+		bool bFilt1stLast,			// treat 1st and last subsequences as being low confidence
+		int MinSubSeqLen,			// subsequences of less than this length are treated as being low confidence
+		int MinIdent,				// treat subsequences of less than this identity as being low confidence
+		int NumIncludeChroms,	// number of chromosomes explicitly defined to be included
+		char **ppszIncludeChroms,	// ptr to array of reg expressions defining chroms to include - overides exclude
+		int NumExcludeChroms,	// number of chromosomes explicitly defined to be excluded
+		char **ppszExcludeChroms)	// ptr to array of reg expressions defining chroms to include
 {
 int Rslt;
 int Idx;
@@ -2014,10 +2053,14 @@ else
 	ProcParams.pBiobed = NULL;
 	}
 
+m_NumBins = NumBins;
+m_BinDelta = BinDelta;
+
 if(ProcMode == eProcModeSummary)
 	NumCnts=Regions * 4;	// allows for RefIndels,RelInDels,Matches and Mismatch counts per region
 else
-	NumCnts=Regions * cLenRanges;	
+	NumCnts=Regions * m_NumBins;	
+
 if((pCntStepCnts = new int[NumCnts])==NULL)
 	{
 	CloseBedfiles(&ProcParams);
@@ -2025,6 +2068,8 @@ if((pCntStepCnts = new int[NumCnts])==NULL)
 	return(eBSFerrMem);
 	}
 memset(pCntStepCnts,0,NumCnts * sizeof(int));
+
+InitLengthRangeClass(NumBins,BinDelta);
 
 ProcParams.bInDelsAsMismatches = bInDelsAsMismatches;
 ProcParams.bSloughRefInDels = bSloughRefInDels;			// slough columns in which the reference base is an InDel
@@ -2605,7 +2650,7 @@ if(bOutputHdrFirst)
 	CUtility::SafeWrite(pProcParams->hRsltsFile,szLineBuff,Len);
 	}
 pStep = pProcParams->pCntStepCnts;
-for(Idx = 0; Idx < cLenRanges; Idx++, pStep += pProcParams->Regions)
+for(Idx = 0; Idx < m_NumBins; Idx++, pStep += pProcParams->Regions)
 	{
 	if(pProcParams->Regions > 1)
 		{
@@ -2616,10 +2661,12 @@ for(Idx = 0; Idx < cLenRanges; Idx++, pStep += pProcParams->Regions)
 		Instances = pStep[0];
 	pRange = GetRangeClass(Idx+1);
 	Len = sprintf(szLineBuff,"\n\"%s\",%d,%d",
-						pRange->pszDescr,pProcParams->MaxHyperMismatches,Instances);
+						pRange->szDescr,pProcParams->MaxHyperMismatches,Instances);
 	if(pProcParams->Regions > 1)
 		for(Steps = 0; Steps < pProcParams->Regions; Steps++)
 			Len += sprintf(&szLineBuff[Len],",%d",pStep[Steps]);
+	if(Idx == m_NumBins-1)
+		Len += sprintf(&szLineBuff[Len],"\n");
 	CUtility::SafeWrite(pProcParams->hRsltsFile,szLineBuff,Len);
 	}
 return(true);
@@ -2642,11 +2689,12 @@ char szLineBuff[4096];
 int Len;
 if(pProcParams->hCoreCSVRsltsFile != -1)
 	{
-	Len = sprintf(szLineBuff,"%d,\"%s\",\"%s\",\"%s\",%d,%d,%d,\"%s\",%d",
-		++CoreID,pProcParams->MinHyperLen ? "hypercore" : "ultracore",
-		pProcParams->szSpecies[pProcParams->RefSpeciesIdx],
-		pszChrom,ChromStartOffset,ChromEndOffset,ChromEndOffset-ChromStartOffset+1,
-		pProcParams->pszSpeciesList,FeatureBits & (cAnyFeatBits | cOverlaysSpliceSites));
+	Len = 0;
+	Len += sprintf(&szLineBuff[Len],"%d,\"%s\",\"%s\",\"%s\",%d,%d,%d,\"%s\",%d",
+			++CoreID,pProcParams->MinHyperLen ? "hypercore" : "ultracore",
+			pProcParams->szSpecies[pProcParams->RefSpeciesIdx],
+			pszChrom,ChromStartOffset,ChromEndOffset,ChromEndOffset-ChromStartOffset+1,
+			pProcParams->pszSpeciesList,FeatureBits & (cAnyFeatBits | cOverlaysSpliceSites));
 	if(pProcParams->ProcMode == eProcModeOutspecies)
 		{
 		Len += sprintf(&szLineBuff[Len],",%d,%d,%d,%d",OGUnaligned,OGMatches,OGMismatches,OGInDels);

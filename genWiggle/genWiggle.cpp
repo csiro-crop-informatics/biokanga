@@ -15,7 +15,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const char *cpszProgVer = "1.1.1";		// increment with each release
+const char *cpszProgVer = "1.2.0";		// increment with each release
 const int cChromSeqReAlloc = 5000000;	// realloc chrom sequence size
 
 // processing modes
@@ -63,13 +63,13 @@ int
 Process(etPMode PMode,					// processing mode
 		etBEDRegion Region,				// regions of interest if processing BED files
 		char Strand,					// process for this strand only
-		teStructStats ConfParam,		// selected conformation
+		teOctStructStats ConfParam,		// selected conformation
 		int Limit,						// limit (0 if no limit) processing to this many bases total
 		char *pszInFile,				// input MNase or conformational file
 		char *pszInBioseqFile,			// bioseq genome file
 		char *pszRsltsFile);			// output UCSC wiggle file
 
-char *Conf2Txt(teStructStats ConfParam); // returns short description of specified conformational characteristic
+char *Conf2Txt(teOctStructStats ConfParam); // returns short description of specified conformational characteristic
 
 CStopWatch gStopWatch;
 CDiagnostics gDiagnostics;				// for writing diagnostics messages to log file
@@ -143,7 +143,7 @@ char szLogFile[_MAX_PATH];	// write diagnostics to this file
 etPMode PMode;				// processing mode
 int Rslt = 0;   			// function result code >= 0 represents success, < 0 on failure
 int Strand;					// filter for this strand
-teStructStats ConfParam;	// selected conformation
+teOctStructStats ConfParam;	// selected conformation
 
 char szRsltsFile[_MAX_PATH];	// output wiggle file
 char szInFile[_MAX_PATH];		// input MNase, conformation, or Hammings 
@@ -158,7 +158,7 @@ struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of di
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 struct arg_int  *strand = arg_int0("s","strand","<int>",		"filter for this strand: 0 - any, 1 - Watson '+', 2 - Crick '-' (default is any)");
 struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - CSV, 1 - BED, 2 - MNase, 3 - Conformation, 4 - Hamming edit distances (default = 0)");
-struct arg_int *confparam = arg_int0("c","conf","<int>",		"conformational characteristic: 0-energy,1-minorgroove,2-twist,3-roll,4-tilt,5-rise,6-slide,7-shift,8-rmsd,9-ORChid (default 5)");
+struct arg_int *confparam = arg_int0("c","conf","<int>",		"conformational characteristic: 0-energy,1-minorgroove,2-majorgroove,3-twist,4-roll,5-tilt,6-rise,7-slide,8-shift,9-rmsd,10-ORChid (default 1)");
 struct arg_file *infile = arg_file1("i","in","<file>",			"input from this CSV loci, BED, MNase, conformational, or Hamming file");
 struct arg_file *gfile = arg_file0("I","sfx","<file>",			"input bioseq genome file");
 struct arg_file *outfile = arg_file1("o","out","<file>",		"output UCSC wiggle format to this file");
@@ -230,7 +230,7 @@ if (!argerrors)
 
 	if(PMode == ePMconf)
 		{
-		ConfParam = (teStructStats)(confparam->count ? confparam->ival[0] : eSSrise);
+		ConfParam = (teOctStructStats)(confparam->count ? confparam->ival[0] : eSSminorgroove);
 		if(ConfParam < eSSenergy ||ConfParam >= eSSNumStatParams)
 			{
 			printf("\nError: conformation parameter '-c%d' specified outside of range %d..%d",ConfParam,eSSenergy,(int)eSSNumStatParams-1);
@@ -345,7 +345,7 @@ else
 }
 
 char *
-Conf2Txt(teStructStats ConfParam) // returns short description of specified conformational characteristic
+Conf2Txt(teOctStructStats ConfParam) // returns short description of specified conformational characteristic
 {
 char *pszDescr;
 switch(ConfParam) {
@@ -354,6 +354,9 @@ switch(ConfParam) {
 		break;
 	case eSSminorgroove:				
 		pszDescr = (char *)" minor groove";
+		break;
+	case eSSmajorgroove:				
+		pszDescr = (char *)"major groove inferenced from octamer twist + rise";
 		break;
 	case eSStwist:					
 		pszDescr = (char *)"twist";
@@ -1356,7 +1359,7 @@ return(Rslt);
 
 int
 GenConfWiggle(int Limit,						// limit (0 if no limit) processing to this many bases total
-		teStructStats ConfParam,	// selected conformation
+		teOctStructStats ConfParam,	// selected conformation
 		char *pszInFile,				// input MNase
 		char *pszInBioseqFile,			// bioseq genome file
 		char *pszRsltsFile)				// output UCSC wiggle file
@@ -1451,7 +1454,7 @@ int
 Process(etPMode PMode,					// processing mode
 		etBEDRegion Region,				// regions of interest if processing BED files
 		char Strand,					// process for this strand only
-		teStructStats ConfParam,		// selected conformation
+		teOctStructStats ConfParam,		// selected conformation
 		int Limit,						// limit (0 if no limit) processing to this many bases total
 		char *pszInFile,				// input CSV, BED, MNase, conformational file, or Hamming distances
 		char *pszInBioseqFile,			// bioseq genome file

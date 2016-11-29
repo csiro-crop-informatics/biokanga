@@ -67,8 +67,10 @@ FilterLoci.o: FilterLoci.cpp /usr/include/stdc-predef.h stdafx.h \
  Conformation.h SeqTrans.h Diagnostics.h MTqsort.h Fasta.h zlib/zlib.h \
  zlib/zconf.h BEDfile.h BioSeqFile.h HashFile.h RsltsFile.h DataPoints.h \
  MAlignFile.h Twister.h SfxArray.h SfxArrayV2.h SmithWaterman.h \
- NeedlemanWunsch.h CVS2BED.h AlignValidate.h Random.h Utility.h Stats.h \
- Shuffle.h GOAssocs.h GOTerms.h SimpleRNG.h zlib/zlib.h SAMfile.h bgzf.h \
+ NeedlemanWunsch.h CVS2BED.h AlignValidate.h Random.h \
+ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdint.h /usr/include/stdint.h \
+ /usr/include/x86_64-linux-gnu/bits/wchar.h Utility.h Stats.h Shuffle.h \
+ GOAssocs.h GOTerms.h SimpleRNG.h zlib/zlib.h SAMfile.h bgzf.h \
  ../config.h /usr/include/x86_64-linux-gnu/sys/mman.h \
  /usr/include/x86_64-linux-gnu/bits/mman.h \
  /usr/include/x86_64-linux-gnu/bits/mman-linux.h /usr/include/pthread.h \
@@ -76,7 +78,6 @@ FilterLoci.o: FilterLoci.cpp /usr/include/stdc-predef.h stdafx.h \
  /usr/include/x86_64-linux-gnu/bits/setjmp.h zlib/zlib.h ConfSW.h \
  Centroid.h CSVFile.h sais.h HyperEls.h FilterRefIDs.h FilterLoci.h \
  FeatLoci.h SimpleGlob.h /usr/include/glob.h \
- /usr/include/x86_64-linux-gnu/bits/wchar.h \
  /usr/include/x86_64-linux-gnu/bits/wchar2.h Contaminants.h \
  ProcRawReads.h GTFFile.h GFFFile.h sqlite3.h
 
@@ -316,6 +317,12 @@ AlignValidate.h:
 
 Random.h:
 
+/usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdint.h:
+
+/usr/include/stdint.h:
+
+/usr/include/x86_64-linux-gnu/bits/wchar.h:
+
 Utility.h:
 
 Stats.h:
@@ -371,8 +378,6 @@ FeatLoci.h:
 SimpleGlob.h:
 
 /usr/include/glob.h:
-
-/usr/include/x86_64-linux-gnu/bits/wchar.h:
 
 /usr/include/x86_64-linux-gnu/bits/wchar2.h:
 

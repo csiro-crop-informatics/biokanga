@@ -1,8 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerCommandArguments>scaffold -FLogs\scaffoldA.log -iTarget\test.fasta -ITarget\PBArabidopsisTarg_l5K.sfx -otesting</LocalDebuggerCommandArguments>
-    <LocalDebuggerWorkingDirectory>c:\Experiments\PBScaffolding</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerCommandArguments>contigs  -FTestLogs\contigs.log -T1 -i SimECreads\sense_seqs_3a.fasta  -I SimECreads\sense_seqs_3a.overlaps.csv -o testcontig.fasta</LocalDebuggerCommandArguments>
+    <LocalDebuggerWorkingDirectory>c:\Experiments\E.coli</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LocalDebuggerCommandArguments>ecreads -FLogs\overlaps.log -m2 -b1500 -a  -i ECreads_3K5\E.coliEC2reads.fasta  -o E.coliEC2reads_overlaps.csv</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerWorkingDirectory>c:\Experiments\E.coli</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
 </Project>

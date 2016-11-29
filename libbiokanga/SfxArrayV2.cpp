@@ -5405,8 +5405,10 @@ do
 			TargSeqLeftIdx = SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,TargIdx) - CurCoreSegOfs;
 			ProbeSeqLeftIdx = 0;
 
+			pEntry = MapChunkHit2Entry(TargSeqLeftIdx);
+
 			// ensure comparisons are still within start/end range of target sequence/assembly
-			if(!TargMatchLen || ((UINT64)TargSeqLeftIdx + (UINT32)TargMatchLen) > m_pSfxBlock->ConcatSeqLen)
+			if(pEntry == NULL || !TargMatchLen || ((UINT64)TargSeqLeftIdx + (UINT32)TargMatchLen - 1) > pEntry->EndOfs)
 				continue;
 
 			// check if target already processed
@@ -7229,7 +7231,8 @@ CSfxArrayV3::AlignReads(UINT32 ExtdProcFlags,			// flags indicating if lower lev
 						 int MaxTotMM,					// max number of mismatches allowed
 						 int CoreLen,					// core window length
 						 int CoreDelta,					// core window offset increment (1..n)
-						 int MaxNumCoreSlides,			// limit number of core slides to this many per strand
+						 int MaxNumCoreSlides,			// limit number of core slides to this many per strand over the read length
+						 int MinCoreLen,				// do not reduce core below this length
 						 int MMDelta,					// minimum (1..n) mismatch difference between the best and next best core alignment
  					 	 eALStrand Align2Strand,		// align to this strand
 						 int microInDelLen,				// microInDel length maximum
@@ -7308,6 +7311,8 @@ if(Rslt == 0 && MaxSpliceJunctLen > 0)
 
 if(MinChimericLen > 0)
 	{
+	CoreLen = max(MinCoreLen,ProbeLen/(MaxTotMM+4));
+	CoreDelta = max(ProbeLen/(MaxNumCoreSlides-1),CoreLen);
 	Rslt = LocateCoreMultiples(ExtdProcFlags,ReadID,MinChimericLen,MaxTotMM,CoreLen,CoreDelta,MaxNumCoreSlides,MMDelta,Align2Strand,pLowHitInstances,
 								pLowMMCnt,pNxtLowMMCnt,pProbeSeq,ProbeLen,MaxHits,pHits,m_MaxIter,NumAllocdIdentNodes,pAllocsIdentNodes);
 	return(Rslt);
@@ -8888,7 +8893,7 @@ for(MMIdx = 0; MMIdx <= TotMM && cMinInDelSeqLen	< ProbeMMOfss[MMIdx]; MMIdx++)
 			break;
 
 		CurInDelMismatches = 0;
-		for(Idx = 0; Idx < (int32)TmpProbeLen && (MMIdx + CurInDelMismatches) <= MaxTotMM; Idx++,pT-=1,pP-=1)
+		for(Idx = 0; Idx < (int)TmpProbeLen && (MMIdx + CurInDelMismatches) <= MaxTotMM; Idx++,pT-=1,pP-=1)
 			{
 			ProbeBase = *pP & 0x07;
 			TargBase = *pT & 0x07;

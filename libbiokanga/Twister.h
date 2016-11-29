@@ -21,12 +21,12 @@ class CTwister : public CConformation
 	int GenStructParamStats(void);				// generate basic structure parameter stats
 	int Interpolate(unsigned int Step,			// which step to interpolate (1..7)
 			etSeqBase *pSeq,					// known octamer sequence left (step 5..7) or right (step 1..3) filled with eBaseA
-			tsStructParam *pRetStructParam);	// where to returned interpolated structural parameters
+			tsOctStructParam *pRetStructParam);	// where to returned interpolated structural parameters
 
 	int											// returned index (-1 if any base indeterminate) 
 	StructParamIdx(etSeqBase *pSeq);			// octamer sequence
-	int *MapStructParam2Ptr(teStructStats Param,// which parameter
-					 tsStructParam *pStruct);   // which parameters instance
+	int *MapStructParam2Ptr(teOctStructStats Param,// which parameter
+					 tsOctStructParam *pStruct);   // which parameters instance
 
 public:
 	CTwister(void);
@@ -38,13 +38,13 @@ public:
 	int  GetStructParams(unsigned int Step,	 // which step (1..SeqLen-1)
 				unsigned int SeqLen,			 // sequence length (8..n)
 				etSeqBase *pSeq,				 // sequence
-				tsStructParam *pRetStructParam); // where to return structural parameters
+				tsOctStructParam *pRetStructParam); // where to return structural parameters
 
 	int
 		GetStructParam(unsigned int Step,	// which step (1..SeqLen-1)
 				unsigned int SeqLen,		// sequence length (8..n)
 				etSeqBase *pSeq,			// sequence
-				teStructStats Param);		// which structural parameter value to return
+				teOctStructStats Param);		// which structural parameter value to return
 
 
 	int
@@ -61,7 +61,7 @@ public:
 				bool bXML);						// results file type: false == CSV, true == XML
 
 	int
-	GetSequenceConformation(teStructStats confparam,	// get values for this conformational parameter
+	GetSequenceConformation(teOctStructStats confparam,	// get values for this conformational parameter
 				  int iStartOfs,			// initial starting offset (0..n) in pSeq
 				  int iNumSteps,			// number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
   				  int SeqLen,				// total length of sequence
@@ -75,7 +75,7 @@ public:
 					unsigned int iNumSteps,		// number of steps to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
 				    unsigned int SeqLen,		// total length of sequence
 					etSeqBase *pSeq,			// start of sequence
-					teStructStats StructParam,	// which structural parameter to gen stats for
+					teOctStructStats StructParam,	// which structural parameter to gen stats for
 					tsStructStats *pStats);		// returned stats
 
     int	CalcDiffStats(unsigned int iRefStartOfs,	// initial starting offset (0..n) in pRefSeq
@@ -85,7 +85,7 @@ public:
 					unsigned int iRelStartOfs,	// initial starting offset (0..n) in pRelSeq
 					unsigned int RelSeqLen,		// total length of reference sequence
 					etSeqBase *pRelSeq,			// start of relative sequence
-					teStructStats StructParam,	// which structural parameter to gen stats for
+					teOctStructStats StructParam,	// which structural parameter to gen stats for
 					tsStructStats *pStats); 	// returned stats
 	
 	int
@@ -96,7 +96,7 @@ public:
 				  unsigned int iNumSteps,		// number of steps to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
 				  unsigned int SeqLen,			// total length of sequence
 				  etSeqBase *pSeq,				// sequence 
-  				  teStructStats StructParam,	// which structural parameter to gen stats for
+  				  teOctStructStats StructParam,	// which structural parameter to gen stats for
   				  unsigned int WinSteps, 		// sliding window size in dinucleotide steps (5..100000)
 				  int hRslts,					// results file to write into
 				  bool bXML);					// results file type: false == CSV, true == XML
@@ -125,10 +125,10 @@ public:
 	int GenRefStructDist(char *pszResultsFile,				  // file to contain results
 				bool bXML,					// results file type: false == CSV, true == XML
 				char *pszStructParamsFile); // structural parameters file, NULL if to use existing loaded
-	void SetMissing(tsStructParam *pRetStructParam);
+	void SetMissing(tsOctStructParam *pRetStructParam);
 	
 	tsStructStats m_StructParamStats[eSSNumStatParams];	// structure parameter basic stats
 
-	static const char *MapStructParam2Txt(teStructStats Param);
+	static const char *MapStructParam2Txt(teOctStructStats Param);
 
 };

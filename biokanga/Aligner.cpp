@@ -99,6 +99,8 @@ CAligner::Align(etPMode PMode,			// processing mode
 		int MaxSubs,					// maximum number of substitutions allowed per 100bp of actual read length
 		int Trim5,						// trim this number of bases from 5' end of reads when loading the reads
 		int Trim3,						// trim this number of bases from 3' end of reads when loading the reads
+		int MinAcceptReadLen,					// only accepting reads for alignment if at least this length after any end trimming
+		int MaxAcceptReadLen,					// only accepting reads for alignment if no longer than this length after any end trimming
 		int MinFlankExacts,				// trim matched reads on 5' and 3' flanks until at least this number of exactly matching bases in flanks
 		int PCRPrimerCorrect,			// initially align with MaxSubs+PCRPrimerCorrect subs allowed but then correct substitutions in 5' 12bp until overall sub rate within MaxSubs
 		int MaxRptSAMSeqsThres,			// report all SAM chroms or sequences if number of reference chroms <= this limit (defaults to 10000)
@@ -226,6 +228,9 @@ m_pszMarkerFile = pszMarkerFile;
 
 m_Trim5 = Trim5;						// trim this number of bases from 5' end of reads when loading the reads
 m_Trim3 = Trim3;						// trim this number of bases from 3' end of reads when loading the reads
+
+m_MinAcceptReadLen = MinAcceptReadLen;	// only accepting reads for alignment if at least this length after any end trimming
+m_MaxAcceptReadLen = MaxAcceptReadLen;	// only accepting reads for alignment if no longer than this length after any end trimming
 
 m_SitePrefsOfs = SitePrefsOfs;			// offset read start sites when processing  octamer preferencing, range -100..100
 
@@ -3444,9 +3449,9 @@ while((pReadHit = IterReads(pReadHit))!=NULL)
 				// a)	both edges are coincident with the source simulated reads edge loci
 				// b)   one edge only is coincident
 				// c)   neither edge is coincident
-				LeftOfs = (int32)pReadHit->HitLoci.Hit.Seg[0].MatchLoci;
+				LeftOfs = (INT32)pReadHit->HitLoci.Hit.Seg[0].MatchLoci;
 				if(pReadHit->HitLoci.FlagSegs)
-					RightOfs = (int32)pReadHit->HitLoci.Hit.Seg[1].MatchLoci + pReadHit->HitLoci.Hit.Seg[1].MatchLen - 1;
+					RightOfs = (INT32)pReadHit->HitLoci.Hit.Seg[1].MatchLoci + pReadHit->HitLoci.Hit.Seg[1].MatchLen - 1;
 				else
 					RightOfs = LeftOfs + pReadHit->HitLoci.Hit.Seg[0].MatchLen - 1;
 
@@ -3546,9 +3551,9 @@ if(NumChimeric)
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %u multiloci aligned reads could not accepted as hits because they were unresolvable",NumMultiMatches);
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %u aligned reads were not accepted as hits because of insufficient Hamming edit distance",NumHamming);
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %u '+' and %u '-' strand aligned reads not accepted because of flank trimming (%u were trimmed) requirements",m_ElimPlusTrimed,m_ElimMinusTrimed,NumTrimmed);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"A further %u '+' and %u '-' strand aligned reads not accepted because of flank trimming (%d were trimmed) requirements",m_ElimPlusTrimed,m_ElimMinusTrimed,NumTrimmed);
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Unable to align %u source reads of which %u were not aligned as they contained excessive number of indeterminate 'N' bases",NumNoMatches,NARNs);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Unable to align %u source reads of which %d were not aligned as they contained excessive number of indeterminate 'N' bases",NumNoMatches,NARNs);
 
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Read nonalignment reason summary:");
@@ -8122,6 +8127,8 @@ else
 	else
 		m_MinCoreLen = cMinCoreLen+6; 			// covers the big guys...
 
+// MaxNumSlides is per 100bp of read length
+// more slides enables higher sensitivity but negatively impacts on alignment throughput
 switch(m_PMode) {
 	case ePMUltraSens:				// ultra sensitive - much slower
 		MaxNumSlides = 8;			// leave m_MinCoreLen at it's minimum
@@ -8134,17 +8141,17 @@ switch(m_PMode) {
 		m_MinCoreLen += 3;
 		MaxNumSlides = 6;
 		break;
-	case ePMLessSens:				// less sensitive - quicker
+	case ePMLessSens:				// less sensitive but quicker
 		m_MinCoreLen += 5;
 		MaxNumSlides = 5;
 		break;
 	default:
-		MaxNumSlides = 4;
+		MaxNumSlides = 4;			// few slides, low sensitivity and much quicker
 		break;
 	}
 
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Now aligning with minimum core size of %d...\n",m_MinCoreLen);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Now aligning with minimum core size of %dbp...\n",m_MinCoreLen);
 m_ThreadCoredApproxRslt = 0;
 ResetThreadedIterReads();
 memset(WorkerThreads,0,sizeof(WorkerThreads));
@@ -8161,6 +8168,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 	WorkerThreads[ThreadIdx].AlignStrand = m_AlignStrand;
 	WorkerThreads[ThreadIdx].microInDelLen = m_microInDelLen;
 	WorkerThreads[ThreadIdx].SpliceJunctLen = m_SpliceJunctLen;
+	WorkerThreads[ThreadIdx].MinCoreLen = m_MinCoreLen;
 	WorkerThreads[ThreadIdx].MaxNumSlides = MaxNumSlides;
 	WorkerThreads[ThreadIdx].MinChimericLen = m_MinChimericLen;			
 	if(m_MLMode == eMLall)
@@ -8357,6 +8365,7 @@ tsHitLoci *pHit;
 int MaxTotMM;
 int CoreLen;
 int CoreDelta;
+int MaxNumSlides;
 int MaxIter;
 
 bool bForceNewAlignment;
@@ -8457,7 +8466,7 @@ while(ThreadedIterReads(&ReadsHitBlock))
 			MatchLen = ProbeLen;
 			}
 
-		MaxTotMM = pPars->MaxSubs == 0 ? 0 : max(1,(MatchLen * pPars->MaxSubs)/100); // any accepted alignment can have at most this many mismatches
+		MaxTotMM = pPars->MaxSubs == 0 ? 0 : max(1,(int)(0.5 + (MatchLen * pPars->MaxSubs)/100.0)); // any accepted alignment can have at most this many mismatches
 		if(MaxTotMM > cMaxTotAllowedSubs)		// irrespective of length allow at most this many subs
 			MaxTotMM = cMaxTotAllowedSubs;
 
@@ -8465,7 +8474,8 @@ while(ThreadedIterReads(&ReadsHitBlock))
 		// to be read length / (subs+2) for minimum Hamming difference of 2
 		// The window core length is clamped to be at least m_MinCoreLen
 		CoreLen = max(m_MinCoreLen,MatchLen/(pPars->MinEditDist == 1 ? MaxTotMM+1 : MaxTotMM+2));
-		CoreDelta = CoreLen;
+		MaxNumSlides = pPars->MaxNumSlides * ProbeLen / 100;
+		CoreDelta = max(ProbeLen/MaxNumSlides-1,CoreLen);
 
 		LowHitInstances = pReadHit->LowHitInstances;
 		LowMMCnt = pReadHit->LowMMCnt;
@@ -8499,7 +8509,8 @@ while(ThreadedIterReads(&ReadsHitBlock))
 														MaxTotMM,						// max number of mismatches allowed
 														CoreLen,						// core window length
 														CoreDelta,						// core window offset increment (1..n)
-														pPars->MaxNumSlides,			// max number of times to slide core on each strand
+														MaxNumSlides,					// limit on number of times core window can be moved or slide to right over read per 100bp of read length
+														pPars->MinCoreLen,				// minimum core length allowed
 														pPars->MinEditDist,				// minimum (1..n) mismatch difference between the best and next best core alignment
 														pPars->AlignStrand,				// watson, crick or both?
 														0,								// microInDel length maximum
@@ -8572,7 +8583,7 @@ while(ThreadedIterReads(&ReadsHitBlock))
 											MaxTotMM,			        // return matches having at most this number of mismatches
 											CoreLen,					// core window length
 											CoreDelta,					// core window offset increment (1..n)
-											pPars->MaxNumSlides,		// max number of times to slide core on each strand
+											MaxNumSlides,				// max number of times to slide core on each strand
 											pPars->AlignStrand,			// watson, crick or both?
  											Sequence,MatchLen,
 											m_MaxMLmatches,				// process for at most this many hits by current read
@@ -8592,7 +8603,8 @@ while(ThreadedIterReads(&ReadsHitBlock))
 														pReadHit->ReadID,				// identifies this read
 														pPars->MinChimericLen,			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
 														MaxTotMM,CoreLen,CoreDelta,
-														pPars->MaxNumSlides,
+														MaxNumSlides,					// limit on number of times core window can be moved or slide to right over read per 100bp of read length
+														pPars->MinCoreLen,				// minimum core length allowed
 														pPars->MinEditDist,
 														pPars->AlignStrand,				// watson, crick or both?
 														pPars->microInDelLen,			// microInDel length maximum
@@ -9013,7 +9025,7 @@ ReleaseLock(false);
 while(1) {
 	AcquireSerialise();
 	AcquireLock(false);
-	if(m_bAllReadsLoaded || m_NumReadsProc != m_NumReadsLoaded || m_ThreadCoredApproxRslt < 0)
+	if(m_bAllReadsLoaded || ((m_NumReadsLoaded - m_NumReadsProc) >= (UINT32)min(cMaxReadsPerBlock,pRetBlock->MaxReads)) || m_ThreadCoredApproxRslt < 0)
     	break;
 
 	ReleaseLock(false);
@@ -9043,7 +9055,11 @@ NumReadsLeft = m_NumReadsLoaded - m_NumReadsProc;
 if(NumReadsLeft < cMaxReadsPerBlock/4)	// if < cMaxReadsPerBlock/4 yet to be processed then give it all to the one thread
 	MaxReads2Proc = NumReadsLeft;
 else
+	{
 	MaxReads2Proc = min((UINT32)pRetBlock->MaxReads,10 + (NumReadsLeft / (UINT32)m_NumThreads));
+	// assume PE processing so ensure MaxReads2Proc is a multiple of 2
+ 	MaxReads2Proc &= ~0x01;
+	}
 MaxReads2Proc = min(MaxReads2Proc,NumReadsLeft);
 if(!m_NumReadsProc)
 	m_NxtReadProcOfs = 0;
@@ -10103,6 +10119,7 @@ int PE1NumReadsAccepted;
 int PE1NumInvalValues;
 int PE1NumUnsupportedBases;
 int PE1NumUnderlength;
+int PE1NumOverlength;
 
 bool bPE2SimReads;
 int PE2NumDescrReads;
@@ -10116,6 +10133,7 @@ int PE2NumReadsAccepted;
 int PE2NumInvalValues;
 int PE2NumUnsupportedBases;
 int PE2NumUnderlength;
+int PE2NumOverlength;
 
 int ContamLen5PE1;
 int ContamLen3PE1;
@@ -10273,11 +10291,13 @@ PE1NumDescrReads = 0;
 PE1NumReadsAccepted = 0;
 PE1NumInvalValues = 0;
 PE1NumUnderlength = 0;
+PE1NumOverlength = 0;
 PE2NumUnsupportedBases = 0;
 PE2NumDescrReads = 0;
 PE2NumReadsAccepted = 0;
 PE2NumInvalValues = 0;
 PE2NumUnderlength = 0;
+PE2NumOverlength = 0;
 
 NumContamLen5PE1 = 0;
 NumContamLen3PE1 = 0;
@@ -10416,8 +10436,8 @@ while((Rslt = (teBSFrsltCodes)(PE1ReadLen = PE1Fasta.ReadSequence(szPE1ReadBuff,
 			ContamLen3PE2 = 0;
 			}
 
-		// ensure would still have a sequence of at least cMinSeqLen after any end trims were applied
-		if((m_Trim5 + m_Trim3 + ContamLen5PE1 + ContamLen3PE1 + (int)cMinSeqLen) > PE1ReadLen)
+		// ensure would still have a sequence of at least m_MinAcceptReadLen after any end trims were applied
+		if((m_Trim5 + m_Trim3 + ContamLen5PE1 + ContamLen3PE1 + (int)m_MinAcceptReadLen) > PE1ReadLen)
 			{
 			PE1NumUnderlength += 1;
 			if(PE1NumUnderlength <= 10)
@@ -10425,13 +10445,29 @@ while((Rslt = (teBSFrsltCodes)(PE1ReadLen = PE1Fasta.ReadSequence(szPE1ReadBuff,
 			continue;
 			}
 
+		// ensure would have a sequence of no more than m_MaxAcceptReadLen after any end trims were applied
+		if((m_Trim5 + m_Trim3 + ContamLen5PE1 + ContamLen3PE1 + (int)m_MaxAcceptReadLen) < PE1ReadLen)
+			{
+			PE1NumOverlength += 1;
+			if(PE1NumOverlength <= 10)
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Load: over length (%d) sequence in '%s' after end trims has been sloughed..",PE1ReadLen,pszPE1File);
+			continue;
+			}
+
 		if(bIsPairReads)
 			{
-			if((m_Trim5 + m_Trim3 + ContamLen5PE2 + ContamLen3PE2  + (int)cMinSeqLen) > PE2ReadLen)
+			if((m_Trim5 + m_Trim3 + ContamLen5PE2 + ContamLen3PE2  + (int)m_MinAcceptReadLen) > PE2ReadLen)
 				{
 				PE2NumUnderlength += 1;
 				if(PE2NumUnderlength <= 10)
 					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Load: under length (%d) sequence in '%s' after end trims has been sloughed..",PE2ReadLen,pszPE2File);
+				continue;
+				}
+			if((m_Trim5 + m_Trim3 + ContamLen5PE2 + ContamLen3PE2  + (int)m_MaxAcceptReadLen) < PE2ReadLen)
+				{
+				PE2NumOverlength += 1;
+				if(PE2NumOverlength <= 10)
+					gDiagnostics.DiagOut(eDLFatal,gszProcName,"Load: over length (%d) sequence in '%s' after end trims has been sloughed..",PE2ReadLen,pszPE2File);
 				continue;
 				}
 			}
@@ -10716,6 +10752,8 @@ if(PE1NumUnsupportedBases > 0)
 	gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d unsupported bases read from file '%s'",PE1NumUnsupportedBases,pszPE1File);
 if(PE1NumUnderlength > 0)
 	gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d under length sequences sloughed from file '%s'",PE1NumUnderlength,pszPE1File);
+if(PE1NumOverlength > 0)
+	gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d over length sequences sloughed from file '%s'",PE1NumOverlength,pszPE1File);
 if(m_pContaminants != NULL)
 	{
 	gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d sequences PE1 sequences were 5' contaminate trimmed",NumContamLen5PE1);
@@ -10731,6 +10769,8 @@ if(bIsPairReads)
 		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d unsupported bases read from file '%s'",PE2NumUnsupportedBases,pszPE2File);
 	if(PE2NumUnderlength > 0)
 		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d under length sequences sloughed from file '%s'",PE2NumUnderlength,pszPE2File);
+	if(PE2NumOverlength > 0)
+		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d over length sequences sloughed from file '%s'",PE2NumOverlength,pszPE2File);
 	if(m_pContaminants != NULL)
 		{
 		gDiagnostics.DiagOut(eDLWarn,gszProcName,"Load: total of %d sequences PE1 sequences were 5' contaminant trimmed",NumContamLen5PE2);

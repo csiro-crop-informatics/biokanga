@@ -50,7 +50,7 @@ Process(etPMode PMode,					// processing mode
 		char *pszRsltsFile,				// optional output UCSC wiggle file
 	    char *pszKMerRsltsFile);		// output K-mer distributions file
 
-char *Conf2Txt(teStructStats ConfParam); // returns short description of specified conformational characteristic
+char *Conf2Txt(teOctStructStats ConfParam); // returns short description of specified conformational characteristic
 
 CStopWatch gStopWatch;
 CDiagnostics gDiagnostics;				// for writing diagnostics messages to log file

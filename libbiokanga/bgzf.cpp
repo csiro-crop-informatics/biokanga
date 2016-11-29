@@ -76,7 +76,7 @@ typedef FILE *_bgzf_file_t;
 #define BLOCK_FOOTER_LENGTH 8
 
 
-/* BGZF/GZIP header (specialized from RFC 1952; little endian):
+/* BGZF/GZIP header (speciallized from RFC 1952; little endian):
  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
  | 31|139|  8|  4|              0|  0|255|      6| 66| 67|      2|BLK_LEN|
  +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+

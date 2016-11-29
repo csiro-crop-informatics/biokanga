@@ -2617,7 +2617,7 @@ int ChrIdx;
 int BasesLine;
 char *pszFastaBuff;
 tsGraphVertex *pVertex;
-uint32 ComponentIdx;
+UINT32 ComponentIdx;
 tsComponent *pCurComponent;
 tsPathTraceBack *pPathTraceback;
 UINT32 AllocPathLength;

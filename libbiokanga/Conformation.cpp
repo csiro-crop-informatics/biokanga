@@ -21,14 +21,17 @@
 
 CConformation::CConformation(void)
 {
-m_pStructParams = NULL;
+m_pOctStructParams = NULL;
+m_pDiStructParams = NULL;
+m_NumDiStructParams = 0;
 }
 
 CConformation::~CConformation(void)
 {
-if(m_pStructParams != NULL)
-	delete m_pStructParams;
-m_pStructParams = NULL;
+if(m_pOctStructParams != NULL)
+	delete m_pOctStructParams;
+if(m_pDiStructParams != NULL)
+	delete m_pDiStructParams;
 }
 
 // StructParamsLoaded
@@ -36,17 +39,17 @@ m_pStructParams = NULL;
 bool
 CConformation::StructParamsLoaded(void)
 {
-return(m_pStructParams == NULL ? false : true);
+return(m_pOctStructParams == NULL ? false : true);
 }
 
-// LoadStructParams
-// Load structural parameters from file
-// File layout is that of one comma separated set of parameters per line with optional heading line
+// LoadStructOctamersParams
+// Load structural parameters from file, two different sets of structural parameters exist - one (the most comprehensive) is for dimers, the other is for octamers
+// For octamers the file layout is that of one comma separated set of parameters per unique octamer line with optional heading line
 // Octamer,Twist,Roll,Tilt,Rise,Slide,Shift,3-StepTwist,3-StepRoll,3-StepSlide,3-StepShift,Energy,
 // MinorGroove,RMSD,Q-Twist,Q+Twist,Q-Roll,Q+Roll,3Q-Twist,3Q+Twist,3Q-Roll,3Q+Roll, ORChID (hydroxyl radical cleavage values)
 //
 teBSFrsltCodes 
-CConformation::LoadStructParams(char *pszStructParamsFile) // load structural parameters, from internal fixed constant array or from file
+CConformation::LoadStructOctamersParams(char *pszStructParamsFile) // load structural parameters from file
 {
 FILE *pParamsStream;
 int LineNum;
@@ -60,27 +63,27 @@ double Twist,Roll,Tilt,Rise,Slide,Shift,TriStepTwist,TriStepRoll,TriStepSlide,Tr
 double Energy,MinorGroove,RMSD,QminusTwist,QplusTwist,QminusRoll,QplusRoll;
 double TriQminusTwist,TriQplusTwist,TriQminusRoll,TriQplusRoll,ORChID;
 
-tsStructParam *pStruct1;
+tsOctStructParam *pStruct1;
 char chr, *pDst, *pSrc;
 
-if(m_pStructParams == NULL)
+if(m_pOctStructParams == NULL)
 	{	
-	m_pStructParams = (tsStructParam *) new unsigned char[cStructParamAllocSize];
-	if(m_pStructParams == NULL)
+	m_pOctStructParams = (tsOctStructParam *) new UINT8[cOctStructParamAllocSize];
+	if(m_pOctStructParams == NULL)
 		{
 		AddErrMsg("CConformation::LoadStructParams","Unable to allocate memory to hold structural parameters");
 		return(eBSFerrMem);
 		}
-	memset(m_pStructParams,0,cStructParamAllocSize);
+	memset(m_pOctStructParams,0,cOctStructParamAllocSize);
 	}
-m_szStructParamFile[0] = '\0';
+m_szOctStructParamFile[0] = '\0';
 
 
 if((pParamsStream = fopen(pszStructParamsFile,"r"))==NULL)
 	{
 	AddErrMsg("CConformation::LoadStructParams","Unable to open parameters file %s error: %s",pszStructParamsFile,strerror(errno));
-	delete m_pStructParams;
-	m_pStructParams = NULL;
+	delete m_pOctStructParams;
+	m_pOctStructParams = NULL;
 	return(eBSFerrOpnFile);
 	}
 
@@ -118,8 +121,8 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pParamsStream)!= NULL)
 		{
 		AddErrMsg("CConformation::LoadStructParams","Error parsing structural parameters file %s at line %d, expected 23 but only parsed %d parameters\n%s\n",pszStructParamsFile,LineNum,Cnt,szLineBuff);
 		fclose(pParamsStream);
-		delete m_pStructParams;
-		m_pStructParams = NULL;
+		delete m_pOctStructParams;
+		m_pOctStructParams = NULL;
 		return(eBSFerrStructParm); 
 		}
 
@@ -128,15 +131,15 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pParamsStream)!= NULL)
 		{
 		AddErrMsg("CConformation::LoadStructParams","Octamer in file %s at line %d contains unrecognised bases (only 'a','c','g','t' accepted)\n%s\n",pszStructParamsFile,LineNum,szLineBuff);
 		fclose(pParamsStream);
-		delete m_pStructParams;
-		m_pStructParams = NULL;
+		delete m_pOctStructParams;
+		m_pOctStructParams = NULL;
 		return((teBSFrsltCodes)OctIdx); 
 		}
-	pStruct1	 = &m_pStructParams[OctIdx];
+	pStruct1	 = &m_pOctStructParams[OctIdx];
 	if(pStruct1->Param.twist != 0)
 		{
 		fclose(pParamsStream);
-		delete m_pStructParams;
+		delete m_pOctStructParams;
 		AddErrMsg("CConformation::LoadStructParams","Duplicate octamer structural properties parsed at line %d in file %s\n",LineNum,pszStructParamsFile);
 		return(eBSFerrStructParm);
 		}
@@ -157,32 +160,174 @@ fclose(pParamsStream);
 
 if(NumOctParams != cNumParamOctamers)
 	AddErrMsg("CConformation::LoadStructParams","Warning, not all octamers in '%s' have structural properties\n",pszStructParamsFile);
-strncpy(m_szStructParamFile,pszStructParamsFile,_MAX_PATH-1);
-m_szStructParamFile[_MAX_PATH-1] = '\0';
+strncpy(m_szOctStructParamFile,pszStructParamsFile,_MAX_PATH-1);
+m_szOctStructParamFile[_MAX_PATH-1] = '\0';
+
+// inference mid-step major groove from twist + rise
+int StepIdx;
+int SumTwists;
+int SumRises;
+double MajorGroove;
+
+memset(octbases,0,sizeof(octbases));
+pStruct1 = m_pOctStructParams;
+for(OctIdx = 0; OctIdx < cNumParamOctamers; OctIdx++, pStruct1++)
+	{
+	for(StepIdx=0; StepIdx < 8; StepIdx++)
+		octbases[StepIdx] = 0x03 & (OctIdx >> (StepIdx*2));
+	SumTwists = 0;
+	SumRises = 0;
+	for(StepIdx=1; StepIdx <= 7; StepIdx++)		// NOTE: conformational steps are interbase so octamers contain 7 steps
+		{
+		SumTwists += StructValue(eSStwist,StepIdx,8,octbases,0);
+		SumRises += StructValue(eSSrise,StepIdx,8,octbases,0);
+		}
+
+	MajorGroove = (double)SumRises * 10000.0 * 360.0/(double)SumTwists;
+	
+	pStruct1->Param.majorgroove = (int)MajorGroove - pStruct1->Param.minorgroove;
+	} 
 return(eBSFSuccess);
 }
 
-// reproducably psudeo-randomise conformation characteristics
+// dimer structural parameters, generated from 'DiProDB: a database for dinucleotide properties', http://diprodb.fli-leibniz.de
+teBSFrsltCodes 
+CConformation::LoadStructDimersParams(char *pszStructParamsFile) // load structural parameters from file
+{
+FILE *pParamsStream;
+int LineNum;
+int NumFields;
+char szLineBuff[512];
+
+tsDiStructParam DiStructParam;
+int DiMerIdx;
+
+tsDiStructParam *pDiStructParam;
+int NumDiStructParams;
+char chr, *pDst, *pSrc;
+
+if(m_pDiStructParams == NULL)
+	{	
+	m_pDiStructParams = (tsDiStructParam *) new unsigned char[cDiStructParamAllocSize];
+	if(m_pDiStructParams == NULL)
+		{
+		AddErrMsg("CConformation::LoadStructDimersParams","Unable to allocate memory to hold structural parameters");
+		return(eBSFerrMem);
+		}
+	memset(m_pDiStructParams,0,cDiStructParamAllocSize);
+	}
+m_szDiStructParamFile[0] = '\0';
+m_NumDiStructParams = 0;
+NumDiStructParams = 0;
+
+if((pParamsStream = fopen(pszStructParamsFile,"r"))==NULL)
+	{
+	AddErrMsg("CConformation::LoadStructParams","Unable to open dimer structural parameters file %s error: %s",pszStructParamsFile,strerror(errno));
+	delete m_pDiStructParams;
+	m_pDiStructParams = NULL;
+	return(eBSFerrOpnFile);
+	}
+
+pDiStructParam = m_pDiStructParams;
+LineNum = 0;
+int NxScanPsn;
+int ParamLines = 0;
+while(fgets(szLineBuff,sizeof(szLineBuff),pParamsStream)!= NULL)
+	{
+	LineNum++;
+	if(strlen(szLineBuff) < 10)	// simply slough lines which are too short to contain anything worth parsing
+		continue;
+
+	// strip any whitespace and quotes
+	pDst = pSrc = szLineBuff;
+	while(chr = *pSrc++)
+		if(!isspace(chr) && chr != '\'' && chr != '"')
+			*pDst++ = chr;
+	*pDst = '\0';
+	if(szLineBuff[0] == '\0')
+		continue;
+	ParamLines += 1;
+
+	// expecting at least 18 fields in CSV rows
+	pSrc = szLineBuff; 
+	// parse out expected structural parameter identifier followed by parameter name
+	NumFields = sscanf(pSrc,"%d,%80[^,],%n",&DiStructParam.ID,DiStructParam.szName,&NxScanPsn);
+	if(NumFields != 2)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to parse dimer structural parameter identifier and name from line %d in '%s' file",LineNum,pszStructParamsFile);
+		delete m_pDiStructParams;
+		m_pDiStructParams = NULL;
+		fclose(pParamsStream);
+		return(eBSFerrConfParam);
+		}
+	// check that the structural parameter is unique and monotonically incrementing
+	for(DiMerIdx = 1; DiMerIdx <= NumDiStructParams; DiMerIdx++)
+		if(DiStructParam.ID != DiMerIdx)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Dimer structural parameter identifier %d parsed from line %d in '%s' file is not monotonically incrementing from 1 to 124",DiStructParam.ID,LineNum,pszStructParamsFile);
+			delete m_pDiStructParams;
+			m_pDiStructParams = NULL;
+			fclose(pParamsStream);
+			return(eBSFerrConfParam);
+			}	
+	// next expecting the parameter values for each dimer - 16 dimers AA..TT
+	pSrc += NxScanPsn;
+	for(DiMerIdx=0;DiMerIdx < 16; DiMerIdx++)
+		{
+		NumFields = sscanf(pSrc,"%lf,%n",&DiStructParam.DiValue[DiMerIdx],&NxScanPsn);
+		if(NumFields != 1)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to parse dimer structural parameter value for dimer %d from line %d in '%s' file",DiMerIdx, LineNum,pszStructParamsFile);
+			delete m_pDiStructParams;
+			m_pDiStructParams = NULL;
+			fclose(pParamsStream);
+			return(eBSFerrConfParam);
+			}
+		pSrc += NxScanPsn;
+		}
+
+	// finally, treat all remaining fields as supplementary
+	if(*pSrc != '\0')
+		strncpy(DiStructParam.szSupFields,pSrc,sizeof(DiStructParam.szSupFields)-1);
+	*pDiStructParam++ = DiStructParam; 
+	NumDiStructParams++;
+	}
+if(NumDiStructParams != 124)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to parse all expected 124 dimer structural parameters from '%s' file",pszStructParamsFile);
+	delete m_pDiStructParams;
+	m_pDiStructParams = NULL;
+	fclose(pParamsStream);
+	return(eBSFerrConfParam);
+	}
+fclose(pParamsStream);
+strncpy(m_szDiStructParamFile,pszStructParamsFile,_MAX_PATH-1);
+m_szDiStructParamFile[_MAX_PATH-1] = '\0';
+m_NumDiStructParams = NumDiStructParams;
+return(eBSFSuccess);
+}
+
+// reproducible psudeo-randomise conformation characteristics
 //
 int
 CConformation::PsudeoRandomise(void)
 {
 int Len;
 int OctIdx;
-tsStructParam tmp;
-TRandomMersenne Random(1); // random sequence must be reproducable so seed required
+tsOctStructParam tmp;
+CRandomMersenne Random(1); // random sequence must be reproducible so seed required
 for(Len = cNumParamOctamers; Len > 1; Len--)
 	{				
     OctIdx       = Random.IRandom(0,Len-1);
-    tmp         = m_pStructParams[OctIdx];
-    m_pStructParams[OctIdx]   = m_pStructParams[Len-1];
-    m_pStructParams[Len-1] = tmp;
+    tmp         = m_pOctStructParams[OctIdx];
+    m_pOctStructParams[OctIdx]   = m_pOctStructParams[Len-1];
+    m_pOctStructParams[Len-1] = tmp;
 	}
 return(eBSFSuccess);
 }
 
 
-// determine idex to use for assumed octamer sequence
+// determine index to use for assumed octamer sequence
 // eBSFerrStructStep returned if any base in octamer is indeterminate - 'N'
 int
 CConformation::StructParamIdx(etSeqBase *pOctamer)		// sequence
@@ -190,7 +335,7 @@ CConformation::StructParamIdx(etSeqBase *pOctamer)		// sequence
 etSeqBase Base;
 int OctIdx = 0;
 int Len = 8;
-if(pOctamer == NULL || m_pStructParams == NULL)
+if(pOctamer == NULL || m_pOctStructParams == NULL)
 	return((int)eBSFerrParams);
 
 while(Len--)
@@ -205,7 +350,7 @@ return(OctIdx);
 }
 
 teBSFrsltCodes
-CConformation::GetSequenceConformation(teStructStats Param,		// which structural parameter value to return
+CConformation::GetSequenceConformation(teOctStructStats Param,		// which structural parameter value to return
 				 unsigned int iStartOfs, // initial starting offset (0..n) in pSeq
 				  unsigned int iNumSteps,		  // number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
   				  unsigned int SeqLen,			  // total length of sequence
@@ -219,7 +364,7 @@ int IdxRetVal;
 
 if(SeqLen < 8 || iStartOfs >= SeqLen - 1 || 
    iStartOfs + iNumSteps >= SeqLen ||
-   pSeq == NULL || m_pStructParams == NULL)
+   pSeq == NULL || m_pOctStructParams == NULL)
 	return(eBSFerrParams);
 
 if(iNumSteps == 0)
@@ -232,13 +377,13 @@ return(eBSFSuccess);
 }
 
 int
-CConformation::StructValue(teStructStats Param,		// which structural parameter value to return
+CConformation::StructValue(teOctStructStats Param,		// which structural parameter value to return
 			unsigned int Step,			// which step in sequence to return structural value for
 			unsigned int SeqLen,		// total length of sequence
 			etSeqBase *pSeq,			// sequence to be processed
 			int UndefBaseValue)			// value to return for undefined or indeterminate ('N') bases 
 {
-tsStructParam *pStruct;
+tsOctStructParam *pStruct;
 etSeqBase *pOctamer;
 etSeqBase octamer[8];
 int OctIdx;
@@ -255,43 +400,47 @@ int	SeqOfs;
 
 switch(Param) {
 	case eSSenergy:				// minimal energy int(energy * 10000) e.g. -408.2632 ==> -4082632
-		ParamOfs = offsetof(tsStructParam,Param.energy);
+		ParamOfs = offsetof(tsOctStructParam,Param.energy);
 		break;
 
 	case eSSminorgroove:				// groove int(dimensions * 10000) e.g 10.784 ==> 107840
-		ParamOfs = offsetof(tsStructParam,Param.minorgroove);
+		ParamOfs = offsetof(tsOctStructParam,Param.minorgroove);
+		break;
+
+	case eSSmajorgroove:				
+		ParamOfs = offsetof(tsOctStructParam,Param.majorgroove);
 		break;
 
 	case eSStwist:					// twist int(angle * 10000) e.g 	37.6262 ==> 376262
-		ParamOfs = offsetof(tsStructParam,Param.twist);
+		ParamOfs = offsetof(tsOctStructParam,Param.twist);
 		break;
 
 	case eSSroll:					// roll int(angle * 10000) e.g 	2.4139 ==> 24139
-		ParamOfs = offsetof(tsStructParam,Param.roll);
+		ParamOfs = offsetof(tsOctStructParam,Param.roll);
 		break;
 
 	case eSStilt:					// tilt int(tilt * 10000) e.g 	-0.022 ==> -220
-		ParamOfs = offsetof(tsStructParam,Param.tilt);
+		ParamOfs = offsetof(tsOctStructParam,Param.tilt);
 		break;
 
 	case eSSrise:					// rise int(rise * 10000) e.g 	3.1409 ==> 31409
-		ParamOfs = offsetof(tsStructParam,Param.rise);
+		ParamOfs = offsetof(tsOctStructParam,Param.rise);
 		break;
 
 	case eSSslide:					// slide int(slide * 10000) e.g 	-0.0968 ==> -968	
-		ParamOfs = offsetof(tsStructParam,Param.slide);
+		ParamOfs = offsetof(tsOctStructParam,Param.slide);
 		break;
 
 	case eSSshift:					// shift int(shift * 10000) e.g 	0.0645 ==> 645
-		ParamOfs = offsetof(tsStructParam,Param.shift);
+		ParamOfs = offsetof(tsOctStructParam,Param.shift);
 		break;
 
 	case eSSrmsd:					// rmsd int(rmsd * 10000) e.g 	0.3078 ==> 3078
-		ParamOfs = offsetof(tsStructParam,Param.rmsd);
+		ParamOfs = offsetof(tsOctStructParam,Param.rmsd);
 		break;
 
 	case eSSORChidVal:
-		ParamOfs = offsetof(tsStructParam,Param.orchid);
+		ParamOfs = offsetof(tsOctStructParam,Param.orchid);
 		break;
 
 	default:
@@ -306,7 +455,7 @@ if(Step > 3 && Step < SeqLen - 3)
 		return(UndefBaseValue);
 	else
 		{
-		pStruct = &m_pStructParams[OctIdx];
+		pStruct = &m_pOctStructParams[OctIdx];
 		return(*(int *)(((unsigned char *)pStruct)+ParamOfs));
 		}
 	}
@@ -367,7 +516,7 @@ for(Cnt = 0; Cnt < Iters; Cnt++)
 	OctIdx = StructParamIdx(octamer);
 	if(OctIdx < 0)
 		return(UndefBaseValue);
-	pStruct = &m_pStructParams[OctIdx];
+	pStruct = &m_pOctStructParams[OctIdx];
 	InterpValue += *(int *)(((unsigned char *)pStruct)+ParamOfs);;
 
 	if(!bLeft)

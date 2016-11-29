@@ -68,8 +68,8 @@ ProcSWService(int argc, char** argv)
 	struct arg_int *FileLogLevel = arg_int0("f", "FileLogLevel", "<int>", "Level of diagnostics written to logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 	struct arg_file *LogFile = arg_file0("F", "log", "<file>", "diagnostics log file");
 	struct arg_int *pmode = arg_int0("m", "mode", "<int>", "Smith-Waterman service processing mode: 0 - default");
-	struct arg_int *maxservinsts = arg_int0("n", "instances", "<int>", "max number of service instances supported (0 - defaults to number of CPU cores, max of 511)");
-	struct arg_int *maxservmemgb = arg_int0("M", "mem", "<int>", "max allocatable physical memory (GB) available for all service instances (0 - defaults to 75% host memory, max of 1000)");
+	struct arg_int *maxservinsts = arg_int0("n", "instances", "<int>", "max number of service instances supported (0 - defaults to number of CPU cores, range 1..128)");
+	struct arg_int *maxservmemgb = arg_int0("M", "mem", "<int>", "max allocatable physical memory (GB) available for all service instances at 6GB per service instance (0 - defaults to 75% host memory, max of 1000)");
 	struct arg_int *maxconnwait = arg_int0("w", "wait", "<int>", "wait for at most this many minutes for service requester connection (0 - defaults to 15min, max of 240)");
 
 	struct arg_str  *host = arg_str0("u", "rmihost", "<string>", "Connect to this service requester host name or IPv4/IPv5 address (default 127.0.0.1)");

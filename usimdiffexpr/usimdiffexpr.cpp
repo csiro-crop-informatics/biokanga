@@ -510,7 +510,7 @@ RandSeed = (UINT32)times(&Times);			// number of clock ticks since an arbitrary 
 #endif
 if(!RandSeed)								// just in case
 	RandSeed = (UINT32)time(NULL);
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RGseeds(RandSeed);
+TRandomCombined<CRandomMother,CRandomMersenne> RGseeds(RandSeed);
 // generator can take a number of iterations to settle down before generating reasonable psuedo-random values so run it for a million cycles
 for(RandSeed = 0; RandSeed < 100000; RandSeed++)
 	RGseeds.IRandom(0,1000000);
@@ -976,7 +976,7 @@ RandSeed = (UINT32)times(&Times);			// number of clock ticks since an arbitrary 
 RandSeed += (UINT32)pPars->threadID + (UINT32)(UINT64)&RandSeed;
 if(!RandSeed)								// just in case
 	RandSeed = (UINT32)time(NULL);
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RGseeds(RandSeed);
+TRandomCombined<CRandomMother,CRandomMersenne> RGseeds(RandSeed);
 for(ElIdx = 0; ElIdx < 10000; ElIdx++)
 	RGseeds.IRandom(0,1000000);
 NumAcceptedSamples = 0;

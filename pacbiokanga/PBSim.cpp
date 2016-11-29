@@ -322,7 +322,7 @@ CPBSim::~CPBSim()
 }
 
 
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RGseeds((int)time(0));
+TRandomCombined<CRandomMother,CRandomMersenne> RGseeds((int)time(0));
 
 int CPBSim::Process(struct sim_t *psim)
 {

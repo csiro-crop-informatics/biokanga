@@ -28,10 +28,10 @@ const UINT32 cMaxNumSessions = cMaxConcurrentSessions;	// support a maximum of t
 const UINT32 cDfltNumSessions = 25;				// the default is support for at most this many concurrent sessions  a given service type (note that a single session can support multiple service instances of the same type)
 const UINT32 cDfltMinSessions = 1;				// must be support for at least this many concurrent sessions for a given service type 
 
-const UINT32 cMaxServiceInsts = 100;			// can only support at most this maximum number of service instances by single service provider (must fit within 9bits)
+const UINT32 cMaxServiceInsts = 128;			// can only support at most this maximum number of service instances by single service provider (must fit within 9bits)
 const UINT32 cMaxClassInsts = cMaxServiceInsts;	// any service provider can support up to this many class instances in a session
 
-const UINT32 cDfltServiceInsts = 64;			// the default is support for at most this maximum number of service instances for any single service provider
+const UINT32 cDfltServiceInsts = 32;			// the default is support for at most this maximum number of service instances for any single service provider
 const UINT32 cMinServiceInsts = 1;				// must be at least this minimum number of service instances for any single service provider
 
 const UINT32 cMaxSessEstab = 20;                // allowing at most this many endpoints to be in establishment negotiation state

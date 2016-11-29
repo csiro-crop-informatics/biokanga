@@ -77,7 +77,9 @@ splitmultifasta.o: splitmultifasta.cpp /usr/include/stdc-predef.h \
  ../libbiokanga/././SfxArray.h ../libbiokanga/././SfxArrayV2.h \
  ../libbiokanga/././SmithWaterman.h ../libbiokanga/././NeedlemanWunsch.h \
  ../libbiokanga/././CVS2BED.h ../libbiokanga/././AlignValidate.h \
- ../libbiokanga/././Random.h ../libbiokanga/././Utility.h \
+ ../libbiokanga/././Random.h \
+ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdint.h /usr/include/stdint.h \
+ /usr/include/x86_64-linux-gnu/bits/wchar.h ../libbiokanga/././Utility.h \
  ../libbiokanga/././Stats.h ../libbiokanga/././Shuffle.h \
  ../libbiokanga/././GOAssocs.h ../libbiokanga/././GOTerms.h \
  ../libbiokanga/././SimpleRNG.h ../libbiokanga/././zlib/zlib.h \
@@ -92,8 +94,7 @@ splitmultifasta.o: splitmultifasta.cpp /usr/include/stdc-predef.h \
  ../libbiokanga/././sais.h ../libbiokanga/././HyperEls.h \
  ../libbiokanga/././FilterRefIDs.h ../libbiokanga/././FilterLoci.h \
  ../libbiokanga/././FeatLoci.h ../libbiokanga/././SimpleGlob.h \
- /usr/include/glob.h /usr/include/x86_64-linux-gnu/bits/wchar.h \
- /usr/include/x86_64-linux-gnu/bits/wchar2.h \
+ /usr/include/glob.h /usr/include/x86_64-linux-gnu/bits/wchar2.h \
  ../libbiokanga/././Contaminants.h ../libbiokanga/././ProcRawReads.h \
  ../libbiokanga/././GTFFile.h ../libbiokanga/././GFFFile.h \
  ../libbiokanga/././sqlite3.h
@@ -338,6 +339,12 @@ stdafx.h:
 
 ../libbiokanga/././Random.h:
 
+/usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdint.h:
+
+/usr/include/stdint.h:
+
+/usr/include/x86_64-linux-gnu/bits/wchar.h:
+
 ../libbiokanga/././Utility.h:
 
 ../libbiokanga/././Stats.h:
@@ -391,8 +398,6 @@ stdafx.h:
 ../libbiokanga/././SimpleGlob.h:
 
 /usr/include/glob.h:
-
-/usr/include/x86_64-linux-gnu/bits/wchar.h:
 
 /usr/include/x86_64-linux-gnu/bits/wchar2.h:
 

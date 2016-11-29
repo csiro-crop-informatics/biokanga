@@ -19,16 +19,18 @@
 #include "./commhdrs.h"
 #endif
 
+
+
 CTwister::CTwister(void)
 {
-m_pStructParams = NULL;
+m_pOctStructParams = NULL;
 }
 
 CTwister::~CTwister(void)
 {
-if(m_pStructParams!=NULL)
-	delete m_pStructParams;
-m_pStructParams = NULL;
+if(m_pOctStructParams!=NULL)
+	delete m_pOctStructParams;
+m_pOctStructParams = NULL;
 }
 
 
@@ -40,7 +42,7 @@ int
 CTwister::LoadStructParams(char *pszStructParamsFile) // load structural parameters from file
 {
 int Rslt;
-if((Rslt = CConformation::LoadStructParams(pszStructParamsFile)) < eBSFSuccess)
+if((Rslt = CConformation::LoadStructOctamersParams(pszStructParamsFile)) < eBSFSuccess)
 	return(Rslt);
 GenStructParamStats();				// generate basic structure parameter stats
 return(eBSFSuccess);
@@ -49,7 +51,7 @@ return(eBSFSuccess);
 int 
 CTwister::GenStructParamStats(void)				// generate basic structure parameter stats
 {
-tsStructParam *pStructParams;
+tsOctStructParam *pStructParams;
 tsStructStats *pStructStats;
 int *pStructValue;
 int Idx;
@@ -68,13 +70,13 @@ for(ParamIdx = 0; ParamIdx < eSSNumStatParams; ParamIdx++,pStructStats++)
 	Variances[ParamIdx] = 0.0;
 	}
 
-pStructParams = m_pStructParams;
+pStructParams = m_pOctStructParams;
 for(Idx = 0; Idx < cNumParamOctamers; Idx++, pStructParams++)
 	{
 	pStructStats = m_StructParamStats;
 	for(ParamIdx = 0; ParamIdx < eSSNumStatParams; ParamIdx++,pStructStats++)
 		{
-		pStructValue = MapStructParam2Ptr((teStructStats)ParamIdx,pStructParams);
+		pStructValue = MapStructParam2Ptr((teOctStructStats)ParamIdx,pStructParams);
 		if(*pStructValue < pStructStats->Min)
 			pStructStats->Min = *pStructValue;
 		if(*pStructValue > pStructStats->Max)
@@ -87,13 +89,13 @@ for(ParamIdx = 0; ParamIdx < eSSNumStatParams; ParamIdx++,pStructStats++)
 	pStructStats->Mean = (int)(Means[ParamIdx]/cNumParamOctamers);
 
 // now that means are known then stddev can be calculated
-pStructParams = m_pStructParams;
+pStructParams = m_pOctStructParams;
 for(Idx = 0; Idx < cNumParamOctamers; Idx++, pStructParams++)
 	{
 	pStructStats = m_StructParamStats;
 	for(ParamIdx = 0; ParamIdx < eSSNumStatParams; ParamIdx++,pStructStats++)
 		{
-		pStructValue = MapStructParam2Ptr((teStructStats)ParamIdx,pStructParams);
+		pStructValue = MapStructParam2Ptr((teOctStructStats)ParamIdx,pStructParams);
 		Variances[ParamIdx] += pow(((*pStructValue - pStructStats->Mean) / 100.0),2);
 		}
 	}
@@ -105,10 +107,11 @@ return(eBSFSuccess);
 }
 
 void
-CTwister::SetMissing(tsStructParam *pRetStructParam)
+CTwister::SetMissing(tsOctStructParam *pRetStructParam)
 {
 pRetStructParam->Param.energy = INT_MIN;
 pRetStructParam->Param.minorgroove = INT_MIN;
+pRetStructParam->Param.majorgroove = INT_MIN;
 pRetStructParam->Param.rise = INT_MIN;
 pRetStructParam->Param.rmsd = INT_MIN;
 pRetStructParam->Param.roll = INT_MIN;
@@ -130,7 +133,7 @@ int
 CTwister::GetStructParams(unsigned int Step,	// which step (1..SeqLen-1)
 				unsigned int SeqLen,			// sequence length (8..n)
 				etSeqBase *pSeq,				// sequence
-				tsStructParam *pRetStructParam) // where to return structural parameters
+				tsOctStructParam *pRetStructParam) // where to return structural parameters
 {
 int OctIdx;
 etSeqBase *pOctamer;
@@ -139,7 +142,7 @@ int	Cnt;
 int	OctOfs;
 int	SeqOfs;
 
-if(SeqLen < 8 || Step < 1 || Step >= SeqLen || pSeq == NULL || pRetStructParam == NULL || m_pStructParams == NULL)
+if(SeqLen < 8 || Step < 1 || Step >= SeqLen || pSeq == NULL || pRetStructParam == NULL || m_pOctStructParams == NULL)
 	return(eBSFerrParams);
 
 // if can use the midstep of an octamer then do so...
@@ -149,7 +152,7 @@ if(Step > 3 && Step < SeqLen - 3)
 	if((OctIdx = StructParamIdx(pOctamer)) < 0)
 		SetMissing(pRetStructParam);
 	else
-		*pRetStructParam = m_pStructParams[OctIdx];
+		*pRetStructParam = m_pOctStructParams[OctIdx];
 	return(eBSFSuccess);
 	}
 
@@ -186,9 +189,9 @@ int
 CTwister::GetStructParam(unsigned int Step,	// which step (1..SeqLen-1)
 				unsigned int SeqLen,		// sequence length (8..n)
 				etSeqBase *pSeq,			// sequence
-				teStructStats Param)		// which structural parameter value to return
+				teOctStructStats Param)		// which structural parameter value to return
 {
-tsStructParam StructParams;
+tsOctStructParam StructParams;
 int *pStructValue;
 if(GetStructParams(Step,SeqLen,pSeq,&StructParams)!=eBSFSuccess)
 	{
@@ -202,17 +205,17 @@ return(*pStructValue);
 int
 CTwister::Interpolate(unsigned int Step,	// which step to interpolate (1..7)
 			etSeqBase *pSeq,				// known octamer sequence left (step 5..7) or right (step 1..3) filled with eBaseA
-			tsStructParam *pRetStructParam) // where to returned interpolated structural parameters
+			tsOctStructParam *pRetStructParam) // where to returned interpolated structural parameters
 {
 int energy,minorgroove,majorgroove,twist,roll,tilt,rise,slide,shift,rmsd;
-tsStructParam *pStruct;
+tsOctStructParam *pStruct;
 int Cnt;
 int Iters;
 
 etSeqBase octamer[8];						
 int OctIdx;
 bool bLeft;
-if(Step < 1 || Step > 7 || pSeq == NULL || pRetStructParam == NULL || m_pStructParams == NULL)
+if(Step < 1 || Step > 7 || pSeq == NULL || pRetStructParam == NULL || m_pOctStructParams == NULL)
 	return(eBSFerrParams);
 
 if(Step == 4)								// if octamer midstep then no need to interpolate!
@@ -254,12 +257,13 @@ for(Cnt = 0; Cnt < Iters; Cnt++)
 		return(eBSFSuccess);
 		}
 
-	pStruct = &m_pStructParams[OctIdx];
+	pStruct = &m_pOctStructParams[OctIdx];
 	if(pStruct->Param.energy == 0)
 		return(eBSFerrStructParm);
 
 	energy += pStruct->Param.energy;
 	minorgroove += pStruct->Param.minorgroove;
+	majorgroove += pStruct->Param.majorgroove;
 	twist += pStruct->Param.twist;
 	roll += pStruct->Param.roll;
 	tilt += pStruct->Param.tilt;
@@ -299,6 +303,7 @@ for(Cnt = 0; Cnt < Iters; Cnt++)
 	}
 pRetStructParam->Param.energy = energy / Iters;
 pRetStructParam->Param.minorgroove = minorgroove / Iters;
+pRetStructParam->Param.majorgroove = majorgroove / Iters;
 pRetStructParam->Param.twist = twist / Iters;
 pRetStructParam->Param.roll = roll / Iters;
 pRetStructParam->Param.tilt = tilt / Iters;
@@ -317,7 +322,7 @@ CTwister::StructParamIdx(etSeqBase *pOctamer)		// sequence
 etSeqBase Base;
 int OctIdx = 0;
 int Len = 8;
-if(pOctamer == NULL || m_pStructParams == NULL)
+if(pOctamer == NULL || m_pOctStructParams == NULL)
 	return(eBSFerrParams);
 
 while(Len--)
@@ -348,7 +353,7 @@ CTwister::ProcessSequence(int hRslts,			// file to write sequence structure into
 char szVal[80];
 char szLineBuff[2000];
 int BuffLen;
-tsStructParam StructParam;
+tsOctStructParam StructParam;
 unsigned int Step;
 unsigned int LastStep;
 int iNumDP;
@@ -356,7 +361,7 @@ int Rslt;
 
 if(!EntryID ||  SeqLen < 8 || iStartOfs >= SeqLen - 1 || 
    iStartOfs + iNumSteps >= SeqLen ||
-   pSeq == NULL || m_pStructParams == NULL)
+   pSeq == NULL || m_pOctStructParams == NULL)
 	return(eBSFerrParams);
 
 if(hRslts < 0)
@@ -384,6 +389,7 @@ for(Step = iStartOfs+1; Step <= LastStep && Rslt == eBSFSuccess; Step++)
 			BuffLen += sprintf(&szLineBuff[BuffLen],"%d,",EntryOfs++);
 			BuffLen += sprintf(&szLineBuff[BuffLen],"%d,",Step);
 			BuffLen += sprintf(&szLineBuff[BuffLen],"%s,",Fmt2FixedDec(StructParam.Param.minorgroove,szVal));
+			BuffLen += sprintf(&szLineBuff[BuffLen],"%s,",Fmt2FixedDec(StructParam.Param.majorgroove,szVal));
 			BuffLen += sprintf(&szLineBuff[BuffLen],"%s,",Fmt2FixedDec(StructParam.Param.energy,szVal));
 			BuffLen += sprintf(&szLineBuff[BuffLen],"%s,",Fmt2FixedDec(StructParam.Param.twist,szVal));
 			BuffLen += sprintf(&szLineBuff[BuffLen],"%s,",Fmt2FixedDec(StructParam.Param.roll,szVal));
@@ -405,6 +411,7 @@ for(Step = iStartOfs+1; Step <= LastStep && Rslt == eBSFSuccess; Step++)
 			BuffLen += sprintf(&szLineBuff[BuffLen],"\t<entryofs>%d</entryofs>\n",EntryOfs++);
 			BuffLen += sprintf(&szLineBuff[BuffLen],"\t<step>%d</step>\n",Step);
 			BuffLen += sprintf(&szLineBuff[BuffLen],"\t<minor>%s</minor>\n",Fmt2FixedDec(StructParam.Param.minorgroove,szVal));
+			BuffLen += sprintf(&szLineBuff[BuffLen],"\t<major>%s</minor>\n",Fmt2FixedDec(StructParam.Param.majorgroove,szVal));
 			BuffLen += sprintf(&szLineBuff[BuffLen],"\t<energy>%s</energy>\n",Fmt2FixedDec(StructParam.Param.energy,szVal));
 			BuffLen += sprintf(&szLineBuff[BuffLen],"\t<twist>%s</twist>\n",Fmt2FixedDec(StructParam.Param.twist,szVal));
 			BuffLen += sprintf(&szLineBuff[BuffLen],"\t<roll>%s</roll>\n",Fmt2FixedDec(StructParam.Param.roll,szVal));
@@ -427,14 +434,14 @@ return(Rslt);
 }
 
 int
-CTwister::GetSequenceConformation(teStructStats confparam,	// process for this conformational parameter
+CTwister::GetSequenceConformation(teOctStructStats confparam,	// process for this conformational parameter
 				  int iStartOfs,			// initial starting offset (0..n) in pSeq
 				  int iNumSteps,			// number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
   				  int SeqLen,				// total length of sequence
 				  etSeqBase *pSeq,			// sequence to be processed
 				  int *pRetValues)			// where to return step conformational values
 {
-tsStructParam StructParam;
+tsOctStructParam StructParam;
 unsigned int Step;
 unsigned int LastStep;
 int iNumDP;
@@ -442,7 +449,7 @@ int Rslt;
 
 if(SeqLen < 8 || iStartOfs >= SeqLen - 1 || 
    iStartOfs + iNumSteps >= SeqLen || pRetValues == NULL ||
-   pSeq == NULL || m_pStructParams == NULL || confparam >= eSSNumStatParams)
+   pSeq == NULL || m_pOctStructParams == NULL || confparam >= eSSNumStatParams)
 	return(eBSFerrParams);
 
 if(iNumSteps == 0)
@@ -462,6 +469,10 @@ for(Step = iStartOfs+1; Step <= LastStep && Rslt == eBSFSuccess; Step++)
 
 			 case eSSminorgroove:				// minor groove int (dimensions * 10000) e.g 10.784 ==> 107840
 				 *pRetValues++ = StructParam.Param.minorgroove;
+				 break;
+
+			 case eSSmajorgroove:				// major groove int (dimensions * 10000) e.g 10.784 ==> 107840
+				 *pRetValues++ = StructParam.Param.majorgroove;
 				 break;
 
 			 case eSStwist:					// twist int(angle * 10000) e.g 	37.6262 ==> 376262
@@ -523,10 +534,10 @@ CTwister::CalcTwistStats(unsigned int iStartOfs,		// initial starting offset (0.
 					unsigned int iNumSteps,		// number of steps (0 for all) to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
 				    unsigned int SeqLen,		// total length of sequence
 					etSeqBase *pSeq,			// start of sequence
-					teStructStats StructParam,	// which structural parameter to gen stats for
+					teOctStructStats StructParam,	// which structural parameter to gen stats for
 					tsStructStats *pStats)		// returned stats
 {
-tsStructParam StructParams;
+tsOctStructParam StructParams;
 int *pStructValue;
 INT64 SumValue;
 int MeanValue;
@@ -612,7 +623,7 @@ CTwister::CalcStats(char *pszSpecies,			// species - e.g 'hg17'
 				  unsigned int iNumSteps,		// number of steps to process starting at pSeq[iStartPsn]|pSeq[iStartPsn+1]
 				  unsigned int SeqLen,			// total length of sequence
 				  etSeqBase *pSeq,				// sequence
-				  teStructStats StructParam,	// which structural parameter to gen stats for
+				  teOctStructStats StructParam,	// which structural parameter to gen stats for
   				  unsigned int SlideWinSteps, 	// sliding window size in dinucleotide steps (5..100000)
 				  int hRslts,					// results file to write into
 					bool bXML)					// results file type: false == CSV, true == XML
@@ -662,7 +673,7 @@ for(Step = iStartOfs; Step < LastStep; Step++)
 
 	// histogram has been calculated...
 	// output bins from BinMinIdx to BinMaxIdx
-for(BinIdx = 0; BinIdx <= cNumHistBins; BinIdx++)
+for(BinIdx = 0; BinIdx < cNumHistBins; BinIdx++)
 	{
 	if(HistBins[BinIdx].Min > 0)
 		OutResult(bXML,hRslts,pszSpecies,pszChrom,(char *)"Min",EntryID,0,SlideWinSteps,BinIdx,HistBins[BinIdx].Min);
@@ -741,7 +752,7 @@ if(pszStructParamsFile != NULL && pszStructParamsFile[0] != '\0')
 	}
 else
 	{
-	if(m_pStructParams == NULL)
+	if(m_pOctStructParams == NULL)
 		{
 		AddErrMsg("CTwister::CalcStruct","Structural parameter file not specified but no structural parameters previously loaded");
 		return(eBSFerrStructParm);
@@ -893,7 +904,7 @@ CTwister::GenRefStructDist(char *pszResultsFile,				  // file to contain results
 char szBuff[2000];
 int BuffL;
 char szVal[80];
-tsStructParam *pStructParams;
+tsOctStructParam *pStructParams;
 tsStructStats *pStructStats;
 int *pStructValue;
 int hRslts;
@@ -917,7 +928,7 @@ if(pszStructParamsFile != NULL && pszStructParamsFile[0] != '\0')
 	}
 else
 	{
-	if(m_pStructParams == NULL)
+	if(m_pOctStructParams == NULL)
 		{
 		AddErrMsg("CTwister::GenRefStructDist","Structural parameter file not specified but no structural parameters previously loaded");
 		return(eBSFerrStructParm);
@@ -960,13 +971,13 @@ for(ParamIdx = 0; ParamIdx < eSSNumStatParams; ParamIdx++,pStructStats++)
 		BinRange[ParamIdx] = (pStructStats->Max - pStructStats->Min - 1)/cNumHistBins;
 
 memset(HistBins,0,sizeof(HistBins));
-pStructParams = m_pStructParams;
+pStructParams = m_pOctStructParams;
 for(Idx = 0; Idx < cNumParamOctamers; Idx++, pStructParams++)
 	{
 	pStructStats = m_StructParamStats;
 	for(ParamIdx = 0; ParamIdx < eSSNumStatParams - 1; ParamIdx++,pStructStats++)
 		{
-		pStructValue = MapStructParam2Ptr((teStructStats)ParamIdx,pStructParams);
+		pStructValue = MapStructParam2Ptr((teOctStructStats)ParamIdx,pStructParams);
 		if(BinRange[ParamIdx] != 0)
 			HistBinIdx = (*pStructValue - pStructStats->Min)/BinRange[ParamIdx];
 		else
@@ -979,7 +990,7 @@ for(Idx = 0; Idx < cNumParamOctamers; Idx++, pStructParams++)
 pStructStats = m_StructParamStats;
 for(ParamIdx = 0; ParamIdx < eSSNumStatParams-1; ParamIdx++,pStructStats++)
 	{
-	pszParam = (char *)MapStructParam2Txt((teStructStats)ParamIdx);
+	pszParam = (char *)MapStructParam2Txt((teOctStructStats)ParamIdx);
 	for(HistBinIdx = 0; HistBinIdx < cNumHistBins; HistBinIdx++)
 		{
 		if(HistBins[ParamIdx][HistBinIdx] > 0)
@@ -1032,7 +1043,7 @@ CTwister::CalcDiffStats(unsigned int iRefStartOfs,	// initial starting offset (0
 					unsigned int iRelStartOfs,	// initial starting offset (0..n) in pRelSeq
 					unsigned int RelSeqLen,		// total length of reference sequence
 					etSeqBase *pRelSeq,			// start of relative sequence
-					teStructStats StructParam,	// which structural parameter to gen stats for
+					teOctStructStats StructParam,	// which structural parameter to gen stats for
 					tsStructStats *pStats)		// returned stats
 {
 unsigned int Step;
@@ -1099,8 +1110,8 @@ return(eBSFSuccess);
 
 
 int *
-CTwister::MapStructParam2Ptr(teStructStats Param,	// which parameter
-							 tsStructParam *pStruct) // which parameters instance
+CTwister::MapStructParam2Ptr(teOctStructStats Param,	// which parameter
+							 tsOctStructParam *pStruct) // which parameters instance
 {
 switch(Param) {
 	case eSSenergy:				// minimal energy int(energy * 10000) e.g. -408.2632 ==> -4082632
@@ -1108,6 +1119,9 @@ switch(Param) {
 
 	case eSSminorgroove:				// groove int(dimensions * 10000) e.g 10.784 ==> 107840
 		return(&pStruct->Param.minorgroove);
+
+	case eSSmajorgroove:				// groove int(dimensions * 10000) e.g 10.784 ==> 107840
+		return(&pStruct->Param.majorgroove);
 
 	case eSStwist:					// twist int(angle * 10000) e.g 	37.6262 ==> 376262
 		return(&pStruct->Param.twist);
@@ -1139,7 +1153,7 @@ switch(Param) {
 }
 
 const char *
-CTwister::MapStructParam2Txt(teStructStats Param)
+CTwister::MapStructParam2Txt(teOctStructStats Param)
 {
 const char *pszParam;
 switch(Param) {
@@ -1149,6 +1163,10 @@ switch(Param) {
 
 	case eSSminorgroove:				// groove int(dimensions * 10000) e.g 10.784 ==> 107840
 		pszParam = "mingrv";
+		break;
+
+	case eSSmajorgroove:				// groove int(dimensions * 10000) e.g 10.784 ==> 107840
+		pszParam = "majgrv";
 		break;
 
 	case eSStwist:					// twist int(angle * 10000) e.g 	37.6262 ==> 376262

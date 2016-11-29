@@ -2,7 +2,7 @@
 #include "./commdefs.h"
 class CShuffle
 {
-	TRandomMersenne *m_pRandomMersenne;		// used for generating random numbers larger than RAND_MAX (32767)
+	CRandomMersenne *m_pRandomMersenne;		// used for generating random numbers larger than RAND_MAX (32767)
 	int CHOOSE(int Limit);
 	int FChoose(int *p, int N);
 

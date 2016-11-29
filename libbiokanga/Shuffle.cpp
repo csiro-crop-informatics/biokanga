@@ -18,7 +18,7 @@
 
 CShuffle::CShuffle(void)
 {
-m_pRandomMersenne = new TRandomMersenne(1);		// ensure initially will generate reproducible series of random numbers
+m_pRandomMersenne = new CRandomMersenne(1);		// ensure initially will generate reproducible series of random numbers
 }
 
 CShuffle::~CShuffle(void)

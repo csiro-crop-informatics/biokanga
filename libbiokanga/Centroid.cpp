@@ -542,8 +542,8 @@ if(RandBaseSeed < 0)
 #endif
 	}
 
-TRandomMersenne RandLoci(RandLociSeed);		// use different generators to ensure sequences will differ for same seed
-TRanrotBGenerator RandBase(RandBaseSeed);
+CRandomMersenne RandLoci(RandLociSeed);		// use different generators to ensure sequences will differ for same seed
+CRandomMother RandBase(RandBaseSeed);
 
 // randomise loci index selection order
 for(SeqIdx = 0; SeqIdx < (SeqLen-1); SeqIdx++)

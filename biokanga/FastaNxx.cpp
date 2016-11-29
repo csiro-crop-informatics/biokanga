@@ -918,6 +918,7 @@ if(Mode == ePMdefault)
 #else
 		fsync(hRslts);
 #endif
+		close(hRslts);
 		hRslts = -1;
 		delete m_pBins;
 		m_pBins = NULL;
@@ -983,7 +984,7 @@ if((hRslts = open(pszRsltsFile, O_RDWR | O_CREAT | O_TRUNC, S_IREAD | S_IWRITE )
 int ReadIdx;
 WrtOfs = 0;
 
-// momomer distribution as counts
+// monomer distribution as counts
 // row 1 is the base position (1..MaxLengthRead) heading
 for(SeqIdx = 1; SeqIdx <= m_MaxLengthRead; SeqIdx++)
 	{
@@ -1163,6 +1164,11 @@ for(Base1Idx = 0; Base1Idx < (5*5*5*5); Base1Idx++)
 	}
 WrtOfs += sprintf(&szWrtBuff[WrtOfs],"\n");
 CUtility::SafeWrite(hRslts,szWrtBuff,WrtOfs);
+#ifdef _WIN32
+_commit(hRslts);
+#else
+fsync(hRslts);
+#endif
 close(hRslts);
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processing completed");
 delete m_pSeq;

@@ -25,7 +25,7 @@ class CConfSW
 	int m_TargAllocd;					// actual m_pTarg alloc'd size (in int's)
 	int m_TargLen;						// current targ length
 
-	teStructStats m_ConfParam;			// which conformational parameter will be used in alignments
+	teOctStructStats m_ConfParam;			// which conformational parameter will be used in alignments
     int m_MatchDiff;					// differential match threshold
 
 	int m_MatchScore;					// score for matching bases
@@ -49,7 +49,7 @@ public:
 
 	void Reset(void);
 
-    bool SetScores(teStructStats ConfParam, // which conformational parameter will be used in alignments
+    bool SetScores(teOctStructStats ConfParam, // which conformational parameter will be used in alignments
 			    int MatchDiff,		// differential match threshold
 				int MatchScore= cSWDfltMatchScore,			// score for match
 				int MismatchPenalty  = cSWDfltMismatchPenalty,	// penalty for mismatch

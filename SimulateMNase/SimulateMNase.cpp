@@ -626,7 +626,7 @@ if(m_hOutFile < 0)
 	return(eBSFerrCreateFile);
 	}
 
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RG((int)time(0));
+TRandomCombined<CRandomMother,CRandomMersenne> RG((int)time(0));
 
 NumReadsGenerated = 0;
 printf("\nGenerating read %1.9d",NumReadsGenerated);

@@ -2482,6 +2482,7 @@ UINT32 Idx;
 UINT32 ThreadIdx;
 UINT32 StartedInstances;
 tsWorkerInstance *pThreadPar;
+m_TermAllThreads = 0;
 m_NumPendCpltd = 0;
 pThreadPar = m_WorkerInstances;
 for(ThreadIdx = 0; ThreadIdx < NumInstances; ThreadIdx++,pThreadPar++)

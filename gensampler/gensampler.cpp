@@ -549,7 +549,7 @@ struct tms Times;
 Now = (INT64)times(&Times);
 #endif
 RandSeed = (int)(Now & 0x07fffffff);
-TRandomMersenne RandBase(RandSeed);
+CRandomMersenne RandBase(RandSeed);
 
 pSeqBuffer = NULL;
 AllocSeqLen = 0;

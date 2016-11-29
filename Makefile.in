@@ -292,10 +292,10 @@ SUBDIRS = libbiokanga libBKPLPlot genhyperconserved genbiobed \
 	  gengoterms gengoassoc goassoc \
 	  DNAseqSitePotential RNAseqSitePotential prednucleosomes gennucstats \
           uhamming LocateROI genDESeq genGenomeFromAGP kangarg genultras \
-	  genstructprofile filterreads fasta2struct ufilter genseqcandidates genmarkers GFFfilter \
+	  genstructprofile genstructstats filterreads fasta2struct ufilter genseqcandidates genmarkers GFFfilter \
 	  genElementProfiles BEDMerge BEDFilter loci2dist genzygosity genNormWiggle GTFfilter genDiffExpr \
           dmpbioseq genpseudogenome usimdiffexpr genreadsde HammingDist RNAFragSim mergeoverlaps fastafilter \
-          kangasr kangar kangahrdx kangade kangas kangapr csv2sqlite biokanga locmarkers PEscaffold SSRdiscovery pacbiokanga 
+          kangasr kangar kangahrdx kangade kangas kangapr csv2sqlite biokanga locmarkers PEscaffold SSRdiscovery pacbiokanga
 
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive

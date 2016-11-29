@@ -8,13 +8,12 @@
 #include <config.h>
 #endif
 #if _WIN32
-
 #include "../libbiokanga/commhdrs.h"
 #else
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const unsigned int cProgVer = 106;		// increment program version with each release
+const unsigned int cProgVer = 107;		// increment program version with each release
 
 const int cMaxNMerLen = 15;				// maximum length N-Mer (don't change unless code dependencies checked and plenty of memory!)
 const int cDfltNMerLen= 5;				// default N-Mer length
@@ -210,7 +209,7 @@ struct arg_int *MinNMerLen=arg_int0("l", "minnmerlen","<int>",  "process N-Mers 
 struct arg_int *MaxNMerLen=arg_int0("L", "maxnmerlen","<int>",  "process N-Mers upto and including this length (default is 5)");
 struct arg_file *OutFile = arg_file1("o",NULL,"<file>",			"output results to CSV file");
 struct arg_file *InBedFile = arg_file0("b","bed","<file>",		"characterise regions from biobed file");
-struct arg_int  *RegLen = arg_int0("L","updnstream","<int>",	"length of 5'up or 3'down  stream regulatory region length (default = 2000) 0..1000000");
+struct arg_int  *RegLen = arg_int0("r","updnstream","<int>",	"length of 5'up or 3'down  stream regulatory region length (default = 2000) 0..1000000");
 struct arg_file *ExcludeFile = arg_filen("E","exclude","<file>",0,cMaxExcludeFiles,	"exclude all regions in biobed file from processing ");
 struct arg_file *IncludeFile = arg_filen("I","include","<file>",0,cMaxExcludeFiles,	"include all regions (unless specific regions excluded) in biobed file");
 struct arg_str  *IncludeChroms = arg_strn("z","chromeinclude","<string>",0,cMaxIncludeChroms,"low priority - regular expressions defining species.chromosomes to include for processing");
@@ -263,7 +262,7 @@ if (!argerrors)
 	iFileLogLevel = FileLogLevel->count ? FileLogLevel->ival[0] : eDLInfo;
 	if(iFileLogLevel < eDLNone || iFileLogLevel > eDLDebug)
 		{
-		printf("\nError: FileLogLevel '-l%d' specified outside of range %d..%d",iFileLogLevel,eDLNone,eDLDebug);
+		printf("\nError: FileLogLevel '-f%d' specified outside of range %d..%d",iFileLogLevel,eDLNone,eDLDebug);
 		exit(1);
 		}
 	if(LogFile->count)
@@ -326,14 +325,14 @@ if (!argerrors)
 	iRegLen = RegLen->count ? RegLen->ival[0] : cDfltRegLen;
 	if(iRegLen < cMinRegLen)
 		{
-			printf("Warning: Regulatory region length '-L%d' less than minimum %d, assuming you meant to use '-L%d'\n",iRegLen,cMinRegLen,cMinRegLen);
+			printf("Warning: Regulatory region length '-r%d' less than minimum %d, assuming you meant to use '-r%d'\n",iRegLen,cMinRegLen,cMinRegLen);
 		iRegLen = cMinRegLen;
 		}
 	else
 		{
 		if(iRegLen > cMaxRegLen)
 			{
-				printf("Warning: Regulatory region length '-L%d' more than maximum %d, assuming you meant to use '-L%d'\n",iRegLen,cMaxRegLen,cMaxRegLen);
+				printf("Warning: Regulatory region length '-r%d' more than maximum %d, assuming you meant to use '-r%d'\n",iRegLen,cMaxRegLen,cMaxRegLen);
 			iRegLen = cMaxRegLen;
 			}
 		}
@@ -785,7 +784,7 @@ for(Idx = 0; Idx < pProcParams->CurSeqLen; Idx++)
 		if(SeqIdx < 0)		// < 0 generally indicates that sequences contains 'N' or some other none a,c,g,t base
 			continue;
 
-		// ensure that the hypercore is in an included region and not part of an excluded region
+		// ensure that the kmer is in an included region and not part of an excluded region
 		if(bChkInclude && !IncludeFilter(Idx,Idx+CurSeqIdxLen-1,pProcParams))
 			continue;
 		bChkInclude = false;	// if longest N-Mer is included then shorter will always be!
@@ -822,7 +821,7 @@ for(Idx = 0; Idx <= (pProcParams->CurSeqLen - pProcParams->MaxNMerLen); Idx++)
 	if(SeqIdx < 0)		// < 0 generally indicates that sequences contains 'N' or some other none a,c,g,t base
 		continue;
 
-	// ensure that the hypercore is in an included region and not part of an excluded region
+	// ensure that the kmer is in an included region and not part of an excluded region
 	if(!IncludeFilter(Idx,Idx+pProcParams->MaxNMerLen-1,pProcParams))
 		continue;
 	pProcParams->pNormCnts[SeqIdx].Instances += 1;
@@ -1332,8 +1331,6 @@ for(Idx = 0; Idx < pProcParams->MaxNMerLen; Idx++)
 		pTmp = pCnt;
 		for(Region=0; Region < pProcParams->NumRegions; Region++,pCnt++)
 			Tot += *pCnt;
-		if(Tot == 0)
-			continue;
 		pCnt = pTmp;
 		Len = sprintf(szLineBuff,"\"%s\",%d,%d,\"%s\",%d",
 			pProcParams->ProcMode == eProcModeNMerDistAllSeqs ? pProcParams->szInFile : pProcParams->szCurChrom,

@@ -42,10 +42,10 @@ const int cDfltMaxDiSNPSep = 300;       // DiSNPs (TriSNPs) are two (three) indi
 const int cMinMarkerLen = 25;			// minimum allowed marker length
 const int cMaxMarkerLen = 500;			// maximum allowed marker length
 
-const int cDfltSensCoreIters  = 5000;	// default sensitivity core explore depth 
-const int cMoreSensCoreIters  = 15000;	// more sensitivity core explore depth
-const int cUltraSensCoreIters = 25000;	// ultra sensitivity core explore depth
-const int cMinSensCoreIters   = 1000;	// min sensitivity core explore depth
+const int cDfltSensCoreIters  = 10000;	// default sensitivity core explore depth 
+const int cMoreSensCoreIters  = 25000;	// more sensitivity core explore depth
+const int cUltraSensCoreIters = 50000;	// ultra sensitivity core explore depth
+const int cMinSensCoreIters   = 5000;	// min sensitivity core explore depth
 
 const int cPriorityExacts = 10;			// when attempting to prioritorise exactly matching reads to higher confidence sequence then allow for this many more multiloci exact (no subs) hits
 
@@ -96,7 +96,9 @@ const int cRdsBuffAlloc =   0x07fffff;		// alloc to hold preprocessed reads (for
 const int cMaxDescrLen = 128;				// allow for descriptors of upto this length
 
 const unsigned int cMinSeqLen = 15;			// sequences must be at least this length otherwise user is warned and sequence sloughed
-const unsigned int cMaxSeqLen = cMaxReadLen;	// sequences must be no longer than this length otherwise user is warned and sequence sloughed
+const unsigned int cDfltMinAcceptReadLen = 50; // by default reads after any end trimming must be at least this length to be accepted for alignment processing
+const unsigned int cDfltMaxAcceptReadLen = 500; // by default reads after any end trimming must be no longer than this length to be accepted for alignment processing
+const unsigned int cMaxSeqLen = 2000;	// sequences must be no longer than this length otherwise user is warned and sequence sloughed
 
 const int cPCRPrimerSubs = 5;				// user can specify for upto this many PCR hexamer primer subs in 5' flank over 12bp
 
@@ -360,13 +362,14 @@ typedef struct TAG_sThreadMatchPars {
 #endif
 	int CurBlockID;					// current suffix block identifier
 	int ChromID;					// hit chrom identifier
-	int MinChimericLen;				// if checking for chimerics then minimim length required, set to 0 if not checking for chimerics
-    int NumAllowedSubs;				// number of allowed substitutions
-	int MaxNumSlides;				// limit on number of times core window can be moved or slide to right over read
+	int MinChimericLen;				// if checking for chimerics then minimim percentage of read length required, set to 0 if not checking for chimerics
+    int NumAllowedSubs;				// number of allowed substitutions per 100bp of read length
+	int MaxNumSlides;				// limit on number of times core window can be moved or slide to right over read per 100bp of read length
+	int	MinCoreLen;					// minimum core length allowed
     etQFiltType FiltQuality;		// filtering type
 	bool bQAbove;					// if true then filter out those below or equal to FiltThres
 	int FiltThres;					// filter threshold
-	eALStrand AlignStrand;		// align on to watson, crick or both strands of target
+	eALStrand AlignStrand;			// align on to watson, crick or both strands of target
 	int microInDelLen;				// microInDel length maximum
 	int SpliceJunctLen;				// maximum splice junction length when aligning RNAseq reads
 	int Rslt;						// returned result code
@@ -623,6 +626,9 @@ class CAligner
 
 	int m_Trim5;					// trim this number of bases from 5' end of reads when loading the reads
 	int m_Trim3;					// trim this number of bases from 3' end of reads when loading the reads
+
+	int m_MinAcceptReadLen;					// only accepting reads for alignment if at least this length after any end trimming
+	int m_MaxAcceptReadLen;					// only accepting reads for alignment if no longer than this length after any end trimming
 
 	int m_MaxSubs;					// accepted aligned reads must have at most this many subs per 100bp aligned sequence
 	int m_InitalAlignSubs;			// putatively accepted as aligned reads can have at most this many subs per 100bp aligned sequence
@@ -995,6 +1001,8 @@ public:
 				int MaxSubs,					// maximum number of substitutions allowed per 100bp of actual read length
 				int Trim5,						// trim this number of bases from 5' end of reads when loading the reads
 				int Trim3,						// trim this number of bases from 3' end of reads when loading the reads
+				int MinAcceptReadLen,					// only accepting reads for alignment if at least this length after any end trimming
+				int MaxAcceptReadLen,					// only accepting reads for alignment if no longer than this length after any end trimming
 				int MinFlankExacts,				// trim matched reads on 5' and 3' flanks until at least this number of exactly matching bases in flanks
 				int PCRPrimerCorrect,			// initially align with MaxSubs+PCRPrimerCorrect subs allowed but then correct substitutions in 5' 12bp until overall sub rate within MaxSubs
 				int MaxRptSAMSeqsThres,			// report all SAM chroms or sequences if number of reference chroms <= this limit (defaults to 10000)

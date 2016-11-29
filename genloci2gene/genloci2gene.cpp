@@ -13,7 +13,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-const unsigned int cProgVer = 304;		// increment with each release
+const char *cpszProgVer = "1.0.0";		// increment with each release
 
 
 const int cMinWeighting = 0;	  // can have 0 as weighting if that region not to be analysed
@@ -238,22 +238,23 @@ argerrors = CUtility::arg_parsefromfile(argc,(char **)argv,&pAllArgs);
 if(argerrors >= 0)
 	argerrors = arg_parse(argerrors,pAllArgs,argtable);
 
-     /* special case: '--help' takes precedence over error reporting */
+/* special case: '--help' takes precedence over error reporting */
 if (help->count > 0)
         {
-		printf("\n%s ", gszProcName);
+		printf("\n%s Map loci to genes, Version %s\nOptions ---\n", gszProcName,cpszProgVer);
         arg_print_syntax(stdout,argtable,"\n");
         arg_print_glossary(stdout,argtable,"  %-25s %s\n");
 		printf("\nNote: Parameters can be entered into a parameter file, one parameter per line.");
 		printf("\n      To invoke this parameter file then precede it's name with '@'");
-		printf("\n      e.g. %s @myparams.txt\n\n",gszProcName);
+		printf("\n      e.g. %s @myparams.txt\n",gszProcName);
+		printf("\nPlease report any issues regarding usage of %s to stuart.stephen@csiro.au\n\n",gszProcName);
 		exit(1);
         }
 
     /* special case: '--version' takes precedence error reporting */
 if (version->count > 0)
         {
-		printf("\n%s: Version: %d.%2.2d\n",gszProcName,cProgVer/100,cProgVer%100);
+		printf("\n%s Version %s\n",gszProcName,cpszProgVer);
 		exit(1);
         }
 
@@ -478,7 +479,7 @@ if (!argerrors)
 		exit(1);
 		}
 
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Version: %d.%2.2d Processing parameters:",cProgVer/100,cProgVer%100);
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Version: %s",cpszProgVer);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode: %s",Mode2Text((etProcMode)iMode));
 	
 	switch(iMode) {
@@ -817,7 +818,7 @@ do {
 	while((CurGeneID = pBED->GetNextFeatureID(PrvGeneID)) > 0)
 		{
 		pBED->GetFeature(CurGeneID,szFeatName,szChrom,&GeneStart,&GeneEnd,NULL,&Strand);
-		if(szCurChrom[0] != '\0' &&			// finished with current, on to a new chromsome?
+		if(szCurChrom[0] != '\0' &&			// finished with current, on to a new chromosome?
 			stricmp(szChrom,szCurChrom))
 			break;							// time to process loci mapped on to the current chromosome
 	
@@ -867,7 +868,7 @@ do {
 	for(DensityIdx = 0; DensityIdx < NumWindows; DensityIdx++,pCurCnts++,WindowStart += WindowSize)
 		pCurCnts->NumGeneBases = CountBitsSet(WindowStart,WindowStart + WindowSize - 1,pDensityBits);
 
-	// now find all loci on same chromsome just processed for genes
+	// now find all loci on same chromosome just processed for genes
 	if((LociIdx = pFeatLoci->Locate1stLoci(szCurChrom)) > 0)
 		{
 		memset(pDensityBits,0,sizeof(unsigned int) * NumDensityBitsInts);

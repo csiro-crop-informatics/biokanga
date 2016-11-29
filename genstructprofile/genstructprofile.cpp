@@ -3,11 +3,9 @@
 // common to a consensus of reads for a specified conformational characteristic
 
 #include "stdafx.h"
-
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-
 #if _WIN32
 #include "../libbiokanga/commhdrs.h"
 #else
@@ -1063,7 +1061,7 @@ while((pSeqValues=IterNext(pSeqSet,bFirst,false))!=NULL)
 	ppIndex[Idx++] = pSeqValues;
 	}
 
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RG((int)time(0));
+TRandomCombined<CRandomMother,CRandomMersenne> RG((int)time(0));
 
 while(NSamples--)
 	{

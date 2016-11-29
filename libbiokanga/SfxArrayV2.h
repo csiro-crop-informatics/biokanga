@@ -560,7 +560,8 @@ public:
 						 int TotMM,						// max number of mismatches allowed including any core
 						 int CoreLen,					// core window length 
 						 int CoreDelta,					// core window offset increment (1..n)
-						 int MaxNumCoreSlides,			// limit number of core slides to this many per strand
+						 int MaxNumCoreSlides,			// limit number of core slides to this many per strand over the read length
+						 int MinCoreLen,				// do not reduce core below this length
 						 int MMDelta,					// minimum (1..n) mismatch difference between the best and next best core alignment
 						 eALStrand Align2Strand,		// align to this strand
   						 int microInDelLen,				// microInDel length maximum

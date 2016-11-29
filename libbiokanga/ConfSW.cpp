@@ -84,7 +84,7 @@ m_AlignLen = 0;
 // Note that a check is made to ensure that MatchScore is > 0 and
 // that all other scores are < 0
 bool 
-CConfSW::SetScores(teStructStats ConfParam, // which conformational parameter will be used in alignments
+CConfSW::SetScores(teOctStructStats ConfParam, // which conformational parameter will be used in alignments
 				   int MatchDiff,		// differential match threshold
 				int MatchScore,			// score for match
 				int MismatchPenalty,	// penalty for mismatch

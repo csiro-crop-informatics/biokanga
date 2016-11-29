@@ -716,7 +716,7 @@ size_t SimGenomeSizebp;
 size_t RemainingSimGenomeSizebp;
 int NumSimChroms;
 
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RGseeds((int)SimGenomeSize); // looking for reproducible pseudorandom numbers so seed with targeted genome size
+TRandomCombined<CRandomMother,CRandomMersenne> RGseeds((int)SimGenomeSize); // looking for reproducible pseudorandom numbers so seed with targeted genome size
 
 SimGenomeSizebp = (size_t)SimGenomeSize * cGbpSeqSize;
 NumSimChroms = cNumSimChroms;

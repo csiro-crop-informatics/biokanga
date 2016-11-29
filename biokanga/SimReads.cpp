@@ -1187,7 +1187,7 @@ switch(Region) {
 return((char *)"Unsupported");
 }
 
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RGseeds((int)time(0));
+TRandomCombined<CRandomMother,CRandomMersenne> RGseeds((int)time(0));
 
 
 int
@@ -2447,7 +2447,7 @@ if(pszOutSNPs != NULL && pszOutSNPs[0] != '\0')
 else
 	hFile = -1;
 
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RG((int)time(0));
+TRandomCombined<CRandomMother,CRandomMersenne> RG((int)time(0));
 BuffOfs = 0;
 SNPiD = 0;
 for(ChromID = 0; ChromID < m_NumChromSeqs; ChromID++,pChromSeq++)
@@ -3520,7 +3520,7 @@ PrevNumGenReads = 0;
 ReadsOfs = 0;
 TotReportedReads = 0;
 bFirst =true;
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RGseeds((int)time(0));
+TRandomCombined<CRandomMother,CRandomMersenne> RGseeds((int)time(0));
 do {
 	// initialise all worker thread parameters and start the threads
 	if(!bDedupe)
@@ -3732,7 +3732,7 @@ NumChromIters = 0;
 pRead = pWorkerPars->pReads;
 pRead += pWorkerPars->NumGenReads;
 pWorkerPars->bMaxIters = false;
-TRandomCombined<TRanrotWGenerator,TRandomMersenne> RG(pWorkerPars->RandSeed);
+TRandomCombined<CRandomMother,CRandomMersenne> RG(pWorkerPars->RandSeed);
 while(pWorkerPars->NumGenReads < pWorkerPars->NumReqReads)
 	{
 	if(NumChromIters++ > ((UINT64)m_NumChromSeqs * 50))
