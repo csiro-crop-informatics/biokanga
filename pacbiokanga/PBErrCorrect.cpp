@@ -626,7 +626,7 @@ if (!argerrors)
 		else
 			MaxArtefactDev = maxartefactdev->count ? maxartefactdev->ival[0] : cDfltMaxConsolidateArtefactDev;
 
-		if(MaxArtefactDev <= 0 || MaxArtefactDev > cMaxMaxArtefactDev)
+		if(MaxArtefactDev < 0 || MaxArtefactDev > cMaxMaxArtefactDev)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Max overlap artefactual deviation '-A%d' must be either 0 or in range %d..%d",MaxArtefactDev,cMinMaxArtefactDev,cMaxMaxArtefactDev);
 			return(1);
