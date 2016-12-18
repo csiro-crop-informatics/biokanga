@@ -5164,6 +5164,208 @@ return(eHRnone);				// no putative hits
 }
 
 
+int											// if < eBSFSuccess then errors, 0 if unable to adaptively trim, >= MinTrimLen if able to adaptively trim
+CSfxArrayV3::AdaptiveTrim(UINT32 SeqLen,					// untrimmed probe and target sequence are both this bp long
+			etSeqBase *pProbeSeq,			// end trimming this probe sequence
+			etSeqBase *pTargSeq,			// when aligned against this target sequence
+			UINT32 MinTrimLen,				// accepted trimmed probe sequence must be at least this minimum length
+			UINT32 MaxMM,					// and contain at most this many mismatches proportional to a 100bp trimmed sequence match
+			UINT32 MinFlankMatches,			// 5' and 3' flanks of trimmed probe must start/end with at least this many exactly matching bases
+			UINT32 *pTrimSeqLen,			// trimmed probe is this length
+			UINT32 *pTrimStart,				// accepted trimmed probe has this many bp trimmed from start (5') of probe
+			UINT32 *pTrimEnd,				// accepted trimmed probe has this many bp trimmed from end (3') of probe
+			UINT32 *pTrimMMs)				// after trimming there are this many mismatches in the trimmed probe
+{
+UINT32 Ofs;
+UINT32 NumRegions;
+UINT32 NumRegionsMinExact;
+UINT32 CurRegionIdx;
+UINT32 CurStartRegionIdx;
+UINT32 FirstStartRegionIdx;
+UINT32 LastStartRegionIdx;
+UINT32 FirstEndRegionIdx;
+UINT32 LastEndRegionIdx;
+tsATRegion ATRegions[cMaxATSeqLen];
+tsATRegion *pCurATRegion;
+tsATRegion *pCurStartATRegion;
+
+etSeqBase *pProbeBase;
+etSeqBase *pTargBase;
+bool bCurMM;
+
+if(pTrimSeqLen != NULL)
+	*pTrimSeqLen = 0;
+if(pTrimStart != NULL)
+	*pTrimStart = 0;
+if(pTrimEnd != NULL)
+	*pTrimEnd	= 0;
+if(pTrimMMs != NULL)
+	*pTrimMMs = 0;
+
+// some simple parameter validation
+if(SeqLen < cMinATSeqLen || SeqLen > cMaxATSeqLen || 
+	pProbeSeq == NULL || pTargSeq == NULL ||
+	MinTrimLen < cMinATTrimmedLen || MinTrimLen > SeqLen ||
+	MaxMM > cMaxATMM || MinFlankMatches > cMaxATMaxFlankMatches)
+	return(eBSFerrParams);
+if(MinFlankMatches == 0)					// ensuring adaptively trimmed sequence always start/end on an exact match
+	MinFlankMatches = 1;
+
+// determine number and sizes of regions containing either mismatches or exact matches
+pProbeBase = pProbeSeq;
+pTargBase = pTargSeq;
+NumRegions = 0;
+pCurATRegion = NULL;
+bCurMM = false;
+NumRegionsMinExact = 0;
+UINT32 NumExactInRegions = 0;
+for(Ofs=0; Ofs < SeqLen; Ofs+=1, pProbeBase+=1, pTargBase+=1)
+	{
+	bCurMM = (*pProbeBase & 0x0f) == (*pTargBase & 0x0f) ? false : true;
+	if(!bCurMM)
+		NumExactInRegions += 1;
+	if(pCurATRegion == NULL || bCurMM != pCurATRegion->flgMM ? true : false)
+		{
+		pCurATRegion = &ATRegions[NumRegions++];
+		pCurATRegion->flgMM = bCurMM ? 1 : 0;
+		pCurATRegion->RegionLen = 1;
+		pCurATRegion->RegionOfs = Ofs;
+		}
+	else
+		{
+		pCurATRegion->RegionLen += 1;
+		if(pCurATRegion->RegionLen == cMinATExactLen && !bCurMM)
+			NumRegionsMinExact += 1;
+		}
+	}
+
+if(!NumRegionsMinExact)
+	return(0);
+
+// for each region determine if that region would be suitable for starting and/or ending a trimmed sequence
+pCurATRegion = ATRegions;
+CurRegionIdx = 0;
+FirstStartRegionIdx = 0;
+LastStartRegionIdx = 0;
+FirstEndRegionIdx = 0;
+LastEndRegionIdx = 0;
+for(CurRegionIdx = 0; CurRegionIdx < NumRegions; CurRegionIdx++,pCurATRegion++)
+	{
+	if(pCurATRegion->flgMM == 0 && pCurATRegion->RegionLen >= MinFlankMatches) // putative trimmed sequences must start/end with at least MinFlankMatches exact matches
+		{
+		if(pCurATRegion->RegionOfs <= SeqLen - MinTrimLen)
+			{
+			pCurATRegion->flgTrim5 = 1;
+			LastStartRegionIdx = CurRegionIdx+1;
+			if(FirstStartRegionIdx == 0)
+				FirstStartRegionIdx = LastStartRegionIdx;
+			}
+		else
+			pCurATRegion->flgTrim5 = 0;
+		if(pCurATRegion->RegionOfs + pCurATRegion->RegionLen >= (UINT16)MinTrimLen)
+			{
+			pCurATRegion->flgTrim3 = 1;
+			LastEndRegionIdx = CurRegionIdx+1;
+			if(FirstEndRegionIdx == 0)
+				FirstEndRegionIdx = LastEndRegionIdx;
+			}
+		else
+			pCurATRegion->flgTrim3 = 0;
+		}
+	else
+		{
+		pCurATRegion->flgTrim5 = 0;
+		pCurATRegion->flgTrim3 = 0;
+		}
+	}
+
+if(FirstStartRegionIdx == 0 || FirstEndRegionIdx == 0)
+	return(0);
+
+// iterate over each putative starting region and maximally extend that region into ending regions providing that number of mismatches would be accepted
+UINT32 CurTrimmedSeqLen;
+UINT32 CurTrimmedSeqMM;
+UINT32 CurTrimmedRegionIdx;
+
+UINT32 BestTrimmedSeqLen;
+UINT32 BestTrimmedSeqMM;
+UINT32 BestTrimStart;
+UINT32 BestTrimEnd;
+
+BestTrimmedSeqLen = 0;
+BestTrimmedSeqMM = 0;
+BestTrimStart = 0;
+BestTrimEnd = 0;
+pCurStartATRegion = &ATRegions[FirstStartRegionIdx-1];
+for(CurStartRegionIdx = FirstStartRegionIdx-1; CurStartRegionIdx < LastStartRegionIdx; CurStartRegionIdx++,pCurStartATRegion++)
+	{
+	if(pCurStartATRegion->flgTrim5 == 0)   // find region to start trimming from
+		continue;
+	CurTrimmedSeqLen = 0;
+	CurTrimmedSeqMM = 0;
+	pCurATRegion = pCurStartATRegion;
+	CurTrimmedRegionIdx = CurStartRegionIdx;
+	while(CurTrimmedRegionIdx++ < LastEndRegionIdx)
+		{
+		CurTrimmedSeqLen +=  pCurATRegion->RegionLen;
+		if(pCurATRegion->flgMM)
+			{
+			if(MaxMM == 0)
+				break;
+			CurTrimmedSeqMM += pCurATRegion->RegionLen;
+			if((MaxMM+1.0) / 100.0 <= (double)CurTrimmedSeqMM/(SeqLen - pCurStartATRegion->RegionOfs))
+				break;
+			}
+		else
+			{
+			if(BestTrimmedSeqLen == 0)
+				{
+				BestTrimStart = pCurStartATRegion->RegionOfs;
+				BestTrimEnd = SeqLen - (BestTrimStart + CurTrimmedSeqLen);
+				BestTrimmedSeqLen = CurTrimmedSeqLen;
+				BestTrimmedSeqMM = 0;
+				pCurATRegion += 1;
+				continue;
+				}
+			}
+
+		if(CurTrimmedSeqLen < MinTrimLen || !pCurATRegion->flgTrim3)
+			{
+			pCurATRegion += 1;
+			continue;
+			}
+
+		pCurATRegion += 1;
+
+		// check if the currently trimmed sequence length would be acceptable for mismatches
+		if((MaxMM+1.0) / 100.0 <= (double)CurTrimmedSeqMM/CurTrimmedSeqLen)
+			continue;
+
+		// prepared to accept the trimmed sequence but only accept if longer than any previously accepted trimmed sequence
+		if(BestTrimmedSeqLen < CurTrimmedSeqLen || (BestTrimmedSeqLen == CurTrimmedSeqLen && (BestTrimmedSeqMM == 0 || CurTrimmedSeqMM < BestTrimmedSeqMM)))
+			{
+			BestTrimStart = pCurStartATRegion->RegionOfs;
+			BestTrimEnd = SeqLen - (BestTrimStart + CurTrimmedSeqLen);
+			BestTrimmedSeqLen = CurTrimmedSeqLen;
+			BestTrimmedSeqMM  = CurTrimmedSeqMM;
+			}
+		}
+	}
+
+if(BestTrimmedSeqLen >= MinTrimLen)
+	{
+	if(pTrimSeqLen != NULL)
+		*pTrimSeqLen = BestTrimmedSeqLen;
+	if(pTrimStart != NULL)
+		*pTrimStart = BestTrimStart;
+	if(pTrimEnd != NULL)
+		*pTrimEnd	= BestTrimEnd;
+	if(pTrimMMs != NULL)
+		*pTrimMMs = BestTrimmedSeqMM;
+	return(BestTrimmedSeqLen);
+	}
+return(0);
+}
 
 //
 // LocateCoreMultiples
@@ -5206,6 +5408,7 @@ etSeqBase *pTargBase;
 char CurStrand;
 INT64 TargIdx;
 
+UINT32 MinProbeChimericLen;
 char BestChimericStrand;
 int BestChimericLen;
 UINT16 BestTrim5Flank;
@@ -5249,9 +5452,9 @@ BisBase=eBaseN;
 
 // force MinChimericLen to be either 0, or in the range 50..99. if MinChimericLen is < 50 or > 99 then treat as if a normal full length match required 
 if(MinChimericLen >= 50 && MinChimericLen <= 99)
-	MinChimericLen = (MinChimericLen * ProbeLen) / 100;
+	MinProbeChimericLen = (MinChimericLen * ProbeLen) / 100;
 else
-	MinChimericLen = 0;
+	MinProbeChimericLen = 0;
 
 // ensure suffix array block loaded for iteration!
 if(m_pSfxBlock == NULL || m_pSfxBlock->ConcatSeqLen == 0)
@@ -5434,26 +5637,23 @@ do
 			NumTargSeqProc += 1;
 			IterCnt += 1;
 
-			// now do the matching allowing for missmatches
+			// now do the matching allowing for mismatches
 			// if colorspace then need to allow for adjacent apparent mismatches actually being the result of a single substitution relative to the target
 			// if colorspace and a standalone, without an adjacent, mismatch then this is supposedly a sequencing error, still treat as though a mismatch
 
 
-			if(MinChimericLen > 0)
+			if(MinProbeChimericLen > 0) // this chimeric processing is a naive implementation and would be a prime target for optimisation if time becomes available
 				{
 				pTargBase = &pTarg[TargSeqLeftIdx];
 				pProbeBase = pProbeSeq;
 				CurMMCnt = 0;
 				CoreMMCnt = 0;
 				bool bPairMM = false;
-				if(m_bBisulfite)
-					BisBase = GetBisBase(TargMatchLen,pTargBase,pProbeBase);
+				bool bInMatches;
 
 				etSeqBase *pProbeSubSeq;
 				etSeqBase *pTargSubSeq;
 
-				int FlankIdx;
-				int MaxSubSeqMMs;
 				int CurChimericLen;
 				int MaxChimericMMs;
 				int MaxChimericLen;
@@ -5465,100 +5665,21 @@ do
 				pProbeSubSeq = pProbeBase;
 				MaxChimericLen = 0;
 				MaxChimericMMs = 0;
-				for(PatIdx = 0; (int)PatIdx < (TargMatchLen - MinChimericLen) && MaxChimericLen < (TargMatchLen - (int)PatIdx); PatIdx++,pTargSubSeq++,pProbeSubSeq++)
-					{
-					pProbeBase = pProbeSubSeq;
-					pTargBase = pTargSubSeq;
-					CurChimericLen = 0;
-					CurMMCnt = 0;
-					// note: reducing allowed subs down by 1 as want to ensure maximal confidence in the accepted subsequences
-					MaxSubSeqMMs = MaxTotMM == 0 ? 0 :  max(1,(int)(0.5 + ((MaxTotMM * (TargMatchLen - PatIdx)) / (double)ProbeLen)) - 1);
-					for(FlankIdx = PatIdx; FlankIdx < TargMatchLen; FlankIdx++,CurChimericLen++, pTargBase++, pProbeBase++)
-						{
-						TargBase = *pTargBase & 0x0f;
-						ProbeBase = *pProbeBase & 0x0f;
-						if(TargBase == eBaseEOS)		// mustn't match across entry sequences
-							break;
+				CurChimericLen = 0;
+				bInMatches = false;
 
-						if(m_bColorspace)		// in colorspace, unpaired mismatches are sequencer errors but still treat as if a substitution
-							{
-							if(!bPairMM && TargBase != ProbeBase)
-								{
-								if(FlankIdx < (TargMatchLen-1))
-									{
-									if((pTargBase[1] & 0x0f) == (pProbeBase[1] & 0x0f))
-										{
-										if(++CurMMCnt > MaxSubSeqMMs)
-											break;
-										if(CurMMCnt >= NxtLowMMCnt)
-											break;
-										continue;
-										}
-									}
-								// accept as being a mismatch
-								bPairMM = true;
-								}
-							else
-								{
-								bPairMM = false;
-								continue;
-								}
-							}
-						else				// in basespace
-							{
-							if(ProbeBase == TargBase)
-								continue;
+				int AdaptiveTrimRslt;
+				UINT32 TrimmedSeqLen;
+				UINT32 TrimmedLeftFlankLen;
+				UINT32 TrimmedRightFlankLen;
+				UINT32 TrimmedMM;
+				AdaptiveTrimRslt = AdaptiveTrim(TargMatchLen,pProbeSeq,&pTarg[TargSeqLeftIdx],MinProbeChimericLen,MaxTotMM,3,&TrimmedSeqLen,&TrimmedLeftFlankLen,&TrimmedRightFlankLen,&TrimmedMM);
+				MaxChimericLen = TrimmedSeqLen; 				
+				MaxChimericMMs = TrimmedMM;
+				Trim5Flank = TrimmedLeftFlankLen;
+				Trim3Flank = TrimmedRightFlankLen;
 
-							if(m_bBisulfite)
-								{
-								if(TargBase == eBaseC || TargBase == eBaseG)
-									{
-									switch(BisBase) {
-										case eBaseA:		// only allow A
-											if(ProbeBase == eBaseA && TargBase == eBaseG)
-												continue;
-											break; // mismatch
-										case eBaseT:		// only allow T
-											if(ProbeBase == eBaseT && TargBase == eBaseC)
-												continue;
-											break; // mismatch
-										}
-									}
-								}
-							}
-
-						// execution here only if mismatch
-						// allowed mismatches are pro-rata dependent on the length
-						if(++CurMMCnt > MaxSubSeqMMs)
-							break;
-						if(CurMMCnt >= NxtLowMMCnt)
-							break;
-						if(CurChimericLen >= MinChimericLen && CurChimericLen >= MaxChimericLen)
-							{
-							int ProRataMM = max(1,(int)(0.5 + ((MaxTotMM * CurChimericLen) / (double)ProbeLen)));
-							if(CurMMCnt <= ProRataMM && (CurChimericLen > MaxChimericLen || CurMMCnt < MaxChimericMMs))
-								{
-								MaxChimericLen = CurChimericLen;
-								Trim5Flank = PatIdx;
-								Trim3Flank = TargMatchLen - FlankIdx;
-								MaxChimericMMs = CurMMCnt;
-								}
-							}
-						}
-					if(CurChimericLen >= MinChimericLen && CurChimericLen >= MaxChimericLen)
-						{
-						int ProRataMM = max(1,(int)(0.5 + ((MaxTotMM * CurChimericLen) / (double)ProbeLen)));
-						if(CurMMCnt <= ProRataMM)
-							{
-							MaxChimericLen = CurChimericLen;
-							Trim5Flank = PatIdx;
-							Trim3Flank = TargMatchLen - FlankIdx;
-							MaxChimericMMs = CurMMCnt;
-							}
-						}
-					}
-
-				if(MaxChimericLen < MinChimericLen)
+				if(MaxChimericLen < (int)MinProbeChimericLen)
 					continue;
 
 				if(MaxChimericLen > BestChimericLen ||	// if at least as long as any previous match then this is a new unique putative hit
@@ -5597,7 +5718,7 @@ do
 						pCurHit->Seg[0].TrimRight = Trim5Flank;
 						}
 					pCurHit->Seg[0].ChromID = pEntry->EntryID;
-					pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx + Trim5Flank - pEntry->StartOfs);
+					pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);
 					pCurHit->Seg[0].MatchLen = ProbeLen;
 					pCurHit->Seg[0].Mismatches = MaxChimericMMs;
 					pCurHit->Seg[0].TrimMismatches = MaxChimericMMs;
@@ -5629,7 +5750,7 @@ do
 								pCurHit->Seg[0].TrimRight = Trim5Flank;
 								}
 							pCurHit->Seg[0].ChromID = pEntry->EntryID;
-							pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx + Trim5Flank - pEntry->StartOfs);
+							pCurHit->Seg[0].MatchLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);
 							pCurHit->Seg[0].MatchLen = ProbeLen;
 							pCurHit->Seg[0].Mismatches = MaxChimericMMs;
 							pCurHit->Seg[0].TrimMismatches = MaxChimericMMs;

@@ -71,6 +71,7 @@ Reset(false);
 
 int
 CAligner::Align(etPMode PMode,			// processing mode
+		UINT32 SampleNthRawRead,		// sample every Nth raw read (or read pair) for processing (1..10000)
 		etFQMethod Quality,				// quality scoring for fastq sequence files
 		bool bSOLiD,					// if true then processing in colorspace
 		bool bBisulfite,				// if true then process for bisulfite methylation patterning
@@ -82,6 +83,7 @@ CAligner::Align(etPMode PMode,			// processing mode
 		bool bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
 		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
+		bool bChimericRpt,				// report chimeric trimming detail for individual reads (default is not to report)
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -140,6 +142,10 @@ char szPEInsertDistFile[_MAX_PATH];
 char szOutBAIFile[_MAX_PATH];
 Init();
 
+if(MinChimericLen > 0)					// too confusing if trimming chimeric and then PCR primer trimming or flank exact trimming. Chimeric trimming should handle both PCR and flank exacts
+	PCRPrimerCorrect = 0;
+
+m_SampleNthRawRead = SampleNthRawRead;
 
 m_pszTrackTitle = pszTrackTitle;
 
@@ -214,7 +220,7 @@ else
 
 m_AlignStrand = AlignStrand;
 m_MinChimericLen = abs(MinChimericLen);
-m_bReportChimerics = MinChimericLen >= 0 ? false : true;
+m_bReportChimerics = bChimericRpt && MLMode == eMLdefault ? true : false;
 m_microInDelLen = microInDelLen;
 m_SpliceJunctLen = SpliceJunctLen;
 m_MinSNPreads = MinSNPreads;
@@ -364,7 +370,7 @@ if((Rslt=InitiateLoadingReads()) < eBSFSuccess)
 	}
 
 // if user wants to utilise reads aligning to multiple loci then need to make an initial alloc for holding these..
-if(m_MLMode > eMLrand && m_MLMode != eMLall)
+if(m_MLMode > eMLrand && m_MLMode < eMLall)
 	{
 	size_t memreq = (size_t)sizeof(tsReadHit) * cAllocMultihits;
 
@@ -395,7 +401,7 @@ if(m_MLMode > eMLrand && m_MLMode != eMLall)
 	m_NumProvMultiAligned = 0;
 	}
 
-// if outputing multiloci all then need to allocate memory for these
+// if outputting multiloci all then need to allocate memory for these
 if(m_MLMode >= eMLall || m_FMode == eFMsamAll)
 	{
 	size_t memreq = (size_t)(sizeof(tsReadHit) + 150) * 5 * cAllocMultihits;	// read sizes not known yet so assume 100bp reads plus long descriptors plus many multiloci - realloc'd as may be required
@@ -475,19 +481,12 @@ if(Rslt < eBSFSuccess)
 	return(Rslt);
 	}
 
-
-
-if(m_MinChimericLen > 0) // any aligned reads accepted as being chimeric are flank trimmed and subsequently processed as if full length aligned
+if(m_bReportChimerics)
 	{
 	char szChimericsFile[_MAX_PATH];
-	if(m_bReportChimerics)
-		{
-		strcpy(szChimericsFile,m_pszOutFile);
-		strcat(szChimericsFile,".chimericseqs.csv");
-		}
-	else
-		szChimericsFile[0] = '\0';
-	TrimChimeric(szChimericsFile);
+	strcpy(szChimericsFile,m_pszOutFile);
+	strcat(szChimericsFile,".chimericseqs.csv");
+	ReportChimerics(szChimericsFile);
 	}
 
 // if autodetermining max subs that were allowed from actual reads then let user know what the average read length was
@@ -573,6 +572,7 @@ if(m_MLMode >= eMLall)		// a little involved as need to reuse m_pReadHits ptrs s
 	m_ppReadHitsIdx = 0;
 	}
 
+// if PE processing then try assign partners within insert size constraints
 if(PEproc != ePEdefault)
 	{
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Paired end association and partner alignment processing started..");
@@ -585,6 +585,7 @@ if(PEproc != ePEdefault)
 	}
 
 // try and assign multimatch read loci?
+// only applies if SE processing and non-random assignment of a single multiloci loci
 if(PEproc == ePEdefault && m_MLMode > eMLrand && m_MLMode != eMLall)
 	{
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Multialignment processing started..");
@@ -1528,9 +1529,9 @@ inline UINT32
 CAligner::AdjEndLoci(tsSegLoci *pSeg)
 {
 if(pSeg->Strand == '+')
-	return((UINT32)pSeg->MatchLoci + pSeg->MatchLen + pSeg->TrimRight - 1);
+	return((UINT32)pSeg->MatchLoci + (pSeg->MatchLen - pSeg->TrimRight - 1));
 else
-	return((UINT32)pSeg->MatchLoci  + pSeg->MatchLen +  pSeg->TrimLeft - 1);
+	return((UINT32)pSeg->MatchLoci  + (pSeg->MatchLen - pSeg->TrimLeft - 1));
 }
 
 inline UINT32
@@ -1558,9 +1559,9 @@ if(pHit->FlgInDel || pHit->FlgSplice)
 else
 	pSeg = &pHit->Seg[0];
 if(pSeg->Strand == '+')
-	return((UINT32)pSeg->MatchLoci + pSeg->MatchLen + pSeg->TrimRight - 1);
+	return((UINT32)pSeg->MatchLoci + (pSeg->MatchLen - pSeg->TrimRight - 1));
 else
-	return((UINT32)pSeg->MatchLoci  + pSeg->MatchLen +  pSeg->TrimLeft - 1);
+	return((UINT32)pSeg->MatchLoci  + (pSeg->MatchLen - pSeg->TrimLeft - 1));
 }
 
 inline UINT32
@@ -1594,7 +1595,7 @@ return(Mismatches);
 // AutoTrimFlanks
 // Intent is that this will be useful for delimiting RNAseq reads covering exon boundaries
 // Autotrimmed aligned reads must be at least 50% of their untrimmed length or they will be discarded; exception is that if paired end processing then
-// triming of these reads is limited so that at least 1/3rd of the read is retained as a central core
+// trimming of these reads is limited so that at least 1/3rd of the read is retained as a central core
 int
 CAligner::AutoTrimFlanks(int MinFlankExacts) // Autotrim back aligned read flanks until there are at least MinFlankExacts exactly matching bases in the flanks
 {
@@ -1629,21 +1630,20 @@ if(MinFlankExacts > 0)	// do  3' and 5' autotrim? Note that currently can't trim
 	while((pReadHit = IterReads(pReadHit))!=NULL)
 		{
 		pReadHit->HitLoci.FlagTR = 0;
-		if(pReadHit->NAR != eNARAccepted || pReadHit->HitLoci.FlagSegs == 1)
+		if(pReadHit->NAR != eNARAccepted || pReadHit->HitLoci.FlagSegs == 1 || pReadHit->HitLoci.Hit.FlgChimeric == 1)
 			continue;
 		MatchLen = pReadHit->HitLoci.Hit.Seg[0].MatchLen;
-		if(MatchLen != pReadHit->ReadLen)
+		if(MatchLen != pReadHit->ReadLen) // will only be different if read already determined to be spliced or containing microInDel
 			{
 			pReadHit->NumHits = 0;
-			pReadHit->NAR = eNARTrim;
-			if(pReadHit->HitLoci.Hit.Seg[0].Strand == '+')
+			if(pReadHit->HitLoci.Hit.Seg[0].Strand == '+')		// treating as if trimmed
 				m_ElimPlusTrimed += 1;
 			else
 				m_ElimMinusTrimed += 1;
 			continue;
 			}
 
-		MinTrimmedLen = (MatchLen+1)/2;
+		MinTrimmedLen = (MatchLen+1)/2;							// post trimming the alignment must be at least this length
 		if(MinTrimmedLen < 15)
 			MinTrimmedLen = 15;
 
@@ -1728,7 +1728,7 @@ if(MinFlankExacts > 0)	// do  3' and 5' autotrim? Note that currently can't trim
 			}
 		LeftOfs = Idx - (MinFlankExacts - 1);
 
-		// trim from 3' towards 5'
+		// trim from 3' back towards 5'
 		pHitSeq = &TargSeq[MatchLen-1];
 		pSeq = &ReadSeq[MatchLen-1];
 		ExactLen = 0;
@@ -1775,7 +1775,7 @@ if(MinFlankExacts > 0)	// do  3' and 5' autotrim? Note that currently can't trim
 
 		pReadHit->HitLoci.Hit.Seg[0].TrimLeft = LeftOfs;
 		pReadHit->HitLoci.Hit.Seg[0].TrimRight = MatchLen - RightOfs;
-		if(LeftOfs || (MatchLen - RightOfs))
+		if(LeftOfs || (MatchLen - RightOfs)) // any 5' or 3' trimming was required?
 			{
 			pReadHit->HitLoci.Hit.Seg[0].TrimMismatches = pReadHit->HitLoci.Hit.Seg[0].Mismatches - TrimMismatches;
 			pReadHit->HitLoci.FlagTR = 1;
@@ -1801,12 +1801,12 @@ if(MinFlankExacts > 0)	// do  3' and 5' autotrim? Note that currently can't trim
 return(eBSFSuccess);
 }
 
-// TrimChimeric
-// Aligned reads marked as chimeric aligned are left and right flank trimmed so that in subsequent processing these reads are treated as matching over their full length
+// ReportChimerics
+// Report reads which have been chimerically aligned
 const int cChimericSeqBuffLen = 0x07fffff;  // use this sized buffer when reporting the chimeric sequences
 
 int
-CAligner::TrimChimeric(char *pszChimericSeqs)	// trim back aligned chimeric read flanks with option to write chimeric sequences to file pszChimericSeqs 
+CAligner::ReportChimerics(char *pszChimericSeqFile)			// report chimerically trimmed read sequences to file pszChimericSeqFile
 {
 int hChimerics;
 char Strand;
@@ -1832,27 +1832,32 @@ UINT8 *pTo;
 int CopyLen;
 UINT32 NumReads;
 
+if(pszChimericSeqFile == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: No chimeric sequences file specified");
+	return(eBSFerrCreateFile);
+	}
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Starting chimeric flank sequence trim processing...");
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Starting to report chimeric flank trimmed read sequences to file '%s' ...", pszChimericSeqFile);
 PrevChromID = 0;
 hChimerics = -1;
 pszLineBuff = NULL;
-if(pszChimericSeqs != NULL && pszChimericSeqs[0] != '\0')
+if(pszChimericSeqFile != NULL && pszChimericSeqFile[0] != '\0')
 	{
 #ifdef _WIN32
-	hChimerics = open(pszChimericSeqs,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE) );
+	hChimerics = open(pszChimericSeqFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE) );
 #else
-	if((hChimerics = open(pszChimericSeqs,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+	if((hChimerics = open(pszChimericSeqFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
 		if(ftruncate(hChimerics,0)!=0)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate chimeric sequences file %s - %s",pszChimericSeqs,strerror(errno));
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate chimeric sequences file %s - %s",pszChimericSeqFile,strerror(errno));
 			return(eBSFerrCreateFile);
 			}
 #endif
 
 	if(hChimerics < 0)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate chimeric sequences file '%s'",pszChimericSeqs);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate chimeric sequences file '%s'",pszChimericSeqFile);
 		return(eBSFerrCreateFile);
 		}	
 	if((pszLineBuff = new char [cChimericSeqBuffLen]) == NULL)
@@ -1880,28 +1885,19 @@ while(pCurReadHit != NULL) {
 	else
 		pNxtReadHit = NULL;
 	pCurReadHit->HitLoci.FlagTR = 0;
-	if(pCurReadHit->NAR != eNARAccepted || pCurReadHit->HitLoci.Hit.FlgChimeric == 0)
+	if(pCurReadHit->NAR != eNARAccepted || pCurReadHit->HitLoci.Hit.FlgChimeric == 0) // only reporting reads which were accepted as being chimeric aligned
 		{
-		if(NumTrimmed > 0)
-			memmove(pTo,pCurReadHit,CopyLen);
-		pTo += CopyLen;
 		pCurReadHit = pNxtReadHit;
-		if(pCurReadHit != NULL)
-			pCurReadHit->PrevSizeOf = CopyLen;
 		continue;
 		}
 
 	TrimLeft = pCurReadHit->HitLoci.Hit.Seg[0].TrimLeft;
 	TrimRight = pCurReadHit->HitLoci.Hit.Seg[0].TrimRight;
+
 	if(TrimLeft == 0 && TrimRight == 0)	// if accepted as a chimeric then should have had at least one flank to be trimmed, treat as full length match ...
 		{
 		pCurReadHit->HitLoci.Hit.FlgChimeric = 0;
-		if(NumTrimmed > 0)
-			memmove(pTo,pCurReadHit,CopyLen);
-		pTo += CopyLen;
 		pCurReadHit = pNxtReadHit;
-		if(pCurReadHit != NULL)
-			pCurReadHit->PrevSizeOf = CopyLen;
 		continue;
 		}
 	if(TrimLeft > 0)
@@ -1918,7 +1914,7 @@ while(pCurReadHit != NULL) {
 	if(hChimerics != -1)
 		{
 		Strand = pCurReadHit->HitLoci.Hit.Seg[0].Strand;
-		Ofs = (UINT32)pCurReadHit->HitLoci.Hit.Seg[0].MatchLoci;
+		Ofs = AdjAlignStartLoci(&pCurReadHit->HitLoci.Hit);
 		if(PrevChromID == 0 || pCurReadHit->HitLoci.Hit.Seg[0].ChromID != PrevChromID)
 			{
 			m_pSfxArray->GetIdentName(pCurReadHit->HitLoci.Hit.Seg[0].ChromID,sizeof(szChromName),szChromName);
@@ -1964,22 +1960,10 @@ while(pCurReadHit != NULL) {
 		BuffIdx = 0;
 		}
 
-	pCurReadHit->ReadLen = MatchLen;
-	pCurReadHit->HitLoci.Hit.Seg[0].MatchLen = MatchLen;
-	pCurReadHit->HitLoci.Hit.Seg[0].TrimLeft = 0;
-	pCurReadHit->HitLoci.Hit.Seg[0].TrimRight = 0;
-
-	pCurReadHit->HitLoci.Hit.Seg[0].TrimMismatches = pCurReadHit->HitLoci.Hit.Seg[0].Mismatches;
-
-	CopyLen = sizeof(tsReadHit) + pCurReadHit->DescrLen + pCurReadHit->ReadLen;
-	if(NumTrimmed > 0)
-		memmove(pTo,pCurReadHit,CopyLen);
-	pTo += CopyLen;
 	pCurReadHit = pNxtReadHit;
-	if(pCurReadHit != NULL)
-		pCurReadHit->PrevSizeOf = CopyLen;
 	NumTrimmed += 1;
 	}
+
 if(hChimerics != -1)
 	{
 	if(BuffIdx)
@@ -1995,7 +1979,7 @@ if(hChimerics != -1)
 	}
 if(pszLineBuff != NULL)
 	delete pszLineBuff;
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed trimming %u chimeric flanks, %u 5', %u 3', %u both 5' and 3' flanks trimmed",NumTrimmed,NumLeftTrimmed,NumRightTrimmed, NumLeftRightTrimmed);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed reporting to file '%s'  %u chimeric flanks, %u 5', %u 3', %u both 5' and 3' flanks trimmed",pszChimericSeqFile,NumTrimmed,NumLeftTrimmed,NumRightTrimmed, NumLeftRightTrimmed);
 return(eBSFSuccess);
 }
 
@@ -2860,7 +2844,7 @@ return(SeqFragLen);
 //ProcessPairedEnds
 // Matches read pairs and if one read is aligned but partner is not due to muiltihit loci then
 // attempts to find a unique loci for that multihit read within the expected approximate pair distance range
-// If user has optionally requested then will accept reads which are ophaned (other PE not aligned) or PEs where PE1 and PE2 align to separate chroms/contigs 
+// If user has optionally requested then will accept reads which are orphaned (other PE not aligned) or PEs where PE1 and PE2 align to separate chroms/contigs 
 int
 CAligner::ProcessPairedEnds(etPEproc PEproc, // paired reads alignment processing mode
 				  int MinEditDist, // accepted alignments must be at least this Hamming away from other putative alignments
@@ -4643,7 +4627,9 @@ m_ThreadLoadReadsRslt = -1;
 
 ThreadPars.pRslt = &m_ThreadLoadReadsRslt;
 ThreadPars.pThis = this;
+ThreadPars.SampleNthRawRead = m_SampleNthRawRead;
 ThreadPars.Rslt = 0;
+
 
 #ifdef _WIN32
 m_hThreadLoadReads = ThreadPars.threadHandle = (HANDLE)_beginthreadex(NULL,0x0fffff,LoadReadFilesThread,&ThreadPars,0,&m_ThreadLoadReadsID);
@@ -6318,6 +6304,7 @@ int
 CAligner::AddMultiHit(tsReadHit *pReadHit)
 {
 int NumMultiHits;
+int CopyLen;
 size_t HitLen;
 tsReadHit *pMultiHit;
 
@@ -6351,8 +6338,11 @@ pthread_mutex_unlock(&m_hMtxMultiMatches);
 	m_AllocMultiAllMem = memreq;
 	}
 pMultiHit = (tsReadHit *)((UINT8 *)m_pMultiAll + m_NxtMultiAllOfs);
-memmove(pMultiHit,pReadHit,HitLen);
-m_NxtMultiAllOfs += HitLen;
+
+CopyLen = sizeof(tsReadHit) + pReadHit->DescrLen + pReadHit->ReadLen;
+memcpy(pMultiHit,pReadHit,CopyLen);
+
+m_NxtMultiAllOfs += CopyLen;
 m_NumMultiAll += 1;
 pMultiHit->ReadID = m_NumMultiAll;
 NumMultiHits = m_NumMultiAll;
@@ -8053,8 +8043,8 @@ UINT32 PlusHits;
 UINT32 MinusHits;
 UINT32 ChimericHits;
 
-UINT32 CurReadsAligned;
-UINT32 PrevReadsAligned;
+UINT32 CurReadsProcessed;
+UINT32 PrevReadsProcessed;
 UINT32 CurReadsLoaded;
 UINT32 PrevReadsLoaded;
 int MaxNumSlides;
@@ -8098,12 +8088,11 @@ PlusHits = 0;
 MinusHits = 0;
 ChimericHits = 0;
 TotNumReadsProc = 0;
-PrevReadsAligned = 0;
+PrevReadsProcessed = 0;
 PrevReadsLoaded = 0;
 
 CurChromID = 0;
 CurBlockID = 1;
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Loading genome assembly suffix array...");
 if((Rslt=m_pSfxArray->SetTargBlock(CurBlockID))<0)
 	{
 	while(m_pSfxArray->NumErrMsgs())
@@ -8190,20 +8179,25 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 	sleep(5);
 #endif
 
+UINT32 ReportProgressSecs;
+ReportProgressSecs = 60;
+if(m_SampleNthRawRead > 1)
+	ReportProgressSecs = 30;
+
 // let user know that Kanga is working hard...
-ApproxNumReadsAligned(&PrevReadsAligned,&PrevReadsLoaded);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",PrevReadsAligned,PrevReadsLoaded);
+ApproxNumReadsProcessed(&PrevReadsProcessed,&PrevReadsLoaded);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",PrevReadsProcessed,PrevReadsLoaded);
 
 // wait for all threads to have completed
 for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 	{
 #ifdef _WIN32
-	while(WAIT_TIMEOUT == WaitForSingleObject( WorkerThreads[ThreadIdx].threadHandle, 60000 * 10))
+	while(WAIT_TIMEOUT == WaitForSingleObject( WorkerThreads[ThreadIdx].threadHandle, (DWORD)ReportProgressSecs * 1000))
 		{
-		ApproxNumReadsAligned(&CurReadsAligned,&CurReadsLoaded);
-		if(CurReadsAligned > PrevReadsAligned || CurReadsLoaded > PrevReadsLoaded)
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",CurReadsAligned,CurReadsLoaded);
-		PrevReadsAligned = CurReadsAligned;
+		ApproxNumReadsProcessed(&CurReadsProcessed,&CurReadsLoaded);
+		if(CurReadsProcessed > PrevReadsProcessed || CurReadsLoaded > PrevReadsLoaded)
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",CurReadsProcessed,CurReadsLoaded);
+		PrevReadsProcessed = CurReadsProcessed;
 		PrevReadsLoaded = CurReadsLoaded;
 		}
 	CloseHandle( WorkerThreads[ThreadIdx].threadHandle);
@@ -8211,15 +8205,15 @@ for(ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++)
 	struct timespec ts;
 	int JoinRlt;
 	clock_gettime(CLOCK_REALTIME, &ts);
-	ts.tv_sec += 60 * 10;
+	ts.tv_sec += ReportProgressSecs;
 	while((JoinRlt = pthread_timedjoin_np(WorkerThreads[ThreadIdx].threadID, NULL, &ts)) != 0)
 		{
-		ApproxNumReadsAligned(&CurReadsAligned,&CurReadsLoaded);
-		if(CurReadsAligned > PrevReadsAligned || CurReadsLoaded > PrevReadsLoaded)
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",CurReadsAligned,CurReadsLoaded);
-		PrevReadsAligned = CurReadsAligned;
+		ApproxNumReadsProcessed(&CurReadsProcessed,&CurReadsLoaded);
+		if(CurReadsProcessed > PrevReadsProcessed || CurReadsLoaded > PrevReadsLoaded)
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %u reads aligned from %u loaded",CurReadsProcessed,CurReadsLoaded);
+		PrevReadsProcessed = CurReadsProcessed;
 		PrevReadsLoaded = CurReadsLoaded;
-		ts.tv_sec += 60 * 10;
+		ts.tv_sec += ReportProgressSecs;
 		}
 
 #endif
@@ -8286,8 +8280,8 @@ if(m_ThreadLoadReadsRslt < 0 || m_ThreadCoredApproxRslt < 0)
 	Reset(false);
 	return(m_ThreadLoadReadsRslt < 0 ? m_ThreadLoadReadsRslt : m_ThreadCoredApproxRslt);
 	}
-ApproxNumReadsAligned(&CurReadsAligned,&CurReadsLoaded);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Alignment of %u from %u loaded completed",CurReadsAligned,CurReadsLoaded);
+ApproxNumReadsProcessed(&CurReadsProcessed,&CurReadsLoaded);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Alignment of %u from %u loaded completed",CurReadsProcessed,CurReadsLoaded);
 
 m_PerThreadAllocdIdentNodes = 0;
 m_TotAllocdIdentNodes = 0;
@@ -8681,6 +8675,7 @@ while(ThreadedIterReads(&ReadsHitBlock))
 				pHit->Seg[0].TrimMismatches = pHit->Seg[0].Mismatches;
 				if(pHit->FlgInDel == 1 || pHit->FlgSplice == 1)
 					{
+					pHit->FlgChimeric = 0;
 					pHit->Seg[1].TrimLeft = 0;
 					pHit->Seg[1].TrimRight = 0;
 					pHit->Seg[1].TrimMismatches = pHit->Seg[1].Mismatches;
@@ -8696,6 +8691,7 @@ while(ThreadedIterReads(&ReadsHitBlock))
 				pReadHit->LowMMCnt = 0;
 				pReadHit->NumHits = 0;
 				pReadHit->LowHitInstances = 0;
+				pReadHit->HitLoci.Hit.FlgChimeric = 0;
 				if(m_FMode == eFMsamAll)
 					{
 					pReadHit->LowMMCnt = (INT8)0;
@@ -8996,17 +8992,18 @@ m_ProcessingStartSecs = gStopWatch.ReadUSecs();
 }
 
 
-UINT32		// Returns the number of reads thus far loaded and aligned
-CAligner::ApproxNumReadsAligned(UINT32 *pNumAligned,UINT32 *pNumLoaded)
+UINT32		// Returns the number of reads thus far loaded and processed for alignment
+CAligner::ApproxNumReadsProcessed(UINT32 *pNumProcessed,UINT32 *pNumLoaded)
 {
-UINT32 NumAligned;
+UINT32 NumReadsProc;
 AcquireSerialise();
-NumAligned = m_NumReadsProc;
-if(pNumAligned != NULL)
-	*pNumAligned = NumAligned;
-*pNumLoaded = m_NumReadsLoaded;
+NumReadsProc = m_NumReadsProc;
+if(pNumProcessed != NULL)
+	*pNumProcessed = NumReadsProc;
+if(pNumLoaded != NULL)
+	*pNumLoaded = m_NumReadsLoaded;
 ReleaseSerialise();
-return(NumAligned);
+return(NumReadsProc);
 }
 
 // ThreadedIterReads
@@ -9017,15 +9014,19 @@ CAligner::ThreadedIterReads(tsReadsHitBlock *pRetBlock)
 {
 UINT32 NumReadsLeft;
 UINT32 MaxReads2Proc;
+UINT32 AdjReadsPerBlock;
 tsReadHit *pCurReadHit;
 pRetBlock->NumReads = 0;
 
+AdjReadsPerBlock = cMaxReadsPerBlock;
+if(m_SampleNthRawRead > 1)
+	AdjReadsPerBlock = min(100,AdjReadsPerBlock/m_SampleNthRawRead);
 
 ReleaseLock(false);
 while(1) {
 	AcquireSerialise();
 	AcquireLock(false);
-	if(m_bAllReadsLoaded || ((m_NumReadsLoaded - m_NumReadsProc) >= (UINT32)min(cMaxReadsPerBlock,pRetBlock->MaxReads)) || m_ThreadCoredApproxRslt < 0)
+	if(m_bAllReadsLoaded || ((m_NumReadsLoaded - m_NumReadsProc) >= (UINT32)min(AdjReadsPerBlock,(UINT32)pRetBlock->MaxReads)) || m_ThreadCoredApproxRslt < 0)
     	break;
 
 	ReleaseLock(false);
@@ -9052,7 +9053,7 @@ if(m_pReadHits == NULL ||
 // idea is to maximise the number of threads still processing when most reads have been processed so that
 // the last thread processing doesn't end up with a large block of reads needing lengthly processing
 NumReadsLeft = m_NumReadsLoaded - m_NumReadsProc;
-if(NumReadsLeft < cMaxReadsPerBlock/4)	// if < cMaxReadsPerBlock/4 yet to be processed then give it all to the one thread
+if(NumReadsLeft < AdjReadsPerBlock/4)	// if < cMaxReadsPerBlock/4 yet to be processed then give it all to the one thread
 	MaxReads2Proc = NumReadsLeft;
 else
 	{
@@ -10036,9 +10037,13 @@ else
 memmove(&pReadHit->Read[DescrLen+1],pszReadBuff,ReadLen);
 m_PrevSizeOf = (UINT32)sizeof(tsReadHit) + ReadLen + DescrLen;
 
-// processing threads are only updated with actual number of loaded reads every 100K reads so as
+// processing threads are only updated with actual number of loaded reads every 50K reads so as
 // to minimise disruption to the actual aligner threads which will also be serialised through m_hMtxIterReads
-if(m_NumDescrReads > 0 && (m_NumDescrReads - m_NumReadsLoaded) >= 100000)
+UINT32 RptDiff = 50000;
+if(m_SampleNthRawRead > 1)
+	RptDiff = 1 + (RptDiff/m_SampleNthRawRead);
+  
+if(m_NumDescrReads > 0 && (m_NumDescrReads - m_NumReadsLoaded) >= RptDiff)
 	{
 	AcquireSerialise();
 	m_FinalReadID = m_NumDescrReads;
@@ -10145,6 +10150,8 @@ int NumContamLen3PE1;
 int NumContamLen5PE2;
 int NumContamLen3PE2;
 
+UINT32 NxtToSample;
+
 CFasta PE1Fasta;
 CFasta PE2Fasta;
 
@@ -10160,6 +10167,10 @@ if((EstNumSeqs = (teBSFrsltCodes)PE1Fasta.FastaEstSizes(pszPE1File,NULL,NULL,&Es
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to estimate memory requirements for file '%s'",pszPE1File);
 	return(eBSFerrOpnFile);
 	}
+
+if(m_SampleNthRawRead > 1)
+	EstNumSeqs = 1 + (EstNumSeqs / m_SampleNthRawRead);	// ensure at least 1 read will be sampled!
+
 // ReqAllocSize assumes -
 // a) EstNumSeqs is not accurate so adds another 100000 to reduce chance of subsequent realloc required
 // b) descriptors will be trimmed to 1st whitespace
@@ -10306,10 +10317,14 @@ NumContamLen3PE2 = 0;
 
 bPE1SimReads = false;
 bPE2SimReads = false;
+NxtToSample = m_SampleNthRawRead;
+
+
 while((Rslt = (teBSFrsltCodes)(PE1ReadLen = PE1Fasta.ReadSequence(szPE1ReadBuff,sizeof(szPE1ReadBuff)-1,true,false))) > eBSFSuccess)
 	{
 	if(m_TermBackgoundThreads != 0)	// need to immediately self-terminate?
 		break;
+
 	PE1NumDescrReads += 1;
 	if(PE1ReadLen == eBSFFastaDescr)		// just read a descriptor line which would be as expected for multifasta or fastq
 		{
@@ -10384,6 +10399,14 @@ while((Rslt = (teBSFrsltCodes)(PE1ReadLen = PE1Fasta.ReadSequence(szPE1ReadBuff,
 				else
 					bPE2SimReads = false;
 				}
+			}
+
+		if(m_SampleNthRawRead > 1)
+			{
+			NxtToSample += 1;
+			if(m_SampleNthRawRead > NxtToSample)
+				continue;
+			NxtToSample = 0;
 			}
 
 

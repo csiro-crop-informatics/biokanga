@@ -36,6 +36,7 @@
 
 int
 Process(etPMode PMode,					// processing mode
+		UINT32 SampleNthRawRead,		// sample every Nth raw read, or read pair, for processing (1..10000)
 		etFQMethod Quality,				// quality scoring for fastq sequence files
 		bool bSOLiD,					// if true then processing in colorspace
 		bool bBisulfite,				// if true then process for bisulfite methylation patterning
@@ -47,6 +48,7 @@ Process(etPMode PMode,					// processing mode
 		bool bPEInsertLenDist,			// true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
 		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
+		bool bChimericRpt,				// report chimeric trimming detail for individual reads (default is not to report)
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -117,6 +119,7 @@ int Idx;
 int LenChromList;
 
 int PMode;					// processing mode
+UINT32 SampleNthRawRead;	// sample every Nth raw read (or read pair) for processing (1..10000)
 bool bSOLiD;				// if true then process for colorspace (SOLiD)
 bool bBisulfite;			// if true then process for bisulfite methylation patterning
 int PCRartefactWinLen;		// if >= 0 then window size to use when attempting to reduce the number of  PCR differential amplification artefacts (reads stacking to same loci)
@@ -141,6 +144,7 @@ int MaxAcceptReadLen;				// only accepting reads for alignment if no longer than
 int MaxRptSAMSeqsThres;		// report all SAM chroms or sequences to SAM header if number of reference chroms <= this limit (defaults to 10000)
 int AlignStrand;			// align on to watson, crick or both strands of target
 int MinChimericLen;			// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
+bool bChimericRpt;			// report chimeric trimming detail for individual reads (default is not to report)
 int microInDelLen;			// microInDel length maximum
 int SpliceJunctLen;			// maximum splice junction length when aligning RNAseq reads
 int MinSNPreads;			// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -216,9 +220,13 @@ struct arg_int  *pairminlen = arg_int0("d","pairminlen","<int>", "accept paired 
 struct arg_int  *pairmaxlen = arg_int0("D","pairmaxlen","<int>", "accept paired end alignments with observed insert sizes of at most this (default = 1000)");
 struct arg_lit  *pairstrand = arg_lit0("E","pairstrand",         "5' and 3' are on same strand");
 
-struct arg_int  *alignstrand = arg_int0("Q","alignstrand","<int>", "align to this strand: 0 either, 1 Watson '+', 2 Crick '-' (default is to align to either strand)");
+struct arg_int  *alignstrand = arg_int0("Q","alignstrand","<int>", "align to this strand: 0 either, 1 Sense '+', 2 Antisense '-' (default is to align to either strand)");
+
+struct arg_int  *samplenthrawread = arg_int0("#","samplenthrawread","<int>", "sample every Nth raw read or read pair for processing (default 1, range 1..10000)");
 
 struct arg_int  *minchimericlen = arg_int0("c","minchimeric","<int>", "minimum chimeric length as a percentage of probe length (default is 0 to disable, otherwise 50..99)");
+struct arg_lit  *chimericrpt = arg_lit0("0","chimericrpt",     "report chimeric trimming detail for individual reads (default is not to report)");
+
 
 struct arg_int *qual = arg_int0("g","quality","<int>",		    "fastq quality scoring - 0 - Sanger or Illumina 1.8+, 1 = Illumina 1.3+, 2 = Solexa < 1.3, 3 = Ignore quality (default = 3)");
 struct arg_file *sfxfile = arg_file1("I","sfx","<file>",		"align against this suffix array (kangax generated) file");
@@ -286,7 +294,7 @@ struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					summrslts,experimentname,experimentdescr,
-					pmode,alignstrand,minchimericlen,pecircularised,peinsertlendist,microindellen,splicejunctlen,solid,pcrartefactwinlen,qual,mlmode,trim5,trim3,minacceptreadlen,maxacceptreadlen,maxmlmatches,rptsamseqsthres,clampmaxmulti,bisulfite,
+					pmode,samplenthrawread,alignstrand,minchimericlen,chimericrpt,pecircularised,peinsertlendist,microindellen,splicejunctlen,solid,pcrartefactwinlen,qual,mlmode,trim5,trim3,minacceptreadlen,maxacceptreadlen,maxmlmatches,rptsamseqsthres,clampmaxmulti,bisulfite,
 					mineditdist,maxsubs,maxns,minflankexacts,pcrprimercorrect,minsnpreads,markerlen,markerpolythres,qvalue,snpnonrefpcnt,format,title,priorityregionfile,nofiltpriority,bestmatches,
 					pe1inputfiles,peproc,pairminlen,pairmaxlen,pairstrand,pe2inputfiles,sfxfile,snpfile,centroidfile,
 					outfile,nonealignfile,multialignfile,statsfile,siteprefsfile,siteprefsofs,lociconstraintsfile,contamsfile,ExcludeChroms,IncludeChroms,threads,
@@ -442,13 +450,12 @@ if (!argerrors)
 	szNoneAlignFile[0] = '\0';
 	szSitePrefsFile[0] = '\0';
 	MinChimericLen = 0;
+	bChimericRpt = false;
 	bLocateBestMatches = false;
 
 	MinAcceptReadLen = cDfltMinAcceptReadLen;
 	MaxAcceptReadLen = cDfltMaxAcceptReadLen;
 	
-	bSOLiD = solid->count ? true : false;
-
 	PMode = (etPMode)(pmode->count ? pmode->ival[0] : ePMdefault);
 	if(PMode < ePMdefault || PMode >= ePMplaceholder)
 		{
@@ -456,6 +463,13 @@ if (!argerrors)
 		exit(1);
 		}
 
+	SampleNthRawRead = samplenthrawread->count ? samplenthrawread->ival[0] : 1;
+	if(SampleNthRawRead < 1)
+		SampleNthRawRead = 1;
+	else
+		if(SampleNthRawRead > 10000)
+			SampleNthRawRead = 10000;
+	
 	AlignStrand = (eALStrand)(alignstrand->count ? alignstrand->ival[0] : eALSboth);
 	if(AlignStrand < eALSboth || AlignStrand >= eALSnone)
 		{
@@ -473,6 +487,12 @@ if (!argerrors)
 
 
 	MLMode = (etMLMode)(mlmode->count ? mlmode->ival[0] : 0);
+	if(MLMode < eMLdefault || MLMode >= eMLplaceholder)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: multiple aligned reads processing mode '-r%d' specified outside of range 0..%d\n",MLMode,eMLplaceholder-1);
+		exit(1);
+		}
+
 	FMode = (etFMode)(format->count ? format->ival[0] : eFMsam);
 	if(FMode < eFMdefault || FMode >= eFMplaceholder)
 		{
@@ -482,10 +502,16 @@ if (!argerrors)
 
 
 	MinFlankExacts = minflankexacts->count ? minflankexacts->ival[0] : 0;
-	
 	SpliceJunctLen = splicejunctlen->count ? splicejunctlen->ival[0] : 0;
 	microInDelLen = microindellen->count ? microindellen->ival[0] : 0;
 	bBisulfite = bisulfite->count ? true : false;
+	bSOLiD = solid->count ? true : false;
+	if(bBisulfite && bSOLiD)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: colorspace (SOLiD) '-C' and bisulfite methylation '-b' processing modes are mutually exclusive\n");
+		exit(1);
+		}
+
 	PEproc = (etPEproc)(peproc->count ? peproc->ival[0] : 0);
 	if(PEproc < ePEdefault || PEproc >= ePEplaceholder)
 		{
@@ -626,9 +652,21 @@ if (!argerrors)
 		bPairStrand = 0;
 		}
 
-	if(MLMode < eMLdefault || MLMode >= eMLplaceholder)
+	MinChimericLen = minchimericlen->count ? minchimericlen->ival[0] : 0;
+	if(MinChimericLen != 0 && !(abs(MinChimericLen) >= 50 && abs(MinChimericLen) <= 99))
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: multiple aligned reads processing mode '-r%d' specified outside of range 0..%d\n",MLMode,eMLplaceholder-1);
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum chimeric length percentage '-c%d' specified outside of range 50..99\n",abs(MinChimericLen));
+		exit(1);
+		}
+
+	if(MinChimericLen > 0 && MLMode == eMLdefault)
+		bChimericRpt = chimericrpt->count ? true : false;
+	else
+		bChimericRpt = false;
+
+	if(MinChimericLen && (bBisulfite || bSOLiD))
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Chimeric trimming not supported when either colorspace (SOLiD) '-C' or bisulfite methylation processing\n");
 		exit(1);
 		}
 
@@ -644,14 +682,13 @@ if (!argerrors)
 				exit(1);
 				}
 			}
-		else
+		else   
 			{
 			if(MaxMLmatches < 2 || MaxMLmatches > cMaxAllHits)
 				{
 				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: multiple aligned reads '-R%d' specified outside of range 2..%d\n",MaxMLmatches,cMaxAllHits);
 				exit(1);
 				}
-			gDiagnostics.DiagOut(eDLWarn,gszProcName,"Warning: in report all multimatch mode '-R5', there is no splice or SNP processing..\n");
 			}
 		bLocateBestMatches = bestmatches->count ? true : false;
 		}
@@ -673,10 +710,9 @@ if (!argerrors)
 		exit(1);
 		}
 
-	MinChimericLen = minchimericlen->count ? minchimericlen->ival[0] : 0;
-	if(MinChimericLen != 0 && !(abs(MinChimericLen) >= 50 && abs(MinChimericLen) <= 99))
+	if(MLMode == eMLall && microInDelLen != 0)
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: minimum chimeric length percentage '-c%d' specified outside of range 50..99\n",abs(MinChimericLen));
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: microInDels not supported when reporting multiloci alignments");
 		exit(1);
 		}
 
@@ -694,9 +730,9 @@ if (!argerrors)
 		exit(1);
 		}
 
+	SpliceJunctLen = splicejunctlen->count ? splicejunctlen->ival[0] : 0;
 	if(MLMode != eMLall)
 		{
-		SpliceJunctLen = splicejunctlen->count ? splicejunctlen->ival[0] : 0;
 		if(SpliceJunctLen != 0 && (SpliceJunctLen < cMinJunctAlignSep || SpliceJunctLen > cMaxJunctAlignSep))
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: RNAseq maximum splice junction separation '-A%d' must be either 0 or in the range %d..%d\n",SpliceJunctLen,cMinJunctAlignSep,cMaxJunctAlignSep);
@@ -704,7 +740,13 @@ if (!argerrors)
 			}
 		}
 	else
-		SpliceJunctLen = 0;
+		{
+		if(SpliceJunctLen != 0)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: in report all multiloci mode '-r5', there is no splice junction processing..\n");
+			exit(1);
+			}
+		}
 
 	Trim5 = trim5->count ? trim5->ival[0] : 0;
 	if(Trim5 < 0 || Trim5 > 50)
@@ -753,6 +795,11 @@ if (!argerrors)
 		exit(1);
 		}
 
+	if(PCRPrimerCorrect != 0 && MinChimericLen != 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: PCR primer correction subs not allowed when also specifying chimeric trimming\n");
+		exit(1);
+		}
 
 	MaxNs = maxns->count ? maxns->ival[0] : cDfltMaxNs;
 	if(MaxNs < 0 || MaxNs > cMaxNs)
@@ -767,7 +814,7 @@ if (!argerrors)
 		exit(1);
 		}
 
-	if(SpliceJunctLen > 0 && MinFlankExacts == 0)
+	if(SpliceJunctLen > 0 && MinChimericLen == 0 && MinFlankExacts == 0)
 		MinFlankExacts = MaxSubs;
 
 #ifdef _WIN32
@@ -864,7 +911,13 @@ if (!argerrors)
 
 	if(MinSNPreads > 0 && (FMode > eFMsam || bBisulfite == true))
 		{
-		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: Sorry, SNP processing not currently supported if processing bisulfite reads\n");
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SNP processing not currently supported if processing bisulfite reads\n");
+		exit(1);
+		}
+
+	if(MinSNPreads > 0 && MLMode == eMLall)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: SNP processing not currently supported if reporting multiloci alignments\n");
 		exit(1);
 		}
 
@@ -1060,6 +1113,7 @@ if (!argerrors)
 #endif
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing mode is : '%s'",pszDescr);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Raw read or paired reads sampling is : every %u",SampleNthRawRead);
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Processing in %s mode",bSOLiD ? "colorspace (SOLiD)" : "standard basespace");
 
 	if(bBisulfite)
@@ -1067,13 +1121,13 @@ if (!argerrors)
 
 	switch(AlignStrand) {
 		case eALSboth:
-			pszDescr = "either Watson '+' and Crick '-' strands";
+			pszDescr = "Either sense '+' or antisense '-' strands";
 			break;
 		case eALSWatson:
-			pszDescr = "Watson '+' strand only";
+			pszDescr = "Sense '+' strand only";
 			break;
 		case eALSCrick:
-			pszDescr = "Crick '-' strand only";
+			pszDescr = "Antisense '-' strand only";
 			break;
 		}
 
@@ -1248,7 +1302,10 @@ if (!argerrors)
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Allow microInDels of upto this inclusive length: %d",microInDelLen);
 
 	if(MinChimericLen != 0)
+		{
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Check for chimeric sequences in reads of at least this percentage length: %d",abs(MinChimericLen));
+		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Report on individual read sequence chirmeric trimming: %s",bChimericRpt ? "Yes" : "no");
+		}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Maximum RNA-seq splice junction separation distance: %d",SpliceJunctLen);
 	if(MinSNPreads == 0)
@@ -1298,6 +1355,7 @@ if (!argerrors)
 		int ParamID;
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PMode),"mode",&PMode);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(SampleNthRawRead),"samplenthrawread",&SampleNthRawRead);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(FMode),"format",&FMode);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PEproc),"pemode",&PEproc);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTBool,(int)sizeof(bBisulfite),"bisulfite",&bBisulfite);
@@ -1382,8 +1440,8 @@ if (!argerrors)
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = Process((etPMode)PMode,(etFQMethod)Quality,bSOLiD,bBisulfite,(etPEproc)PEproc,PairMinLen,PairMaxLen,bPairStrand,bPEcircularised,bPEInsertLenDist,
-				    (eALStrand)AlignStrand,MinChimericLen,microInDelLen,SpliceJunctLen,
+	Rslt = Process((etPMode)PMode,SampleNthRawRead,(etFQMethod)Quality,bSOLiD,bBisulfite,(etPEproc)PEproc,PairMinLen,PairMaxLen,bPairStrand,bPEcircularised,bPEInsertLenDist,
+				    (eALStrand)AlignStrand,MinChimericLen,bChimericRpt,microInDelLen,SpliceJunctLen,
 					MinSNPreads,QValue,SNPNonRefPcnt,MarkerLen,MarkerPolyThres,PCRartefactWinLen,(etMLMode)MLMode,
 					MaxMLmatches,bClampMaxMLmatches,bLocateBestMatches,
 					MaxNs,MinEditDist,MaxSubs,Trim5,Trim3,MinAcceptReadLen,MaxAcceptReadLen,MinFlankExacts,PCRPrimerCorrect, MaxRptSAMSeqsThres,
@@ -1424,6 +1482,7 @@ int	(CSfxArrayV3::*m_pIterateExactsFn)(etSeqBase *,unsigned int,unsigned int,uns
 
 int
 Process(etPMode PMode,					// processing mode
+		UINT32 SampleNthRawRead,		// sample every Nth raw read (or read pair) for processing (1..10000)
 		etFQMethod Quality,				// quality scoring for fastq sequence files
 		bool bSOLiD,					// if true then processing in colorspace
 		bool bBisulfite,				// if true then process for bisulfite methylation patterning
@@ -1435,6 +1494,7 @@ Process(etPMode PMode,					// processing mode
 		bool bPEInsertLenDist,			// true if stats file to include PE insert length distributions for each transcript
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
 		int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+		bool bChimericRpt,				// report chimeric trimming detail for individual reads (default is not to report)
 		int microInDelLen,				// microInDel length maximum
 		int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 		int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
@@ -1494,7 +1554,8 @@ if((pAligner = new CAligner)==NULL)
 	}
 
 Rslt = pAligner->Align(PMode,			// processing mode
-				Quality,				// quality scoring for fastq sequence files
+			SampleNthRawRead,			// sample every Nth raw read (or read pair) for processing (1..10000)
+			Quality,					// quality scoring for fastq sequence files
 			bSOLiD,						// if true then processing in colorspace
 			bBisulfite,					// if true then process for bisulfite methylation patterning
 			PEproc,						// paired reads alignment processing mode
@@ -1505,6 +1566,7 @@ Rslt = pAligner->Align(PMode,			// processing mode
 			bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 			AlignStrand,				// align on to watson, crick or both strands of target
 			MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+			bChimericRpt,				// report chimeric trimming detail for individual reads (default is not to report)
 			microInDelLen,				// microInDel length maximum
 			SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 			MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci

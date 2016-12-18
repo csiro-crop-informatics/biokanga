@@ -49,6 +49,15 @@ const int cPacBioMinKmersExtn = 15;							    // require at least this many cPac
 
 const int cMaxQualTargs = 10000;				// can process at most this many qualified targets
 
+// adaptive trimming related constants
+const UINT32 cMinATSeqLen = 25;				// sequences to be adaptively trimmed must be at least this length
+const UINT32 cMaxATSeqLen = 2048;			// sequences to be adaptively trimmed must be no longer than this length
+const UINT32 cMinATTrimmedLen = 15;			// after adaptive trimming then trimmed sequences must be at least this length 
+const UINT32 cMaxATMM = 15;					// after adaptive trimming mismatch rate must be no more than this many mismatches per 100bp of trimmed sequence
+const UINT32 cMaxATMaxFlankMatches = 10;	// after adaptive trimming end flanks exactly matching can be specified as being at most this many bp
+const UINT32 cMinATExactLen = 8;			// must be at least one exactly matching region of at least this length to be worth exploring for adaptive trimming
+
+
 typedef enum etALStrand {
 	eALSboth,							// align to both the watson and crick strand
 	eALSWatson,							// align to the watson strand only
@@ -194,6 +203,15 @@ typedef struct TAG_sSfxHeaderVv {
 #pragma pack()
 
 #pragma pack(1)
+
+// adaptive trimming (also referenced as chimeric trimming) sequence regions
+typedef struct TAG_sATRegion {
+	UINT16 RegionOfs;		// region starts at this offset (0..n) relative to probe sequence start
+	UINT16 RegionLen;		// region is this length
+	UINT8 flgMM:1;			// if 0: region contains exact matches, if 1: region contains mismatches
+	UINT8 flgTrim5:1;		// region offset can be used as putative adaptive trim start
+	UINT8 flgTrim3:1;		// end of this region can be used as putative adaptive trim end
+	} tsATRegion;
 
 // returned multiple hit loci, note that can have 2 segments if microInDel of read spans splice junction
 typedef struct TAG_sSegLoci {
@@ -735,6 +753,18 @@ public:
 						 int CurMaxIter,				// max allowed iterations per subsegmented sequence when matching that subsegment
 						 int NumAllocdIdentNodes,		// memory has been allocated by caller for holding up to this many tsIdentNodes
 						 tsIdentNode *pAllocsIdentNodes); // memory allocated by caller for holding tsIdentNodes
+
+	int											// if < eBSFSuccess then errors, 0 if unable to adaptively trim, >= MinTrimLen if able to adaptively trim
+		AdaptiveTrim(UINT32 SeqLen,					// untrimmed probe and target sequence are both this bp long
+				etSeqBase *pProbeSeq,			// end trimming this probe sequence
+				etSeqBase *pTargSeq,			// when aligned against this target sequence
+				UINT32 MinTrimLen,				// accepted trimmed probe sequence must be at least this minimum length
+				UINT32 MaxMM,					// and contain at most this many mismatches proportional to a 100bp trimmed sequence match
+				UINT32 MinFlankMatches,			// 5' and 3' flanks of trimmed probe must start/end with at least this many exactly matching bases
+				UINT32 *pTrimSeqLen,			// trimmed probe is this length
+				UINT32 *pTrimStart,				// accepted trimmed probe has this many bp trimmed from start (5') of probe
+				UINT32 *pTrimEnd,				// accepted trimmed probe has this many bp trimmed from end (3') of probe
+				UINT32 *pTrimMMs);				// after trimming there are this many mismatches in the trimmed probe
 
 
 	int						// < 0 if errors or if probe sequence non-unique local to ProbeEntry, 0 if no matches, otherwise the total match instances  (see genzygosity.cpp)

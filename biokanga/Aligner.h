@@ -409,6 +409,7 @@ typedef struct TAG_sLoadReadsThreadPars {
 	int threadRslt;					// result as returned by pthread_create ()
 	pthread_t threadID;				// identifier as set by pthread_create ()
 #endif
+	UINT32 SampleNthRawRead;		// sample every Nth raw read (or read pair) for processing (1..10000)
 	int *pRslt;						// write intermediate result codes to this location
 	int Rslt;						// returned result code
 } tsLoadReadsThreadPars;
@@ -504,6 +505,7 @@ class CAligner
 	UINT32 m_TotLociAligned;		// number of loci aligned which have been reported
 	UINT32 m_TotNotAcceptedDelta;	// number of reads aligned but not accepted because of insufficient hamming
 
+	UINT32 m_SampleNthRawRead;		// sample every Nth raw read (or read pair) for processing (1..10000)
 	UINT32 m_MaxReadsLen;			// longest read processed
 	UINT32 m_MinReadsLen;			// shortest read processed
 	UINT32 m_AvReadsLen;			// average length read processed
@@ -745,7 +747,7 @@ class CAligner
 		   UINT32 ChromID,			// read expected to have aligned to this chromosome
 			UINT32 Loci);            // base to be returned is at this alignment loci, base will be complemented if antisense alignment
 
-	int TrimChimeric(char *pszChimericSeqs = NULL);			// trim back aligned chimeric read flanks with option to write chimeric sequences to file pszChimericSeqs
+	int ReportChimerics(char *pszChimericSeqFile = NULL);			// report chimerically trimmed read sequences to file pszChimericSeqFile
 
 	int AutoTrimFlanks(int MinFlankExacts); // Autotrim back aligned read flanks until there are at least MinFlankExacts exactly matching bases in the flanks
 
@@ -908,8 +910,8 @@ class CAligner
 
 	void ResetThreadedIterReads(void);		 // must be called by master thread prior to worker threads calling ThreadedIterReads()
 
-	UINT32		// Returns the number of reads thus far loaded and aligned
-		ApproxNumReadsAligned(UINT32 *pNumAligned,UINT32 *pNumLoaded);
+	UINT32		// Returns the number of reads thus far loaded and processed for alignment
+		ApproxNumReadsProcessed(UINT32 *pNumProcessed,UINT32 *pNumLoaded);
 
 	tsReadHit *IterReads(tsReadHit *pCurReadHit);			// to start from first read then pass in NULL as pCurReadHit
 	tsReadHit *IterSortedReads(tsReadHit *pCurReadHit);		// iterate over sorted reads, to start from first read then pass in NULL as pCurReadHit
@@ -973,6 +975,7 @@ public:
 
 	int
 		Align(etPMode PMode,					// processing mode
+				UINT32 SampleNthRawRead,		// sample every Nth raw read for processing (1..N)
 				etFQMethod Quality,				// quality scoring for fastq sequence files
 				bool bSOLiD,					// if true then processing in colorspace
 				bool bBisulfite,				// if true then process for bisulfite methylation patterning
@@ -984,6 +987,7 @@ public:
 				bool bPEInsertLenDist,			// experimental - true if stats file to include PE insert length distributions for each transcript
 				eALStrand AlignStrand,			// align on to watson, crick or both strands of target
 				int MinChimericLen,				// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence length: negative if chimeric diagnostics to be reported
+				bool bChimericRpt,				// report chimeric trimming detail for individual reads (default is not to report)
 				int microInDelLen,				// microInDel length maximum
 				int SpliceJunctLen,				// maximum splice junction length when aligning RNAseq reads
 				int MinSNPreads,				// must be at least this number of reads covering any loci before processing for SNPs at this loci
