@@ -41,8 +41,8 @@ ProcessArtefactReduce(etARPMode PMode,	// processing mode; currently eAR2Fasta, 
 		bool bNoDedupe,					// if true then do not remove all duplicate reads as per bDedupeIndependent parameter
 		bool bStrand,					// true if read strand specific filtering
 		int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
-		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
-		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
+		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..50)
+		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..50)
 		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...1000)
 		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
@@ -88,8 +88,8 @@ int SfxSparsity;			// suffix sparsity
 bool bStrand;				// if true then strand specific filtering
 
 int MaxNs;					// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
-int Trim5;					// trim this number of 5' bases from input sequences (default is 0, range 0..20)
-int Trim3;					// trim this number of 3' bases from input sequences (default is 0, range 0..20)
+int Trim5;					// trim this number of 5' bases from input sequences (default is 0, range 0..50)
+int Trim3;					// trim this number of 3' bases from input sequences (default is 0, range 0..50)
 int MinSeqLen;              // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 int TrimSeqLen;				// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...1000)
 int MinOverlap;				// minimum required overlap (in %) ( if <= 0 then no overlap processing required)
@@ -134,8 +134,8 @@ struct arg_file *dupdistfile = arg_file0("O","dupdist","<file>","Output duplicat
 struct arg_file *contaminantfile = arg_file0("c", "contaminants", "<file>", "Putative contaminant sequences fasta file");
 
 struct arg_int *maxns = arg_int0("n","indeterminates","<int>",  "filter out input sequences having higher than this number of indeterminate bases (default is 0, range 0 to 5)");
-struct arg_int *trim5 = arg_int0("x","trim5","<int>",			"trim this number of 5' bases from each input sequence (default is 0, range 0..20)");
-struct arg_int *trim3 = arg_int0("X","trim3","<int>",			"trim this number of 3' bases from each input sequence (default is 0, range 0..20)");
+struct arg_int *trim5 = arg_int0("x","trim5","<int>",			"trim this number of 5' bases from each input sequence (default is 0, range 0..50)");
+struct arg_int *trim3 = arg_int0("X","trim3","<int>",			"trim this number of 3' bases from each input sequence (default is 0, range 0..50)");
 struct arg_int *trimseqlen = arg_int0("L","trimseqlen","<int>",	"trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen to 1000)");
 struct arg_int *minoverlap = arg_int0("y","minoverlap","<int>",	"accept as overlapping if overlaps are at least this percentage of read length (defaults to 70%% of read length, range 50 to 95%%p, if 0 then no overlap processing)");
 struct arg_int *minflanklen = arg_int0("Y","minflanklen","<int>","non-overlapping flank must be at least this length (default 1, range 1bp to 25bp, only applies if overlap processing)");
@@ -406,16 +406,16 @@ if (!argerrors)
 		if(NumPE1InputFiles > 0)
 			{
 			Trim5 = trim5->count ? trim5->ival[0] : 0;
-			if(Trim5 < 0 || Trim5 > 20)
+			if(Trim5 < 0 || Trim5 > 50)
 				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: 5' trim '-x%d' must be in range 0..20 bases",Trim5);
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: 5' trim '-x%d' must be in range 0..50 bases",Trim5);
 				return(1);
 				}
 
 			Trim3 = trim3->count ? trim3->ival[0] : 0;
-			if(Trim3 < 0 || Trim3 > 20)
+			if(Trim3 < 0 || Trim3 > 50)
 				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: 3' trim '-x%d' must be in range 0..20 bases",Trim3);
+				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: 3' trim '-x%d' must be in range 0..50 bases",Trim3);
 				return(1);
 				}
 
@@ -748,8 +748,8 @@ ProcessArtefactReduce(etARPMode PMode,	// processing mode, currently eAR2Fasta, 
 		bool bNoDedupe,					// if true then do not remove all duplicate reads as per bDedupeIndependent parameter
 		bool bStrand,					// true if read strand specific filtering
 		int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
-		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
-		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
+		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..50)
+		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..50)
 		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
 		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing
@@ -882,8 +882,8 @@ CArtefactReduce::Process(etARPMode PMode,	// processing mode, currently eAR2Fast
 		bool bNoDedupe,					// if true then do not remove all duplicate reads as per bDedupeIndependent parameter
 		bool bStrand,					// true if read strand specific assembly
 		int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
-		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
-		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
+		int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..50)
+		int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..50)
 		int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 		int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
 		int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing

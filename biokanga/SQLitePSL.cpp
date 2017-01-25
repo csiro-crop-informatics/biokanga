@@ -33,6 +33,7 @@
 //	TblExprs				One row for each experiment
 //  TblBlatAlignment		One row for each Blat alignment
 //  TblBlatAlignmentBlock	One row for each alignment block
+//  TblAlignSummaries		One row for each query or target alignment summary 
 
 // In each table the following columns are defined
 //	TblExprs		One row for each experiment
@@ -72,12 +73,22 @@
 
 //	TblAlignmentBlocks		One row for each Blat alignment blocks, one or more for each alignment
 //     BlockID INTEGER PRIMARY KEY ASC,		-- Uniquely identifies this block instance
-//     AlignmentID INTEGERD,				-- block is in this alignment
+//     ExprID INTEGER,						-- alignment was in this experiment
+//     AlignmentID INTEGER,				-- block is in this alignment
 //     BlockSize INTEGER,					-- block size
 //	   QStart INTEGER,						-- starting psn of block in querry
 //	   TStart INTEGER,						-- starting psn of block in target
 
-tsStmSQL CSQLitePSL::m_StmSQL[3] = {   // 3 tables; TblExprs, TblAlignments and TblAlignmentBlocks
+//	TblAlignSummaries							-- One row for each target or query alignment summary
+//     AlignSummaryID INTEGER PRIMARY KEY ASC,	 Uniquely identifies this alignment summary instance
+//     ExprID INTEGER,						-- alignment was in this experiment
+//     IsQuery INTEGER,						-- 0 if summary for target, 1 if summary for query
+//     SeqName VARCHAR(80),					-- query or target sequence name
+//     SeqLen INTEGER,						-- query or target sequence is this length
+//	   NumAlignments INTEGER				-- if target then total number of alignments to this target, if query then total number of alignments from this query
+
+
+tsStmSQL CSQLitePSL::m_StmSQL[4] = {   // 4 tables; TblExprs, TblAlignments, TblAlignmentBlocks and TblAlignSummaries
 	{(char *)"TblExprs",
 		(char *)"CREATE TABLE TblExprs (ExprID INTEGER PRIMARY KEY ASC, ExprName VARCHAR(50) UNIQUE,PSLFile VARCHAR(200),QueryFile VARCHAR(200), TargetFile VARCHAR(200), ExprDescr VARCHAR(1000) DEFAULT 'N/A',BlatParams VARCHAR(1000) DEFAULT 'N/A',ExprType INTEGER DEFAULT 0)",
 		(char *)"INSERT INTO TblExprs (ExprName,PSLFile,QueryFile,TargetFile,ExprDescr,BlatParams,ExprType) VALUES(?,?,?,?,?,?,?)",
@@ -86,7 +97,7 @@ tsStmSQL CSQLitePSL::m_StmSQL[3] = {   // 3 tables; TblExprs, TblAlignments and 
 		(char *)"CREATE INDEX IF NOT EXISTS 'TblExprs_ExprName' ON 'TblExprs' ('ExprName' ASC)",
 		(char *)"DROP INDEX IF EXISTS 'TblExprs_ExprName';CREATE INDEX IF NOT EXISTS 'TblExprs_ExprName' ON 'TblExprs' ('ExprName' ASC)",
 		NULL },
-	{ (char *)"TblAlignments",
+	{(char *)"TblAlignments",
 		(char *)"CREATE TABLE TblAlignments (AlignmentID INTEGER PRIMARY KEY ASC,ExprID INTEGER,Score INTEGER,Identity INTEGER,Matches INTEGER,Mismatches INTEGER,	RepMatches INTEGER, NCount INTEGER, QNumInDels INTEGER, QBasesInDels INTEGER, TNumInDels INTEGER, TBasesInDels INTEGER,	Strand VARCHAR(2),  QName VARCHAR(80), QSize INTEGER, QStart INTEGER, QEnd INTEGER, TName VARCHAR(80), TSize INTEGER, TStart INTEGER, TEnd INTEGER,NumBlocks INTEGER, FOREIGN KEY (ExprID) REFERENCES TblExprs(ExprID))",
 		(char *)"INSERT INTO TblAlignments (ExprID,Score,Identity,Matches,Mismatches,RepMatches,NCount,QNumInDels,QBasesInDels,TNumInDels,TBasesInDels,Strand,QName,QSize,QStart,QEnd,TName,TSize,TStart,TEnd,NumBlocks) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 		NULL,
@@ -94,14 +105,24 @@ tsStmSQL CSQLitePSL::m_StmSQL[3] = {   // 3 tables; TblExprs, TblAlignments and 
 		(char *)"CREATE INDEX IF NOT EXISTS 'TblAlignments_ExprID' ON 'TblAlignments' ('ExprID' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_QName' ON 'TblAlignments' ('QName' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_TName' ON 'TblAlignments' ('TName' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_Score' ON 'TblAlignments' ('Score' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_Identity' ON 'TblAlignments' ('Identity' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_Matches' ON 'TblAlignments' ('Matches' ASC)",
 		(char *)"DROP INDEX IF EXISTS 'TblAlignments_ExprID';DROP INDEX IF EXISTS 'TblAlignments_QName';DROP INDEX IF EXISTS 'TblAlignments_TName';DROP INDEX IF EXISTS 'TblAlignments_Score';DROP INDEX IF EXISTS 'TblAlignments_Identity';DROP INDEX IF EXISTS 'TblAlignments_Matches';CREATE INDEX IF NOT EXISTS 'TblAlignments_ExprID' ON 'TblAlignments' ('ExprID' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_QName' ON 'TblAlignments' ('QName' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_TName' ON 'TblAlignments' ('TName' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_Score' ON 'TblAlignments' ('Score' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_Identity' ON 'TblAlignments' ('Identity' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignments_Matches' ON 'TblAlignments' ('Matches' ASC)",
 		NULL },
-	{ (char *)"TblAlignmentBlocks",
-		(char *)"CREATE TABLE TblAlignmentBlocks (BlockID INTEGER PRIMARY KEY ASC,AlignmentID INTEGER,BlockSize INTEGER,QStart INTEGER,TStart INTEGER, FOREIGN KEY (AlignmentID) REFERENCES TblAlignments(AlignmentID))",
-		(char *)"INSERT INTO TblAlignmentBlocks (AlignmentID,BlockSize,QStart,TStart) VALUES(?,?,?,?)",
+	{(char *)"TblAlignmentBlocks",
+		(char *)"CREATE TABLE TblAlignmentBlocks (BlockID INTEGER PRIMARY KEY ASC,ExprID INTEGER,AlignmentID INTEGER,BlockSize INTEGER,QStart INTEGER,TStart INTEGER, FOREIGN KEY (AlignmentID) REFERENCES TblAlignments(AlignmentID))",
+		(char *)"INSERT INTO TblAlignmentBlocks (ExprID,AlignmentID,BlockSize,QStart,TStart) VALUES(?,?,?,?,?)",
 		NULL,
-		(char *)"CREATE INDEX IF NOT EXISTS 'TblAlignmentBlocks_AlignmentID' ON 'TblAlignmentBlocks' ('AlignmentID' ASC)",
+		(char *)"CREATE INDEX IF NOT EXISTS 'TblAlignmentBlocks_ExprID' ON 'TblAlignmentBlocks' ('ExprID' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignmentBlocks_AlignmentID' ON 'TblAlignmentBlocks' ('AlignmentID' ASC)",
 		NULL,
-		(char *)"DROP INDEX IF EXISTS 'TblAlignmentBlocks_AlignmentID';CREATE INDEX IF NOT EXISTS 'TblAlignmentBlocks_AlignmentID' ON 'TblAlignmentBlocks' ('AlignmentID' ASC)",
-		(char *)"DROP INDEX IF EXISTS 'TblAlignmentBlocks_AlignmentID'"}
+		(char *)"DROP INDEX IF EXISTS 'TblAlignmentBlocks_ExprID';DROP INDEX IF EXISTS 'TblAlignmentBlocks_AlignmentID';CREATE INDEX IF NOT EXISTS 'TblAlignmentBlocks_ExprID' ON 'TblAlignmentBlocks' ('ExprID' ASC); CREATE INDEX IF NOT EXISTS 'TblAlignmentBlocks_AlignmentID' ON 'TblAlignmentBlocks' ('AlignmentID' ASC)",
+		(char *)"DROP INDEX IF EXISTS 'TblAlignmentBlocks_ExprID';DROP INDEX IF EXISTS 'TblAlignmentBlocks_AlignmentID'"},
+
+	{(char *)"TblAlignSummaries",
+		(char *)"CREATE TABLE TblAlignSummaries (AlignSummaryID INTEGER PRIMARY KEY ASC, ExprID INTEGER, IsQuery INTEGER, SeqName VARCHAR(80),SeqLen INTEGER,NumAlignments INTEGER)",
+		(char *)"INSERT INTO TblAlignSummaries (ExprID,IsQuery,SeqName,SeqLen,NumAlignments) VALUES(?,?,?,?,?)",
+		NULL,
+		(char *)"CREATE INDEX IF NOT EXISTS 'TblAlignSummaries_ExprID' ON 'TblAlignSummaries' ('ExprID' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignSummaries_SeqName' ON 'TblAlignSummaries' ('SeqName' ASC)",
+		(char *)"CREATE INDEX IF NOT EXISTS 'TblAlignSummaries_ExprID' ON 'TblAlignSummaries' ('ExprID' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignSummaries_SeqName' ON 'TblAlignSummaries' ('SeqName' ASC)",
+		(char *)"DROP INDEX IF EXISTS 'TblAlignSummaries_ExprID';DROP INDEX IF EXISTS 'TblAlignSummaries_SeqName'; CREATE INDEX IF NOT EXISTS 'TblAlignSummaries_ExprID' ON 'TblAlignSummaries' ('ExprID' ASC);CREATE INDEX IF NOT EXISTS 'TblAlignSummaries_SeqName' ON 'TblAlignSummaries' ('SeqName' ASC)",
+		NULL
+		 }
 	};
 
 
@@ -112,7 +133,11 @@ m_pInBuffer = NULL;
 m_pszPSLLineBuff = NULL;
 m_hPSLinFile = -1;
 
-
+m_NumAlignSummaries = 0;
+m_UsedAlignmentSummariesSize = 0;
+m_allocAlignmentSummariesSize = 0;
+m_pAlignmentSummaries = NULL;
+memset(m_AlignSummaryInstancesOfs,0,sizeof(m_AlignSummaryInstancesOfs));
 m_NumAlignments = 0;
 m_NumBlatHitsParsed = 0;
 m_NumBlatHitsAccepted = 0;
@@ -138,6 +163,15 @@ if(m_pInBuffer != NULL)
 	delete m_pInBuffer;
 if(m_pszPSLLineBuff != NULL)
 	delete m_pszPSLLineBuff;
+if(m_pAlignmentSummaries != NULL)
+	{
+#ifdef _WIN32
+	free((UINT8 *)m_pAlignmentSummaries);
+#else
+	if(m_pAlignmentSummaries != MAP_FAILED)
+		munmap((UINT8 *)m_pAlignmentSummaries,m_allocAlignmentSummariesSize);
+#endif
+	}
 }
 
 char *
@@ -199,7 +233,7 @@ if((sqlite_error = sqlite3_open_v2(pszDatabase, &m_pDB,SQLITE_OPEN_READWRITE | S
 if(StatRslt < 0)
 	{
 	pStms = m_StmSQL;
-	for(TblIdx = 0; TblIdx < 3; TblIdx++,pStms++)
+	for(TblIdx = 0; TblIdx < 4; TblIdx++,pStms++)
 		{
 		pStms->pPrepInsert = NULL;
 		if(pStms->pszCreateTbl == NULL)
@@ -218,7 +252,7 @@ if(StatRslt < 0)
 
 
 pStms = m_StmSQL;
-for(TblIdx = 0; TblIdx < 3; TblIdx++,pStms++)
+for(TblIdx = 0; TblIdx < 4; TblIdx++,pStms++)
 	{
 	if(pStms->pszOpenCreateIndexes == NULL)
 		continue;
@@ -235,7 +269,7 @@ for(TblIdx = 0; TblIdx < 3; TblIdx++,pStms++)
 
 // prepare all insert statements
 pStms = m_StmSQL;
-for(TblIdx = 0; TblIdx < 3; TblIdx++,pStms++)
+for(TblIdx = 0; TblIdx < 4; TblIdx++,pStms++)
 	{
 	if(pStms->pszInsert == NULL)
 		{
@@ -260,6 +294,50 @@ for(TblIdx = 0; TblIdx < 3; TblIdx++,pStms++)
 		return(NULL);
 		}
 	}
+
+// initialisation for alignment sequences summaries
+if(m_pAlignmentSummaries != NULL)
+	{
+#ifdef _WIN32
+	free((UINT8 *)m_pAlignmentSummaries);
+#else
+	if(m_pAlignmentSummaries != MAP_FAILED)
+		munmap((UINT8 *)m_pAlignmentSummaries,m_allocAlignmentSummariesSize);
+#endif
+	}
+m_pAlignmentSummaries = NULL;
+m_allocAlignmentSummariesSize = 0;
+m_NumAlignSummaries = 0;
+m_UsedAlignmentSummariesSize = 0;
+memset(m_AlignSummaryInstancesOfs,0,sizeof(m_AlignSummaryInstancesOfs));
+
+size_t memreq;
+memreq = ((size_t)cAllocAlignSummaryInsts * (sizeof(tsAlignSummary) + (size_t)cMaxSeqNameLen));
+#ifdef _WIN32
+m_pAlignmentSummaries = (tsAlignSummary *) malloc(memreq);	// initial and perhaps the only allocation
+if(m_pAlignmentSummaries == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateDatabase: Memory allocation of %lld bytes for alignment summary instances failed - %s",(INT64)memreq,strerror(errno));
+	sqlite3_close_v2(m_pDB);
+	sqlite3_shutdown();
+	m_pDB = NULL;
+	return(NULL);
+	}
+#else
+	// gnu malloc is still in the 32bit world and can't handle more than 2GB allocations
+	m_pAlignmentSummaries = (tsAlignSummary *)mmap(NULL,memreq, PROT_READ |  PROT_WRITE,MAP_PRIVATE | MAP_ANONYMOUS, -1,0);
+	if(m_pAlignmentSummaries == MAP_FAILED)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"CreateDatabase: Memory allocation of %lld bytes for alignment summary instances failed - %s",(INT64)memreq,strerror(errno));
+		m_pAlignmentSummaries = NULL;
+		sqlite3_close_v2(m_pDB);
+		sqlite3_shutdown();
+		m_pDB = NULL;
+		return(NULL);
+		}
+#endif
+m_allocAlignmentSummariesSize = memreq;
+memset(m_pAlignmentSummaries,0,memreq);
 return(m_pDB);
 }
 
@@ -274,7 +352,7 @@ if(m_pDB != NULL)
 	{
 	if(!bNoIndexes)
 		{
-		for(TblIdx = 0; TblIdx < 3; TblIdx++,pStms++)
+		for(TblIdx = 0; TblIdx < 4; TblIdx++,pStms++)
 			{
 			if(pStms->pPrepInsert == NULL)
 				continue;
@@ -286,6 +364,21 @@ if(m_pDB != NULL)
 	sqlite3_shutdown();
 	m_pDB = NULL;
 	}
+
+if(m_pAlignmentSummaries != NULL)
+	{
+#ifdef _WIN32
+	free((UINT8 *)m_pAlignmentSummaries);
+#else
+	if(m_pAlignmentSummaries != MAP_FAILED)
+		munmap((UINT8 *)m_pAlignmentSummaries,m_allocAlignmentSummariesSize);
+#endif
+	}
+m_pAlignmentSummaries = NULL;
+m_allocAlignmentSummariesSize = 0;
+m_NumAlignSummaries = 0;
+m_UsedAlignmentSummariesSize = 0;
+memset(m_AlignSummaryInstancesOfs,0,sizeof(m_AlignSummaryInstancesOfs));
 return(Rslt);
 }
 
@@ -398,6 +491,185 @@ ExprID = (int)sqlite3_last_insert_rowid(m_pDB);
 return(ExprID);
 }
 
+INT32			// 20bit instance hash over the combination of parameterisation values passed into this function; if < 0 then hashing error  
+CSQLitePSL::GenSummaryInstanceHash(INT32 ExprID,		// alignment summary is for alignment in this experiment
+						bool bIsQuery,	// false if SeqName is for a target sequence, true if for a query sequence
+						char *pszSeqName,	// NULL terminated sequence name
+						UINT32  SeqLen)	// query or target sequence length
+{
+INT32 Hash;
+char SeqNameChr;
+if(ExprID < 0 || pszSeqName == NULL || pszSeqName[0] == '\0' || SeqLen == 0)
+	return(-1);
+
+Hash = ((INT32)SeqLen + ExprID) ^ (bIsQuery ? 0x05 : 0x09);
+Hash &= 0x0fffff;
+while((SeqNameChr = tolower(*pszSeqName++)) != '\0')
+	{
+	Hash <<= 3;
+	Hash += SeqNameChr & 0x01f;
+	Hash ^= (Hash >> 20) & 0x05;
+	}
+return(Hash & 0x0fffff);
+}
+
+// LocateAlignSummary locates, or creates if not already existing, a summary instance for specified parameters
+// Note that the returned alignment instance will be unique for the parameterisation combination
+tsAlignSummary *
+CSQLitePSL::LocateAlignSummary(INT32 ExprID,	// alignment summary is for alignment in this experiment
+						bool bIsQuery,			// false if SeqName is for a target sequence, true if for a query sequence
+						char *pszSeqName,		// locate pre-existing, or allocate new if not pre-existing, alignment summary for bIsQuery type
+						UINT32  SeqLen)			// query or target sequence length
+{
+int SeqNameLen;
+tsAlignSummary *pAlignSummary;
+INT64 AlignSummaryInstancesOfs;
+INT64 NxtHashedSummaryInstOfs;
+INT32 Hash;
+Hash = GenSummaryInstanceHash(ExprID,bIsQuery,pszSeqName,SeqLen);
+if(Hash < 0 || Hash > 0x0fffff)
+	return(NULL);
+SeqNameLen = (int)strlen(pszSeqName);
+AlignSummaryInstancesOfs = m_AlignSummaryInstancesOfs[Hash];
+if(AlignSummaryInstancesOfs > 0)		// will be 0 if no summary instance previously added with same hash
+	{
+	NxtHashedSummaryInstOfs = AlignSummaryInstancesOfs;
+	do {
+		pAlignSummary = (tsAlignSummary *)((UINT8 *)m_pAlignmentSummaries + NxtHashedSummaryInstOfs-1);
+		if(pAlignSummary->ExprID == ExprID && (bool)pAlignSummary->FlgIsQuery == bIsQuery && pAlignSummary->SeqLen == SeqLen && pAlignSummary->SeqNameLen == SeqNameLen &&  !strcmp(pszSeqName,(char *)pAlignSummary->SeqName))
+			return(pAlignSummary);
+		}
+	while((NxtHashedSummaryInstOfs = pAlignSummary->NxtHashedSummaryInstOfs) > 0);
+
+	}
+
+// couldn't locate existing summary instance, allocate and initialise new instance
+pAlignSummary = (tsAlignSummary *)((UINT8 *)m_pAlignmentSummaries + m_UsedAlignmentSummariesSize);
+memset(pAlignSummary,0,sizeof(tsAlignSummary));
+pAlignSummary->ExprID = ExprID;
+pAlignSummary->FlgIsQuery = bIsQuery ? 1 : 0;
+pAlignSummary->HashSummaryInst = Hash;
+pAlignSummary->SeqNameLen = SeqNameLen;
+pAlignSummary->NumAlignments = 0;
+pAlignSummary->SeqLen = SeqLen;
+strcpy((char *)pAlignSummary->SeqName,pszSeqName);
+pAlignSummary->AlignSummarySize = (UINT16)(sizeof(tsAlignSummary) + SeqNameLen);
+pAlignSummary->NxtHashedSummaryInstOfs = AlignSummaryInstancesOfs;
+m_AlignSummaryInstancesOfs[Hash] = m_UsedAlignmentSummariesSize + 1;
+m_UsedAlignmentSummariesSize += pAlignSummary->AlignSummarySize;
+m_NumAlignSummaries += 1;
+return(pAlignSummary);
+}
+
+// AddAlignSummary locates an existing alignment summary for both the query and target (creates and initialises if not already known)
+// If adding/creating for both query and target then increments NumAlignments for both
+int
+CSQLitePSL::AddAlignSummary(int ExprID,	// alignment summary is for this experiment
+				char *pszQName,			// query sequence name, NULL or '\0' if unknown
+				UINT32  QSize,			// query sequence size, 0 if unknown
+				char *pszTName,			// target sequence name, NULL or '\0' if unknown
+				UINT32  TSize)			// target sequence size
+{
+tsAlignSummary *pAQuery;
+tsAlignSummary *pATarg;
+
+// always ensure that sufficent memory has been allocated for at least 2 more summary instances to be allocated
+// this is to ensure both pAQuery and pATarg will be consistent even if one or both required a alignment summary instance to be created
+if((m_allocAlignmentSummariesSize - m_UsedAlignmentSummariesSize) < (2 * (sizeof(tsAlignSummary) + (size_t)(cMaxSeqNameLen))))
+	{
+	size_t memreq = m_allocAlignmentSummariesSize + (cAllocAlignSummaryInsts * (sizeof(tsAlignSummary) + (size_t)(cMaxSeqNameLen)));
+ #ifdef _WIN32
+	m_pAlignmentSummaries = (tsAlignSummary *) realloc((UINT8 *)m_pAlignmentSummaries,memreq);
+#else
+	m_pAlignmentSummaries = (tsAlignSummary *)mremap((UINT8 *)m_pAlignmentSummaries,m_allocAlignmentSummariesSize,memreq,MREMAP_MAYMOVE);
+	if(m_pAlignmentSummaries == MAP_FAILED)
+		m_pAlignmentSummaries = NULL;
+#endif
+	if(m_pAlignmentSummaries == NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"AddAlignSummary: Memory reallocation to %lld bytes for alignment summary instances failed - %s",(INT64)memreq,strerror(errno));
+		return(eBSFerrMem);
+		}
+	m_allocAlignmentSummariesSize = memreq;
+	}
+
+if(pszQName != NULL && pszQName[0] != '\0' && QSize != 0)
+	pAQuery = LocateAlignSummary(ExprID,true,pszQName,QSize);
+else
+	pAQuery = NULL;
+
+if(pszTName != NULL && pszTName[0] != '\0' && TSize != 0)
+	pATarg = LocateAlignSummary(ExprID,false,pszTName,TSize);
+else
+	pATarg = NULL;
+
+if(pAQuery != NULL && pATarg != NULL)
+	{
+	pAQuery->NumAlignments += 1;
+	pATarg->NumAlignments += 1;
+	}
+return(eBSFSuccess);
+}
+
+
+int
+CSQLitePSL::AddSummaryInstances2SQLite(void)
+{
+UINT32 Idx;
+int sqlite_error;
+tsStmSQL *pStm;
+tsAlignSummary *pCurSummary;
+
+if(m_pDB == NULL)
+	return(eBSFerrInternal);
+
+pCurSummary = m_pAlignmentSummaries;
+
+for(Idx = 0; Idx < m_NumAlignSummaries; Idx++)
+	{
+	// add this alignment block instances
+	pStm = &m_StmSQL[3];
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, pCurSummary->ExprID))!=SQLITE_OK)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
+		CloseDatabase(true);
+		return(eBSFerrInternal);
+		}
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2,  pCurSummary->FlgIsQuery ? 1 : 0))!=SQLITE_OK)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
+		CloseDatabase(true);
+		return(eBSFerrInternal);
+		}
+	if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 3, (char *)pCurSummary->SeqName,(int)strlen((char *)pCurSummary->SeqName)+1,SQLITE_STATIC))!=SQLITE_OK)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
+		CloseDatabase(true);
+		return(eBSFerrInternal);
+		}
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 4, pCurSummary->SeqLen))!=SQLITE_OK)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
+		CloseDatabase(true);
+		return(eBSFerrInternal);
+		}
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 5, pCurSummary->NumAlignments))!=SQLITE_OK)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
+		CloseDatabase(true);
+		return(eBSFerrInternal);
+		}
+	if((sqlite_error = sqlite3_step(pStm->pPrepInsert))!=SQLITE_DONE)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - step prepared statement: %s", sqlite3_errmsg(m_pDB));   
+		CloseDatabase(true);
+		return(eBSFerrInternal);
+		}
+	sqlite3_reset(pStm->pPrepInsert);
+	pCurSummary = (tsAlignSummary *)((UINT8 *)pCurSummary + pCurSummary->AlignSummarySize);
+	}
+return(m_NumAlignSummaries);
+}
 
 int										// returned sequence identifier for sequence
 CSQLitePSL::AddAlignment(int ExprID,		// alignment was in this experiment
@@ -447,8 +719,9 @@ if(ChkExprID == -1)	// will be -1 if not already in database, treat as error
 	return(eBSFerrInternal);
 	}
 
-	
 // validated that the experiment instance identifier is already known to SQLite so can add this alignment instance
+AddAlignSummary(ExprID,pszQName,QSize,pszTName,TSize);
+
 pStm = &m_StmSQL[1];
 if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID))!=SQLITE_OK)
 	{
@@ -469,12 +742,6 @@ if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, Identity))!=SQLITE_OK)
 	CloseDatabase(true);
 	return(eBSFerrInternal);
 	}
-
-
-
-
-
-
 
 if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 4, Matches))!=SQLITE_OK)
 	{
@@ -600,25 +867,31 @@ for(Idx = 0; Idx < NumBlocks; Idx++, pBlockSizes++,pQStarts++,pTStarts++)
 	{
 	// add this alignment block instances
 	pStm = &m_StmSQL[2];
-	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, AlignmentID))!=SQLITE_OK)
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID))!=SQLITE_OK)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 		CloseDatabase(true);
 		return(eBSFerrInternal);
 		}
-	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, *pBlockSizes))!=SQLITE_OK)
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, AlignmentID))!=SQLITE_OK)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 		CloseDatabase(true);
 		return(eBSFerrInternal);
 		}
-	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, *pQStarts))!=SQLITE_OK)
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, *pBlockSizes))!=SQLITE_OK)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 		CloseDatabase(true);
 		return(eBSFerrInternal);
 		}
-	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 4, *pTStarts))!=SQLITE_OK)
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 4, *pQStarts))!=SQLITE_OK)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
+		CloseDatabase(true);
+		return(eBSFerrInternal);
+		}
+	if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 5, *pTStarts))!=SQLITE_OK)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 		CloseDatabase(true);
@@ -638,51 +911,12 @@ return(AlignmentID);
 
 
 int
-CSQLitePSL::ProcessPSL2SQLite(int PMode,		// processing mode, 0 to delete any existing then create new SQLite, 1 to append to existing SQLite
-					int MinIdentity,			// minimum required identity
-					int MinScore,				// minimum required score
-					int MinMatches,				// minimum required base matches
-					char *pszDatabase,			// SQLite database file
-					char *pszExprName,			// experiment name
-					char *pszPSLFile,			// alignments were parsed from this BLAT generated PSL file
-					char *pszQueryFile,			// Blat'd query sequences in this file
-					char *pszTargetFile,		// against targeted sequences in this file
-					char *pszExprDescr,			// describes experiment
-					char *pszBlatParams,		// Blat parameters used
-					int ExprType)				// experiment type, currently just a place holder and defaults to 0
-
+CSQLitePSL::BeginPopulatingTables(void)
 {
-int Rslt;
-int ExprID;
-
 int sqlite_error;
-sqlite3_stmt *prepstatement = NULL;
-
-m_PMode = PMode;
-m_MinIdentity = MinIdentity;
-m_MinScore = MinScore;
-m_MinMatches = MinMatches;
-
-sqlite3_initialize();
-
-if((CreateDatabase(pszDatabase))==NULL)
-	{
-	sqlite3_shutdown();
-	return(eBSFerrInternal);
-	}
-
-if((Rslt = CreateExperiment(pszExprName,pszPSLFile,pszQueryFile, pszTargetFile,pszExprDescr,pszBlatParams,ExprType)) < 1)
-	{
-	CloseDatabase(true);
-	return(Rslt);
-	}
-ExprID = Rslt;
-
 char *pszBeginTransaction = (char *)"BEGIN TRANSACTION";
-char *pszEndTransaction = (char *)"END TRANSACTION";
-
 char *pszPragmaSyncOff = (char *)"PRAGMA synchronous = OFF";
-char *pszPragmaSyncOn = (char *)"PRAGMA synchronous = ON";
+
 char *pszPragmaJournMem = (char *)"PRAGMA journal_mode = MEMORY";
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"sqlite - populating tables");
@@ -703,12 +937,16 @@ if((sqlite_error = sqlite3_exec(m_pDB,pszBeginTransaction,NULL,NULL,NULL))!=SQLI
 	return(eBSFerrInternal);
 	}
 
-if((Rslt = ProcessPSLFile(pszPSLFile,ExprID)) < eBSFSuccess)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessPSLFile failed: %s",pszPSLFile); 
-	CloseDatabase(true);
-	return(Rslt);
-	}
+return(eBSFSuccess);
+}
+
+int 
+CSQLitePSL::EndPopulatingTables(void)
+{
+int sqlite_error;
+char *pszEndTransaction = (char *)"END TRANSACTION";
+char *pszPragmaSyncOn = (char *)"PRAGMA synchronous = ON";
+AddSummaryInstances2SQLite();
 
 	// end transaction
 if((sqlite_error = sqlite3_exec(m_pDB,pszEndTransaction,NULL,NULL,NULL))!=SQLITE_OK)
@@ -724,7 +962,7 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Generating indexes ...");
 tsStmSQL *pStms;
 pStms = m_StmSQL;
 int TblIdx;
-for(TblIdx = 0; TblIdx < 3; TblIdx++,pStms++)
+for(TblIdx = 0; TblIdx < 4; TblIdx++,pStms++)
 	{
 	if(pStms->pszCreateIndexes == NULL)
 		continue;
@@ -748,6 +986,63 @@ if((sqlite_error = sqlite3_exec(m_pDB,pszPragmaSyncOn,NULL,NULL,NULL))!=SQLITE_O
 
 CloseDatabase();
 sqlite3_shutdown();
+return(eBSFSuccess);
+}
+
+int
+CSQLitePSL::ProcessPSL2SQLite(int PMode,		// processing mode, 0 to delete any existing then create new SQLite, 1 to append to existing SQLite
+					int MinIdentity,			// minimum required identity
+					int MinScore,				// minimum required score
+					int MinMatches,				// minimum required base matches
+					char *pszDatabase,			// SQLite database file
+					char *pszExprName,			// experiment name
+					char *pszPSLFile,			// alignments were parsed from this BLAT generated PSL file
+					char *pszQueryFile,			// Blat'd query sequences in this file
+					char *pszTargetFile,		// against targeted sequences in this file
+					char *pszExprDescr,			// describes experiment
+					char *pszBlatParams,		// Blat parameters used
+					int ExprType)				// experiment type, currently just a place holder and defaults to 0
+
+{
+int Rslt;
+int ExprID;
+
+sqlite3_stmt *prepstatement = NULL;
+
+m_PMode = PMode;
+m_MinIdentity = MinIdentity;
+m_MinScore = MinScore;
+m_MinMatches = MinMatches;
+
+sqlite3_initialize();
+
+if((CreateDatabase(pszDatabase))==NULL)
+	{
+	sqlite3_shutdown();
+	return(eBSFerrInternal);
+	}
+
+if((Rslt = CreateExperiment(pszExprName,pszPSLFile,pszQueryFile, pszTargetFile,pszExprDescr,pszBlatParams,ExprType)) < 1)
+	{
+	CloseDatabase(true);
+	return(Rslt);
+	}
+ExprID = Rslt;
+
+if((Rslt=BeginPopulatingTables())!=eBSFSuccess)
+	return(Rslt);
+
+
+if((Rslt = ProcessPSLFile(pszPSLFile,ExprID)) < eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal,gszProcName,"ProcessPSLFile failed: %s",pszPSLFile); 
+	CloseDatabase(true);
+	return(Rslt);
+	}
+
+if((Rslt=EndPopulatingTables())!=eBSFSuccess)
+	return(Rslt);
+
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"SQLite database ready for use");
 return(eBSFSuccess);
 }
@@ -866,8 +1161,6 @@ for(BlockIdx = 0; BlockIdx < NumBlocks; BlockIdx++)
 	pChr += Psn;
 	}
 
-
-
 Score = pslScore(Matches,Mismatches,RepMatches,QNumInDels,TNumInDels,szStrand,TSize,TStart,TEnd,NumBlocks,BlockSizes,QStarts,TStarts);			
 double pslIdent = (double)pslCalcMilliBad(Matches,Mismatches,RepMatches,QNumInDels,TNumInDels,QSize,QStart,QEnd,szStrand,TSize,TStart,TEnd,NumBlocks,BlockSizes,QStarts,TStarts,true); 
 Identity = (int)(100.0 - pslIdent * 0.1);
@@ -877,7 +1170,7 @@ if(Score < m_MinScore ||
    Matches < m_MinMatches)
 	return(0);	
 
-AlignmentID = AddAlignment(ExprID,Score,Identity,Matches,Mismatches,RepMatches,NCount,QNumInDels,QBasesInDels,TNumInDels,TBasesInDels,szStrand,szQName,QSize,QStart,QEnd,szTName,TSize,TStart,TEnd,NumBlocks,BlockSizes,	QStarts,TStarts);
+AlignmentID = AddAlignment(ExprID,Score,Identity,Matches,Mismatches,RepMatches,NCount,QNumInDels,QBasesInDels,TNumInDels,TBasesInDels,szStrand,szQName,QSize,QStart,QEnd,szTName,TSize,TStart,TEnd,NumBlocks,BlockSizes, QStarts,TStarts);
 if(AlignmentID > 0)
 	m_NumBlatHitsAccepted += 1;
 return(AlignmentID);

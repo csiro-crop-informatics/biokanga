@@ -848,6 +848,9 @@ class CAligner
 	int FiltByChroms(void);
 
 	int FiltByPriorityRegions(void); // remove hits not aligned into a priority region
+
+	
+	int ReportTargHitCnts(void);	 // if PEs then each end is separately counted
 	
 	int WriteBasicCountStats(void);
 

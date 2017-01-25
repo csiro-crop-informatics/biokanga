@@ -362,7 +362,7 @@ while ((Rslt = SeqLen = Fasta.ReadSequence(m_pSeqBuff, cMaxVectorSeqLen)) > eBSF
 		}
 	if(bIsVector && (SeqLen < cMinVectorSeqLen || SeqLen > cMaxVectorSeqLen))
 		{
-		gDiagnostics.DiagOut(eDLFatal, gszProcName, "LoadContamiantsFile: Vector sequence for '%s' outside of accepted length range %d..%d", szName, cMinContaminantLen, cMaxContaminantLen);
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "LoadContamiantsFile: Vector sequence for '%s' outside of accepted length range %d..%d", szName, cMinVectorSeqLen, cMaxVectorSeqLen);
 		Rslt = Rslt = eBSFerrFastqSeq;
 		break;
 		}

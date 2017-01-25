@@ -15,14 +15,14 @@
 #pragma once
 
 const int cMinCoreLen = 5;			// minimum allowed core or seed length
-const int cDfltCoreLen = 10;		// default core or seed length
-const int cMaxCoreLen = 16;			// max allowed core or seed length
+const int cDfltCoreLen = 20;		// default core or seed length
+const int cMaxCoreLen = 50;			// max allowed core or seed length
 
 const int cDfltMinQueryLenAlignedPct = 25;  // to be accepted a query sequence must align over at least this percentage (1..100) of it's length onto target
 
 const int cMinPathScore = 50;		// user specified min allowed path score before that path will be reported
 const int cDfltPathScore = 75;		// default minimum path score before that path will be reported
-const int cMaxPathScore = 500;		// user specified max minimum allowed path score before that path will be reported
+const int cMaxPathScore = 50000;		// user specified max minimum allowed path score before that path will be reported
 
 const int cDfltMaxExtnScoreThres = 12; // default extension score threshold, core overlap extensions with extension score above this threshold are terminated; extension score += 2 if mismatch, extension score -= 1 if match and score > 0
 const int cMaxMaxExtnScoreThres = 30;  // maximum accepted extension score threshold, core overlap extensions with extension score above this threshold are terminated; extension score += 2 if mismatch, extension score -= 1 if match and score > 0
@@ -31,11 +31,23 @@ const int cMaxOverlapFloat = 8;		// allowing for overlap float of at most this m
 
 const int cDfltMaxPathsToReport = 10;	// by default report at most this many scoring paths for any query sequence
 
+
+const int cDfltExactMatchScore = 1;		// default score for an exact match
+const int cMinExactMatchScore = 1;		// user specified minimum score for an exact match
+const int cMaxExactMatchScore = 50;		// user specified maximum score for an exact match
+
+const int cDfltMismatchScore = 2;		// default cost for mismatches when scoring
+const int cMinMismatchScore = 1;		// user specified minimum cost for mismatches when scoring
+const int cMaxMismatchScore = 50;		// user specified maximum cost for mismatches when scoring
+
 // using affine gap scoring but limiting the gap extension cost to just the first 100bp
-const int cGapOpenCost = 5;			// cost for opening path gap when scoring path
+const int cDfltGapOpenScore = 5;	// default cost for opening path gap when scoring path
+const int cMinGapOpenScore = 1;		// user specified minimum cost for opening path gap when scoring path
+const int cMaxGapOpenScore = 50;	// user specified maximum cost for opening path gap when scoring path
+
 const int cGapExtendCost = 1;		// cost for extending gap per 10bp extension when scoring path
-const int cGapExtendCostLimit = 10;		// clamp gap extension cost to be no more than this
-const int cGapMaxLength = 100000;    // treat any gaps longer than this length as being not on same path
+const int cGapExtendCostLimit = 10;	// clamp gap extension cost to be no more than this
+const int cGapMaxLength = 100000;   // treat any gaps longer than this length as being not on same path
 
 const int cMinCoreDelta = 1;		// minimum allowed core shift delta in bp
 const int cMaxCoreDelta = 50;		// max allowed core shift delta in bp
@@ -81,6 +93,7 @@ typedef enum TAG_eBLZRsltsFomat {
 	eBLZRsltsPSLX,		// results format is PSLX
 	eBLZRsltsMAF,		// default results format is MAF
 	eBLZRsltsBED,		// results as BED
+	eBLZRsltsSQLite,	// results as SQLite database
 	eBLZRsltsplaceholder   // used as a placeholder and flags the range of these enumerations
 }etBLZRsltsFomat;
 
@@ -144,6 +157,10 @@ class CBlitz
 	int m_MaxPathsToReport;			// report at most this many alignment paths for any query
 	int m_AlignPathID;				// alignment path identifier
 
+	int m_MismatchScore;			// decrease score by this for each mismatch bp
+	int m_ExactMatchScore;			// increase score by this for each exactly matching bp
+	int m_GapOpenScore;				// decrease score by this for each gap open
+
 	etBLZRsltsFomat m_RsltsFormat;	// output results format
 	char *m_pszInputFile;			// name of input file containting query sequences
 	char *m_pszSfxFile;				// target as suffix array
@@ -152,6 +169,9 @@ class CBlitz
 	UINT32 m_QueriesPaths;			// this many query sequences had at least one reported path
 	UINT32 m_NumQueriesProc;		// total number of query sequences processed
 	int m_hInFile;					// input file handle
+
+	CSQLitePSL *m_pSQLitePSL;		// used when outputting PSL rows directly into SQLite database
+	int m_ExprID;					// experiment identifier allocated when initialising database with experiment details
 
 	int m_hOutFile;					// results output file handle
 	int m_szLineBuffIdx;			// offset into m_pszLineBuff at which to next write
@@ -223,14 +243,20 @@ public:
 	~CBlitz();
 	int
 	Process(etBLZPMode PMode,			// processing mode
+			char *pszExprName,				// experiment name
+			char *pszExprDescr,				// experiment description
+			char *pszParams,				// string containing blitz parameters
 			etBLZSensitivity Sensitivity,	// sensitivity 0 - standard, 1 - high, 2 - very high, 3 - low sensitivity
 			eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+			int MismatchScore,				// decrease score by this for each mismatch bp
+			int ExactMatchScore,			// increase score by this for each exactly matching bp
+			int GapOpenScore,				// decrease score by this for each gap open
 			int  CoreLen,					// use this core length as the exactly matching seed length to be 5' and 3' extended whilst no more than m_MaxSubRate
 			int  CoreDelta,					// offset cores by this many bp
 			int MaxExtnScoreThres,			// terminate overlap extension if curent extension score more than this; if mismatch then extension score += 2, if match and score > 0 then score -= 1 
 			int MaxOccKMerDepth,			// maximum depth to explore over-occurring core K-mers
 			int  MinPathScore,				// only report alignment paths on any target sequence if the path score is >= this minimum score
-			int QueryLenAlignedPct,				// only report alignment paths if the percentage of total aligned bases to the query sequence length is at least this percentage (1..100)
+			int QueryLenAlignedPct,			// only report alignment paths if the percentage of total aligned bases to the query sequence length is at least this percentage (1..100)
 			int  MaxPathsToReport,			// report at most this many alignment paths for any query
 			etBLZRsltsFomat RsltsFormat,	// output results format
 			char *pszInputFile,				// name of input file containting query sequences
@@ -280,6 +306,31 @@ public:
 				UINT32 NumNodes,			// number of alignment nodes
 				tsQueryAlignNodes *pAlignNodes, // alignment nodes
 				tsQueryAlignNodes **ppFirst2Rpts);	// allocated to hold ptrs to alignment nodes which are marked as being FlgFirst2tRpt
+
+
+	int	// reporting alignment as SQLite PSL format 
+		ReportAsSQLitePSL(UINT32 Matches,				// Number of bases that match that aren't repeats
+						UINT32 misMatches,			// Number of bases that don't match
+						UINT32 repMatches,			// Number of bases that match but are part of repeats
+						UINT32 nCount,				// Number of 'N' bases
+						UINT32	qNumInsert,			// Number of inserts in query
+						UINT32 qBaseInsert,			// Number of bases inserted in query
+						UINT32 tNumInsert,			// Number of inserts in target
+						UINT32 tBaseInsert,			// Number of bases inserted in target
+						char  Strand,				// query sequence strand, '+' or '-'
+						char *pszQuerySeqIdent,     // this query sequence
+						UINT32 qSize,				// Query sequence size
+						UINT32 qStart,				// Alignment start position in query
+						UINT32 qEnd,				// Alignment end position in query
+						char *pszTargName,			// aligning to this target
+						UINT32 tSize,				// Target sequence size 
+						UINT32 TargPathStartOfs,	// at this starting offset
+						UINT32 TargPathEndOfs,		// ending at this offset (inclusive)
+						UINT32 NumPathNodes,		// number of alignment nodes in alignment path
+						int SortedPathIdx,
+						tsQueryAlignNodes *pAlignNodes,		// alignment nodes
+						tsQueryAlignNodes **ppFirst2Rpts); // allocated to hold ptrs to alignment nodes which are marked as being FlgFirst2tRpt
+
 
 	int		// reporting alignment as PSL format
 			ReportAsPSL(UINT32 Matches,			// Number of bases that match that aren't repeats

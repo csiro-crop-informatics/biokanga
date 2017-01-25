@@ -46,7 +46,7 @@ typedef struct TAG_sThreadIdentDuplicatePars {
 	int Rslt;						// returned result code
 	bool bStrand;					// if true then duplicate checking on original read orientation, if false then also check duplicates on antisense
 	bool bPEdups;					// sequences are from paired end reads
-	bool bDedupeIndependent;		// if paired end preprocessing then treat as if single ended when deuping
+	bool bDedupeIndependent;		// if paired end preprocessing then treat as if single ended when deduping
 	tSeqID StartingSeqID;			// process starting with this sequence identifier (0 to start with 1st)
 	tSeqID EndingSeqID;				// process finishing with this sequence identifier (0 to finish with last)
 	UINT32 AllocMemProbeSubSeq;		// memory allocated to pProbeSubSeq
@@ -172,8 +172,8 @@ public:
 			bool bNoDedupe,					// if true then do not remove all duplicate reads as per bDedupeIndependent parameter
 			bool bStrand,					// true if read strand specific filtering
 			int MaxNs,						// filter out input sequences having higher than this number of indeterminate bases per 100bp (default is 0, range 0..5)
-			int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..20)
-			int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..20)
+			int Trim5,						// trim this number of 5' bases from input sequences (default is 0, range 0..50)
+			int Trim3,						// trim this number of 3' bases from input sequences (default is 0, range 0..50)
 			int MinSeqLen,		            // filter out input sequences (after any trimming) which are less than this length (default is 80bp, range 50..500)
 			int TrimSeqLen,					// trim sequences to be no longer than this length (default is 0 for no length trimming, MinSeqLen...10000)
 			int MinOverlap,					// minimum required overlap (in % of read length) or <= 0 if no overlap processing

@@ -97,7 +97,7 @@ Blitz.o: Blitz.cpp /usr/include/stdc-predef.h stdafx.h ../config.h \
  ../libbiokanga/././Contaminants.h ../libbiokanga/././ProcRawReads.h \
  ../libbiokanga/././GTFFile.h ../libbiokanga/././GFFFile.h \
  ../libbiokanga/././sqlite3.h biokanga.h SQLiteSummaries.h \
- ../libbiokanga/bgzf.h Blitz.h
+ ../libbiokanga/bgzf.h SQLitePSL.h Blitz.h
 
 /usr/include/stdc-predef.h:
 
@@ -416,5 +416,7 @@ biokanga.h:
 SQLiteSummaries.h:
 
 ../libbiokanga/bgzf.h:
+
+SQLitePSL.h:
 
 Blitz.h:

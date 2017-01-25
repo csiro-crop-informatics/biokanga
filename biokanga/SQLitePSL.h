@@ -24,6 +24,8 @@ const int cMaxInBuffSize  = 10000000;	// read in chunks of this size from source
 const int cMaxLenPSLline = 32000;		// max length PSL line expected - just a guess!
 const int cMaxNumPSLblocks = 1000;		// max number of blocks in any PSL alignment - again just a guess!
 
+const int cAllocAlignSummaryInsts=1000000; // allocate in increments of this number of alignment summary instances
+
 typedef struct TAG_sStmsSQL {
 	char *pTblName;					// table name
 	char *pszCreateTbl;				// SQL statement used to create the table
@@ -34,6 +36,22 @@ typedef struct TAG_sStmsSQL {
 	char *pszCreateIndexes;			// SQL statement used to create indexes on this table before closing the database
 	char *pszDropIndexes;			// SQL statement used to drop indexes on this table
 } tsStmSQL;
+
+#pragma pack(1)
+
+typedef struct TAG_sAlignSummary {
+		UINT16 AlignSummarySize;	// size of this alignment summary instance
+		INT32 ExprID;				// alignment summary was from this experiment
+		INT32 HashSummaryInst;		// hash for this summary instance
+		UINT64 NxtHashedSummaryInstOfs;   // offset+1 of next alignment summary instance with same hash, 0 if last instance with same HashSummaryInst
+		UINT8 FlgIsQuery:1;			// 0 if summary for target, 1 if summary for query
+		UINT32 SeqLen;				// query or target sequence is this length
+		UINT32 NumAlignments;		// if target then total number of alignments to this target, if query then total number of alignments from this query
+		UINT8 SeqNameLen;				// length of '/0' terminated sequence name
+		UINT8 SeqName[1];			// lower cased query or target sequence name, extended out to actual length+1 of sequence name
+	} tsAlignSummary;
+
+#pragma pack()
 
 class CSQLitePSL
 {
@@ -57,8 +75,16 @@ class CSQLitePSL
 	int m_NumBlatHitsParsed;		// number of blat hits parsed
 	int m_NumBlatHitsAccepted;		// number of blat hits accepted
 
+	UINT32 m_NumAlignSummaries;				// current number of alignment summaries in m_pAlignmentSummaries
+	size_t m_UsedAlignmentSummariesSize;	// m_NumAlignSummaries is using this much of the current allocation m_pAlignmentSummaries size
+	size_t m_allocAlignmentSummariesSize;	// current allocation m_pAlignmentSummaries size
+	tsAlignSummary *m_pAlignmentSummaries;  // allocated to hold alignment summaries
+	INT64 m_AlignSummaryInstancesOfs[0x100000]; // offsets into m_pAlignmentSummaries[] for first instance of an alignment summary instance having same 20bit hash, 0 if no instance exists with same hash  
+
+
+
 	sqlite3 *m_pDB;						// pts to instance of SQLite
-	static tsStmSQL m_StmSQL[3];		// SQLite table and index statements
+	static tsStmSQL m_StmSQL[4];		// SQLite table and index statements
 
 	int m_NumAlignments;				// number of alignments added to TblBlatAlignments
 	int m_NumBlocks;					// number of alignment blocks added to TblBlatAlignmentBlocks
@@ -72,12 +98,34 @@ class CSQLitePSL
 
 	int ProcessPSL(int ExprID);
 
+	INT32			// 20bit instance hash over the combination of parameterisation values passed into this function; if < 0 then hashing error 
+		GenSummaryInstanceHash(INT32 ExprID,// alignment summary is for alignment in this experiment
+						bool bIsQuery,		// false if SeqName is for a target sequence, true if for a query sequence
+						char *pszSeqName,	// NULL terminated sequence name
+						UINT32  SeqLen);	// query or target sequence length
+
+	tsAlignSummary *LocateAlignSummary(INT32 ExprID,		// alignment summary is for alignment in this experiment
+						bool bIsQuery,	// false if SeqName is for a target sequence, true if for a query sequence
+						char *pszSeqName,	// locate pre-existing, or allocate new if not pre-existing, alignment summary for bIsQuery type
+						UINT32  SeqLen);	// query or target sequence length
+
+	int AddSummaryInstances2SQLite(void);  // add all summary instances to SQLite
+
+
+	static char *RemoveQuotes(char *pszRawText);
+				
+	static int ExecCallbackID(void *pCallP1, // callback function processing identifier (4th arg to sqlite3_exec())
+					int NumCols,			// number of result columns 
+					char **ppColValues,		// array of ptrs to column values 
+					char **ppColName);		// array of ptrs to column names
+
+public:
+	CSQLitePSL(void);
+	~CSQLitePSL(void);
+
 	sqlite3 *
 		CreateDatabase(char *pszDatabase,		// database to create (any existing database is deleted then clean created)
 						bool bAppend = true);	// true to append onto any existing database
-
-	int
-		CloseDatabase(bool bNoIndexes = false);
 
 	int											// errors if < eBSFSuccess, if positive then the ExprID
 		CreateExperiment(char *pszExprName,		// experiment name
@@ -87,7 +135,21 @@ class CSQLitePSL
 				char *pszExprDescr = NULL,		// describes experiment
 				char *pszBlatParams = NULL,		// Blat parameters used
 				int ExprType = 0);				// experiment type, currently just a place holder and defaults to 0
-	
+
+	int BeginPopulatingTables(void);
+
+	int EndPopulatingTables(void);
+
+
+	int
+		CloseDatabase(bool bNoIndexes = false);
+
+	int
+		AddAlignSummary(INT32 ExprID,		// alignment summary is for alignment in this experiment
+				char *pszQName,				// query sequence name, NULL or '\0' if unknown
+				UINT32  QSize,				// query sequence size, 0 if unknown
+				char *pszTName,				// target sequence name, NULL or '\0' if unknown
+				UINT32  TSize);				// target sequence size
 
 	int											// errors if < eBSFSuccess else alignment identifier
 		AddAlignment(int ExprID,			// alignment was in this experiment
@@ -158,20 +220,7 @@ class CSQLitePSL
 			int  *pBlockSizes,		// array of sizes of each block
 			int  *pQStarts,			// starting psn of each block in query
 			int  *pTStarts);			// starting psn of each block in target
-
-
 				
-	static char *RemoveQuotes(char *pszRawText);
-				
-	static int ExecCallbackID(void *pCallP1, // callback function processing identifier (4th arg to sqlite3_exec())
-					int NumCols,			// number of result columns 
-					char **ppColValues,		// array of ptrs to column values 
-					char **ppColName);		// array of ptrs to column names
-
-public:
-	CSQLitePSL(void);
-	~CSQLitePSL(void);
-
 	int
 		ProcessPSL2SQLite(int PMode,			// processing mode, 0 to delete any existing then create new SQLite, 1 to append to existing SQLite
 					int MinIdentity,			// minimum required identity

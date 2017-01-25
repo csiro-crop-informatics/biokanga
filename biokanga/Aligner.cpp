@@ -715,7 +715,18 @@ if(m_NARAccepted && m_hSitePrefsFile != -1)
 // now time to write out the read hits
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting of aligned result set started...");
 if(FMode >= eFMsam)
+	{
+	if(m_hJctOutFile != -1 || m_hIndOutFile != -1)	// even though SAM for read alignments, splice and indels are reported as BED format
+		{
+		Rslt = WriteReadHits(PEproc == ePEdefault ? false : true);
+		if(Rslt < eBSFSuccess)
+			{
+			Reset(false);
+			return(Rslt);
+			}
+		}
 	Rslt = WriteBAMReadHits(FMode,SAMFormat,PEproc == ePEdefault ? false : true,6);	// default to compression level 6
+	}
 else
 	Rslt = WriteReadHits(PEproc == ePEdefault ? false : true);
 
@@ -731,6 +742,9 @@ if(m_bPEInsertLenDist && m_NARAccepted)
 
 if(Rslt >= eBSFSuccess && m_NARAccepted && m_hStatsFile > 0 && m_MaxAlignLen > 0)
 	Rslt = WriteBasicCountStats();
+
+if(Rslt >= eBSFSuccess && m_NARAccepted && m_hStatsFile > 0 && m_MaxAlignLen > 0)
+	Rslt = ReportTargHitCnts();
 
 if(Rslt >= eBSFSuccess  && m_NARAccepted && m_hSitePrefsFile > 0)
 	Rslt = WriteSitePrefs();
@@ -2282,7 +2296,7 @@ int Idx;
 if(SpliceJunctLen > 0)
 	{
 	SortReadHits(eRSMHitMatch,false);
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Filtering out any orphan splice junction reads");
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Filtering out any orphan (unsupported by >= 2 reads) splice junction reads");
 	int NumSpliceJuncs = 0;
 	int	NumSpliceAccepted = 0;
 	int	NumSpliceNotAccepted = 0;
@@ -4237,7 +4251,7 @@ if(m_microInDelLen && m_FMode == eFMbed)
 		}
 	}
 
-if(m_SpliceJunctLen && m_FMode == eFMbed)
+if(m_SpliceJunctLen && (m_FMode == eFMbed || m_FMode == eFMsam || m_FMode == eFMsamAll))
 	{
 	strcpy(m_szJctRsltsFile,m_pszOutFile);
 	if(m_bgzOutFile)								// if compressing the primary alignment results file then remove the ".gz' file suffix 
@@ -5267,6 +5281,73 @@ SortReadHits(eRSMHitMatch,false);
 return(NumTargIDs);
 }
 
+// Report number of accepted alignments onto each targeted transcript or assembly contig/sequence
+int
+CAligner::ReportTargHitCnts(void)
+{
+char szDistBuff[0x7fff];
+int BuffOfs;
+UINT32 NumHits;
+UINT32 CurTargID;
+UINT32 NumTargIDs;
+char szTargChromName[128];
+UINT32 TargChromLen;
+tsReadHit *pReadHit;
+
+if(m_hStatsFile == -1)
+	return(0);
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reporting accepted read alignment counts on to targeted transcripts or sequences, sorting reads");
+SortReadHits(eRSMHitMatch,false);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed sort");
+
+BuffOfs = sprintf(szDistBuff,"\"TargSeq\",\"TargLen\",\"NumHits\"\n");
+CUtility::SafeWrite(m_hStatsFile,szDistBuff,BuffOfs);
+BuffOfs = 0;
+
+pReadHit = NULL;
+CurTargID = 0;
+TargChromLen = 0;
+NumTargIDs = 0;
+NumHits = 0;
+while((pReadHit = IterSortedReads(pReadHit))!=NULL)
+	{
+	// read must have been accepted as aligned
+	if(pReadHit->NAR != eNARAccepted)
+		continue;
+
+	// read accepted as aligned
+	if(pReadHit->HitLoci.Hit.Seg[0].ChromID != (UINT32)CurTargID)  // now processing a different transcript or assembly sequence?
+		{
+		if(CurTargID != 0)
+			{
+			BuffOfs += sprintf(&szDistBuff[BuffOfs],"\"%s\",%u,%u\n",szTargChromName,TargChromLen,NumHits);
+			if((BuffOfs + 4096) > sizeof(szDistBuff))
+				{
+				CUtility::SafeWrite(m_hStatsFile,szDistBuff,BuffOfs);
+				BuffOfs = 0;
+				}
+			}
+		CurTargID = pReadHit->HitLoci.Hit.Seg[0].ChromID;
+		m_pSfxArray->GetIdentName(CurTargID,sizeof(szTargChromName),szTargChromName);
+		TargChromLen = m_pSfxArray->GetSeqLen(CurTargID);
+		NumTargIDs += 1;
+		NumHits = 0;
+		}
+	NumHits += 1;
+	}
+
+if(NumHits)
+	{
+	BuffOfs += sprintf(&szDistBuff[BuffOfs],"\"%s\",%u,%u\n",szTargChromName,TargChromLen,NumHits);
+	CUtility::SafeWrite(m_hStatsFile,szDistBuff,BuffOfs);
+	}
+
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed reporting read alignment counts on to %d targeted transcripts or sequences",NumTargIDs);
+return(NumTargIDs);
+}
+
+
 
 // Write results as BAM or SAM format
 int
@@ -6022,6 +6103,9 @@ etSeqBase *pReadSeq;
 tsReadHit *pReadHit;
 tBSFEntryID PrevTargEntry;
 
+if(m_FMode > eFMbed && (m_hJctOutFile == -1 && m_hIndOutFile == -1))
+	return(0);
+
 m_MaxAlignLen = 0;
 
 if(m_FMode == eFMbed)
@@ -6031,20 +6115,20 @@ if(m_FMode == eFMbed)
 		CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,LineLen);
 	else
 		CUtility::SafeWrite_gz(m_gzOutFile,m_pszLineBuff,LineLen);
-
-	if(m_hJctOutFile != -1)
-		{
-		LineLen = sprintf(m_pszLineBuff,"track type=bed name=\"JCT_%s\" description=\"%s\"\n",m_pszTrackTitle,m_pszTrackTitle);
-		CUtility::SafeWrite(m_hJctOutFile,m_pszLineBuff,LineLen);
-		}
-
-	if(m_hIndOutFile != -1)
-		{
-		LineLen = sprintf(m_pszLineBuff,"track type=bed name=\"IND_%s\" description=\"%s\"\n",m_pszTrackTitle,m_pszTrackTitle);
-		CUtility::SafeWrite(m_hIndOutFile,m_pszLineBuff,LineLen);
-		}
-	LineLen = 0;
 	}
+
+if(m_hJctOutFile != -1)
+	{
+	LineLen = sprintf(m_pszLineBuff,"track type=bed name=\"JCT_%s\" description=\"%s\"\n",m_pszTrackTitle,m_pszTrackTitle);
+	CUtility::SafeWrite(m_hJctOutFile,m_pszLineBuff,LineLen);
+	}
+
+if(m_hIndOutFile != -1)
+	{
+	LineLen = sprintf(m_pszLineBuff,"track type=bed name=\"IND_%s\" description=\"%s\"\n",m_pszTrackTitle,m_pszTrackTitle);
+	CUtility::SafeWrite(m_hIndOutFile,m_pszLineBuff,LineLen);
+	}
+LineLen = 0;
 
 pReadHit = NULL;
 LineLen = 0;
@@ -6054,9 +6138,11 @@ const char *pszAlignType;
 bool bPrevInDelSeg = false;
 bool bPrevJunctSeg = false;
 bool bPrevAlignSeg = false;
+bool bSkipBEDformat = false;;
 
 while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 	{
+	bSkipBEDformat = false;
 	if(pReadHit->NAR == eNARAccepted)
 		{
 		if(pReadHit->HitLoci.Hit.FlgInDel)
@@ -6065,7 +6151,11 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 			if(pReadHit->HitLoci.Hit.FlgSplice)
 				pszAlignType = "arj";
 			else
+				{
 				pszAlignType = "ar";
+				if(m_FMode > eFMbed)
+					bSkipBEDformat = true;
+				}
 
 		if(pReadHit->HitLoci.FlagIA == 1)
 			{
@@ -6075,7 +6165,11 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 				if(pReadHit->HitLoci.Hit.FlgSplice)
 					pszAlignType = "iarj";
 				else
+					{
 					pszAlignType = "iar";
+					if(m_FMode > eFMbed)
+						bSkipBEDformat = true;
+					}
 			}
 		else
 			{
@@ -6085,7 +6179,11 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 				if(pReadHit->HitLoci.Hit.FlgSplice)
 					pszAlignType = "arj";
 				else
+					{
 					pszAlignType = "ar";
+					if(m_FMode > eFMbed)
+						bSkipBEDformat = true;
+					}
 			}
 
 		tsSegLoci *pSeg;
@@ -6103,7 +6201,7 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 
 		int Score = (int)min(1000.0,(999 * m_OctSitePrefs[pSeg->Strand == '+' ? 0 : 1][pReadHit->SiteIdx].RelScale));
 
-		if(m_FMode == eFMbed)
+		if(m_FMode >= eFMbed)
 			{
 			if(pReadHit->HitLoci.FlagSegs==0)
 				{
@@ -6111,7 +6209,11 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 					{
 					if(LineLen > 0)
 						{
-						CUtility::SafeWrite(bPrevInDelSeg ? m_hIndOutFile : m_hJctOutFile,m_pszLineBuff,LineLen);
+						if(bPrevInDelSeg && m_hIndOutFile != -1)
+							CUtility::SafeWrite(m_hIndOutFile,m_pszLineBuff,LineLen);
+						else
+							if(bPrevJunctSeg && m_hJctOutFile != -1)
+								CUtility::SafeWrite(m_hJctOutFile,m_pszLineBuff,LineLen);
 						LineLen = 0;
 						}
 					bPrevInDelSeg = false;
@@ -6119,8 +6221,9 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 					}
 				pSeg = &pReadHit->HitLoci.Hit.Seg[0];
 
-				LineLen+=sprintf(&m_pszLineBuff[LineLen],"%s\t%d\t%d\t%s\t%d\t%c\n",
-					szChromName,AdjStartLoci(pSeg),AdjEndLoci(pSeg) + 1,pszAlignType,Score,pSeg->Strand);
+				if(!bSkipBEDformat)
+					LineLen+=sprintf(&m_pszLineBuff[LineLen],"%s\t%d\t%d\t%s\t%d\t%c\n",
+								szChromName,AdjStartLoci(pSeg),AdjEndLoci(pSeg) + 1,pszAlignType,Score,pSeg->Strand);
 				bPrevAlignSeg = true;
 				}
 			else // segmented alignment
@@ -6129,65 +6232,76 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 					{
 					if(LineLen > 0)
 						{
-						if(!m_bgzOutFile)
-							CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,LineLen);
-						else
-							CUtility::SafeWrite_gz(m_gzOutFile,m_pszLineBuff,LineLen);
+						if(m_FMode == eFMbed)
+							{
+							if(!m_bgzOutFile)
+								CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,LineLen);
+							else
+								CUtility::SafeWrite_gz(m_gzOutFile,m_pszLineBuff,LineLen);
+							}
 						LineLen = 0;
 						}
 					bPrevAlignSeg = false;
 					}
 				if(pReadHit->HitLoci.Hit.FlgInDel)
 					{
-					if(bPrevJunctSeg)
+					if(bPrevJunctSeg && m_hJctOutFile != -1)
 						{
 						if(LineLen > 0)
-							{
 							CUtility::SafeWrite(m_hJctOutFile,m_pszLineBuff,LineLen);
-							LineLen = 0;
-							}
-						bPrevJunctSeg = false;
+						LineLen = 0;
 						}
+					bPrevJunctSeg = false;
 					bPrevInDelSeg = true;
 					}
 				else
 					{
-					if(bPrevInDelSeg)
+					if(bPrevInDelSeg && m_hIndOutFile != -1)
 						{
 						if(LineLen > 0)
 							{
 							CUtility::SafeWrite(m_hIndOutFile,m_pszLineBuff,LineLen);
 							LineLen = 0;
 							}
-						bPrevInDelSeg = false;
 						}
+					bPrevInDelSeg = false;
 					bPrevJunctSeg = true;
 					}
 
 			    int AjAlignStartLoci;
 				int AjAlignEndLoci;
 
-				AjAlignStartLoci = AdjAlignStartLoci(&pReadHit->HitLoci.Hit);
-				AjAlignEndLoci = AdjAlignEndLoci(&pReadHit->HitLoci.Hit);
-				LineLen+=sprintf(&m_pszLineBuff[LineLen],"%s\t%d\t%d\t%s\t%d\t%c\t%d\t%d\t0\t2\t%d,%d\t0,%d\n",
-					szChromName,AjAlignStartLoci,AjAlignEndLoci+1,pszAlignType,Score,pSeg->Strand,AjAlignStartLoci,AjAlignEndLoci+1,
-					       AdjHitLen(pSeg),AdjHitLen(&pSeg[1]),AdjStartLoci(&pSeg[1])-AdjStartLoci(pSeg));
+				if(!bSkipBEDformat)
+					{
+					AjAlignStartLoci = AdjAlignStartLoci(&pReadHit->HitLoci.Hit);
+					AjAlignEndLoci = AdjAlignEndLoci(&pReadHit->HitLoci.Hit);
+					LineLen+=sprintf(&m_pszLineBuff[LineLen],"%s\t%d\t%d\t%s\t%d\t%c\t%d\t%d\t0\t2\t%d,%d\t0,%d\n",
+									szChromName,AjAlignStartLoci,AjAlignEndLoci+1,pszAlignType,Score,pSeg->Strand,AjAlignStartLoci,AjAlignEndLoci+1,
+									AdjHitLen(pSeg),AdjHitLen(&pSeg[1]),AdjStartLoci(&pSeg[1])-AdjStartLoci(pSeg));
+					}
 				}
 
 			if((cAllocLineBuffSize - LineLen) < 1000)
 				{
 				if(bPrevAlignSeg)
 					{
-					if(!m_bgzOutFile)
-						CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,LineLen);
-					else
-						CUtility::SafeWrite_gz(m_gzOutFile,m_pszLineBuff,LineLen);
+					if(m_FMode == eFMbed)
+						{
+						if(!m_bgzOutFile)
+							CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,LineLen);
+						else
+							CUtility::SafeWrite_gz(m_gzOutFile,m_pszLineBuff,LineLen);
+						}
 					LineLen = 0;
 					bPrevAlignSeg = false;
 					}
 				else
 					{
-					CUtility::SafeWrite(bPrevInDelSeg ? m_hIndOutFile : m_hJctOutFile,m_pszLineBuff,LineLen);
+					if(bPrevInDelSeg && m_hIndOutFile != -1)
+						CUtility::SafeWrite(m_hIndOutFile,m_pszLineBuff,LineLen);
+					else
+						if(bPrevJunctSeg && m_hJctOutFile != -1)
+							CUtility::SafeWrite(m_hJctOutFile,m_pszLineBuff,LineLen);
 					LineLen = 0;
 					bPrevInDelSeg = false;
 					bPrevJunctSeg = false;
@@ -6196,6 +6310,7 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 			continue;
 			}
 
+		// m_FMode < eFMbed)
 		if(!m_bIsSOLiD && m_FMode >= eFMread)
 			{
 			pSeqVal = &pReadHit->Read[pReadHit->DescrLen+1];
@@ -6272,13 +6387,13 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 
 		// user may be interested in the distribution of the aligner induced substitutions, after any auto-trimming of flanks,
 		// along the length of the reads and how this distribution relates to the quality scores
-		if(m_hStatsFile != -1)
+		if(m_hStatsFile != -1 && m_FMode <= eFMbed)
 			WriteSubDist(pReadHit);
 		}
 	}
 if(LineLen)
 	{
-	if(bPrevAlignSeg)
+	if(bPrevAlignSeg && m_FMode <= eFMbed)
 		{
 		if(!m_bgzOutFile)
 			CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,LineLen);
@@ -6290,7 +6405,11 @@ if(LineLen)
 		}
 	else
 		{
-		CUtility::SafeWrite(bPrevInDelSeg ? m_hIndOutFile : m_hJctOutFile,m_pszLineBuff,LineLen);
+		if(bPrevInDelSeg && m_hIndOutFile != -1)
+			CUtility::SafeWrite(m_hIndOutFile,m_pszLineBuff,LineLen);
+		else
+			if(bPrevJunctSeg && m_hJctOutFile != -1)
+				CUtility::SafeWrite(m_hJctOutFile,m_pszLineBuff,LineLen);
 		LineLen = 0;
 		bPrevInDelSeg = false;
 		bPrevJunctSeg = false;

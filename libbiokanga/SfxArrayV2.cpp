@@ -6002,7 +6002,7 @@ ReleaseBaseFlags();
 return(eBSFSuccess);
 }
 
-int												// 0: no instances, 1: number occurances <= m_MaxKMerOccs, 2: number occurrences > m_MaxKMerOccs
+int												// 0: no instances, 1: number occurrences <= m_MaxKMerOccs, 2: number occurrences > m_MaxKMerOccs
 CSfxArrayV3::OverOccKMerClas(int KMerLen,		// KMer length, checked and must be equal to m_OccKMerLen
 				etSeqBase *pSeq)				// return over occurrence classification for this sequence
 {
@@ -6012,6 +6012,10 @@ int ClasShf;
 int OccKMerClas;
 UINT32 NumCopies;
 int Idx;
+
+if(KMerLen > cMaxKmerLen)		// if looking for K-mers longer than the max that could have been checked for over occurrence then treat as though number occurrences <= m_MaxKMerOccs
+	return(1);
+
 if(m_pOccKMerClas == NULL || KMerLen != m_OccKMerLen)
 	return(eBSFerrParams);
 pBase = pSeq;
@@ -6144,7 +6148,7 @@ do
 		if(((int)CurCoreSegOfs + CoreLen + CurCoreDelta) > ProbeLen)
 			CurCoreDelta = ProbeLen - (CurCoreSegOfs + CoreLen);
 
-		if(OverOccKMerClas(CoreLen,&pProbeSeq[CurCoreSegOfs]) != 1)  // 1 if at least one instance and number of instances <= MaxKMerOccs
+		if(CoreLen <= cMaxKmerLen && OverOccKMerClas(CoreLen,&pProbeSeq[CurCoreSegOfs]) != 1)  // 1 if at least one instance and number of instances <= MaxKMerOccs
 			continue;
 
 		TargIdx = LocateFirstExact(&pProbeSeq[CurCoreSegOfs],CoreLen,pTarg,m_pSfxBlock->SfxElSize,pSfxArray,0,0,SfxLen-1);

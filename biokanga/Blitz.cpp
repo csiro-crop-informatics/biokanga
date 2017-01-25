@@ -29,12 +29,19 @@
 #include "biokanga.h"
 
 #include "../libbiokanga/bgzf.h"
+#include "SQLitePSL.h"
 #include "Blitz.h"
 
 int
 Process(etBLZPMode PMode,				// processing mode
+		char *pszExprName,				// experiment name
+		char *pszExprDescr,				// experiment description
+		char *pszParams,				// string containing blitz parameters
 		etBLZSensitivity Sensitivity,	// sensitivity 0 - standard, 1 - high, 2 - very high, 3 - low sensitivity
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+		int MismatchScore,				// decrease score by this for each mismatch bp
+		int ExactMatchScore,			// increase score by this for each exactly matching bp
+		int GapOpenScore,				// decrease score by this for each gap open
 		int  CoreLen,					// use this core length as the exactly matching seed length to be 5' and 3' extended
 		int  CoreDelta,					// offset cores by this many bp
 		int MaxExtnScoreThres,			// terminate overlap extension if curent extension score more than this; if mismatch then extension score += 2, if match and score > 0 then score -= 1 
@@ -73,6 +80,11 @@ int FMode;					// format output mode
 int NumberOfProcessors;		// number of installed CPUs
 int NumThreads;				// number of threads (0 defaults to number of CPUs)
 int Sensitivity;			// sensitivity 0 - standard, 1 - high, 2 - very high, 3 - low sensitivity (default is 0)
+
+int MismatchScore;			// decrease score by this for each mismatch bp
+int ExactMatchScore;		// increase score by this for each exactly matching bp
+int GapOpenScore;			// decrease score by this for each gap open
+
 int CoreLen;				// use this core length as the exactly matching seed length to be 5' and 3' extended whilst no more than m_MaxSubRate
 int CoreDelta;				// offset cores by this many bp
 int MaxOccKMerDepth;		// maximum depth to explore over-occurring core K-mers
@@ -88,9 +100,9 @@ char szTargFile[_MAX_PATH];				// align against this target suffix array genome 
 char szInputFile[_MAX_PATH];		// input file containing sequences to be aligned
 
 char szSQLiteDatabase[_MAX_PATH];	// results summaries to this SQLite file
-char szExperimentName[cMaxDatasetSpeciesChrom+1];			// experiment name
+char szExperimentName[cMaxDatasetSpeciesChrom+1];	// experiment name
 char szExperimentDescr[1000];		// describes experiment
-
+char szBlitzParams[2000];			// to hold Blitz parameters
 //
 struct arg_lit  *help    = arg_lit0("h","help",                 "print this help and exit");
 struct arg_lit  *version = arg_lit0("v","version,ver",			"print version information and exit");
@@ -98,7 +110,7 @@ struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of di
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
 struct arg_int *pmode = arg_int0("m","mode","<int>",		    "alignment processing mode: 0 - standard");
-struct arg_int *format = arg_int0("M","format","<int>",		    "output format: 0 - PSL, 1 - PSLX, 2 - MAF, 3 - BED (default PSL)");
+struct arg_int *format = arg_int0("M","format","<int>",		    "output format: 0 - PSL, 1 - PSLX, 2 - MAF, 3 - BED, 4 - SQLite (default 0 - PSL)");
 struct arg_file *inputfile = arg_file1("i","in","<file>",		"input sequences to align from this file");
 
 struct arg_int  *alignstrand = arg_int0("Q","alignstrand","<int>", "align to this strand: 0 either, 1 Watson '+', 2 Crick '-' (default is to align to either strand)");
@@ -109,10 +121,14 @@ struct arg_int *maxocckmerdepth = arg_int0("k","maxocckmerdepth","<int>",	"maxim
 struct arg_int *sensitivity = arg_int0("s","sensitivity","<int>",	"sensitivity 0 - standard, 1 - high, 2 - very high, 3 - low sensitivity (default is 0)");
 struct arg_int *maxextnscorethres = arg_int0("e","extnscorethres","<int>",	"extension score threshold, core overlap extensions with extension score above this threshold are terminated;\n\t\t\t\textension score += 2 if mismatch, extension score -= 1 if match and score > 0 (default is 12)");
 
-struct arg_int *coredelta = arg_int0("c","coredelta","<int>",	"core (seed) delta (default is 0 for auto, range 1..50)");
-struct arg_int *corelen = arg_int0("C","corelen","<int>",		"core (seed) length (default is 0 for auto, range 5..16)");
+struct arg_int *mismatchscore = arg_int0("j","mismatchscore","<int>",	"penalise score for bp mismatches (default is 2, range 1..50)");
+struct arg_int *exactmatchscore = arg_int0("J","exactmatchscore","<int>",	"score exact bp matching (default is 1, range 1..50)");
+struct arg_int *gapopenscore = arg_int0("g","gapopenscore","<int>",	"penalise score for gap openings (default is 5, range 1..50)");
 
-struct arg_int *minpathscore = arg_int0("p","minpathscore","<int>",		"minimum alignment path score (default is 0 for auto, range 50..500)");
+struct arg_int *coredelta = arg_int0("c","coredelta","<int>",	"core (seed) delta (default is 0 for auto, range 1..50)");
+struct arg_int *corelen = arg_int0("C","corelen","<int>",		"core (seed) length (default is 0 for auto, range 5..50)");
+
+struct arg_int *minpathscore = arg_int0("p","minpathscore","<int>",		"minimum alignment path score (default is 0 for auto, range 50..50000)");
 struct arg_int *querylendpct = arg_int0("a","querylendpct","<int>",		"minimum required percentage of query sequence aligned (default is 25, range 1 to 100)");
 
 struct arg_int *maxpathstoreport = arg_int0("P","maxpathstoreport","<int>",	"report at most this many highest scored alignment paths for each query (default is 10)");
@@ -128,7 +144,7 @@ struct arg_end *end = arg_end(200);
 
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					summrslts,experimentname,experimentdescr,
-					pmode,sensitivity,alignstrand,coredelta,corelen,maxocckmerdepth,maxextnscorethres,minpathscore,querylendpct,maxpathstoreport,format,inputfile,sfxfile,outfile,threads,
+					pmode,sensitivity,alignstrand,mismatchscore,exactmatchscore,gapopenscore,coredelta,corelen,maxocckmerdepth,maxextnscorethres,minpathscore,querylendpct,maxpathstoreport,format,inputfile,sfxfile,outfile,threads,
 					end};
 
 char **pAllArgs;
@@ -208,14 +224,24 @@ if (!argerrors)
 		CUtility::TrimQuotedWhitespcExtd(szExperimentName);
 		CUtility::ReduceWhitespace(szExperimentName);
 		}
-	else
-		szExperimentName[0] = '\0';
+
+	if(strlen(szExperimentName) < 1)
+		strcpy(szExperimentName,"N/A");
+
+	if(experimentdescr->count)
+		{
+		strncpy(szExperimentDescr,experimentdescr->sval[0],sizeof(szExperimentDescr)-1);
+		szExperimentDescr[sizeof(szExperimentDescr)-1] = '\0';
+		CUtility::TrimQuotedWhitespcExtd(szExperimentDescr);
+		CUtility::ReduceWhitespace(szExperimentDescr);
+		}
+	if(strlen(szExperimentDescr) < 1)
+		strcpy(szExperimentDescr,"N/A");
 
 	gExperimentID = 0;
 	gProcessID = 0;
 	gProcessingID = 0;
 	szSQLiteDatabase[0] = '\0';
-	szExperimentDescr[0] = '\0';
 
 	if(summrslts->count)
 		{
@@ -225,23 +251,6 @@ if (!argerrors)
 		if(strlen(szSQLiteDatabase) < 1)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no SQLite database specified with '-q<filespec>' option");
-			return(1);
-			}
-
-		if(strlen(szExperimentName) < 1)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no SQLite experiment name specified with '-w<str>' option");
-			return(1);
-			}
-		if(experimentdescr->count)
-			{
-			strncpy(szExperimentDescr,experimentdescr->sval[0],sizeof(szExperimentDescr)-1);
-			szExperimentDescr[sizeof(szExperimentDescr)-1] = '\0';
-			CUtility::TrimQuotedWhitespcExtd(szExperimentDescr);
-			}
-		if(strlen(szExperimentDescr) < 1)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no SQLite experiment description specified with '-W<str>' option");
 			return(1);
 			}
 
@@ -260,10 +269,7 @@ if (!argerrors)
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"SQLite database processing instance identifier is %d",gProcessingID);
 		}
 	else
-		{
 		szSQLiteDatabase[0] = '\0';
-		szExperimentDescr[0] = '\0';
-		}
 
 	// ensure all filenames are initialised in case not user specified
 	szRsltsFile[0] = '\0';
@@ -324,6 +330,24 @@ if (!argerrors)
 		exit(1);
 		}
 
+	MismatchScore = mismatchscore->count ?  mismatchscore->ival[0] : cDfltMismatchScore;
+	if(MismatchScore < cMinMismatchScore || MismatchScore > cMaxMismatchScore)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: mismatch penalty '-s%d' specified outside of range %d..%d\n",MismatchScore,cMinMismatchScore,cMaxMismatchScore);
+		exit(1);
+		}
+	ExactMatchScore = exactmatchscore->count ?  exactmatchscore->ival[0] : cDfltExactMatchScore;
+	if(ExactMatchScore < cMinExactMatchScore || ExactMatchScore > cMaxExactMatchScore)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: exact match score '-s%d' specified outside of range %d..%d\n",ExactMatchScore,cMinExactMatchScore,cMaxExactMatchScore);
+		exit(1);
+		}
+	GapOpenScore = gapopenscore->count ?  gapopenscore->ival[0] : cDfltGapOpenScore;
+	if(GapOpenScore < cMinGapOpenScore || GapOpenScore > cMaxGapOpenScore)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: gap open penalty '-s%d' specified outside of range %d..%d\n",GapOpenScore,cMinGapOpenScore,cMaxGapOpenScore);
+		exit(1);
+		}
 
 	MaxOccKMerDepth = maxocckmerdepth->count ?  maxocckmerdepth->ival[0] : 0;
 	if(MaxOccKMerDepth != 0 && (MaxOccKMerDepth < cMinOccKMerDepth) || MaxOccKMerDepth > cMaxOccKMerDepth)
@@ -389,6 +413,10 @@ if (!argerrors)
 			break;
 		}
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Alignment processing is : '%s'",pszDescr);
+
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Experiment name : '%s'",szExperimentName);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Experiment description : '%s'",szExperimentDescr);
+
 	switch(Sensitivity) {
 		case eBLZSdefault:
 			pszDescr = "Standard alignment sensitivity";
@@ -415,6 +443,10 @@ if (!argerrors)
 			pszDescr = "Crick '-' strand only";
 			break;
 		}
+
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Mismatch score penalty : %d",MismatchScore);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Exact match score : %d",ExactMatchScore);
+	gDiagnostics.DiagOutMsgOnly(eDLInfo,"Gap open score penalty : %d",GapOpenScore);
 
 	if(MaxExtnScoreThres == -1)
 		gDiagnostics.DiagOutMsgOnly(eDLInfo,"Core extension score threshold : Auto");
@@ -455,6 +487,9 @@ if (!argerrors)
 		case eBLZRsltsBED:
 			pszDescr = "BED";
 			break;
+		case eBLZRsltsSQLite:
+			pszDescr = "SQLite";
+			break;
 		}
 
 	gDiagnostics.DiagOutMsgOnly(eDLInfo,"output format is : '%s'",pszDescr);
@@ -475,6 +510,11 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(PMode),"mode",&PMode);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(Sensitivity),"sensitivity",&Sensitivity);
+
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(MismatchScore),"mismatchscore",&MismatchScore);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(ExactMatchScore),"exactmatchscore",&ExactMatchScore);
+		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(GapOpenScore),"gapopenscore",&GapOpenScore);
+
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(FMode),"format",&FMode);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(AlignStrand),"alignstrand",&AlignStrand);
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,(int)sizeof(CoreLen),"corelen",&CoreLen);
@@ -496,12 +536,14 @@ if (!argerrors)
 		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szExperimentDescr),"experimentdescr",szExperimentDescr);
 		}
 
+	sprintf(szBlitzParams,"mode: %d sensitivity: %d mismatchscore: %d exactmatchscore: %d gapopenscore: %d alignstrand: %d corelen: %d coredelta: %d extnscorethres: %d maxocckmerdepth: %d minpathscore: %d querylendpct: %d maxpathstoreport: %d",
+							PMode, Sensitivity, MismatchScore, ExactMatchScore, GapOpenScore,AlignStrand,CoreLen,CoreDelta,MaxExtnScoreThres,MaxOccKMerDepth,MinPathScore,QueryLenAlignedPct,MaxPathsToReport);
 
 #ifdef _WIN32
 	SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 #endif
 	gStopWatch.Start();
-	Rslt = Process((etBLZPMode)PMode,(etBLZSensitivity)Sensitivity,(eALStrand)AlignStrand,CoreLen, CoreDelta,MaxExtnScoreThres,MaxOccKMerDepth,MinPathScore,QueryLenAlignedPct,MaxPathsToReport,(etBLZRsltsFomat)FMode,szInputFile,szTargFile,szRsltsFile,NumThreads);
+	Rslt = Process((etBLZPMode)PMode,szExperimentName,szExperimentDescr,szBlitzParams,(etBLZSensitivity)Sensitivity,(eALStrand)AlignStrand,MismatchScore,ExactMatchScore,GapOpenScore,CoreLen, CoreDelta,MaxExtnScoreThres,MaxOccKMerDepth,MinPathScore,QueryLenAlignedPct,MaxPathsToReport,(etBLZRsltsFomat)FMode,szInputFile,szTargFile,szRsltsFile,NumThreads);
 	Rslt = Rslt >=0 ? 0 : 1;
 	if(gExperimentID > 0)
 		{
@@ -527,8 +569,14 @@ return 0;
 
 int
 Process(etBLZPMode PMode,				// processing mode
+		char *pszExprName,				// experiment name
+		char *pszExprDescr,				// experiment description
+		char *pszParams,				// string containing blitz parameters
 		etBLZSensitivity Sensitivity,	// sensitivity 0 - standard, 1 - high, 2 - very high, 3 - low sensitivity
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+		int MismatchScore,				// decrease score by this for each mismatch bp
+		int ExactMatchScore,			// increase score by this for each exactly matching bp
+		int GapOpenScore,				// decrease score by this for each gap open
 		int  CoreLen,					// use this core length as the exactly matching seed length to be 5' and 3' extended whilst no more than m_MaxSubRate
 		int  CoreDelta,					// offset cores by this many bp
 		int MaxExtnScoreThres,			// terminate overlap extension if curent extension score more than this; if mismatch then extension score += 2, if match and score > 0 then score -= 1 
@@ -550,7 +598,7 @@ if((pBlitzer = new CBlitz)==NULL)
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Fatal: Unable to instantiate CAligner");
 	return(eBSFerrObj);
 	}
-Rslt = pBlitzer->Process(PMode,Sensitivity,AlignStrand,CoreLen,CoreDelta,MaxExtnScoreThres,MaxOccKMerDepth,MinPathScore,QueryLenAlignedPct,MaxPathsToReport,RsltsFormat,pszInputFile,pszSfxFile,pszOutFile,NumThreads);
+Rslt = pBlitzer->Process(PMode,pszExprName,pszExprDescr,pszParams,Sensitivity,AlignStrand,MismatchScore,ExactMatchScore,GapOpenScore,CoreLen,CoreDelta,MaxExtnScoreThres,MaxOccKMerDepth,MinPathScore,QueryLenAlignedPct,MaxPathsToReport,RsltsFormat,pszInputFile,pszSfxFile,pszOutFile,NumThreads);
 delete pBlitzer;
 return(Rslt);
 }
@@ -577,7 +625,7 @@ m_NumQuerySeqs = 0;
 m_NxtQuerySeqIdx = 0;
 m_AllocdQuerySeqs = 0;
 m_pQuerySeqs = NULL;
-
+m_pSQLitePSL=NULL;
 m_ProcMode = eBLZPMdefault;
 m_Sensitivity = eBLZSdefault;				
 m_AlignStrand = eALSboth;	
@@ -602,7 +650,6 @@ m_NumQueriesProc = 0;
 m_NumThreads = 0;		
 m_bMutexesCreated = false;
 m_TermBackgoundThreads = 0;
-
 }
 
 void
@@ -624,6 +671,12 @@ if(m_hOutFile != -1)
 #endif
 	close(m_hOutFile);
 	m_hOutFile = -1;
+	}
+
+if(m_pSQLitePSL != NULL)
+	{
+	delete m_pSQLitePSL;
+	m_pSQLitePSL = NULL;
 	}
 
 if(m_pszLineBuff != NULL)
@@ -801,8 +854,14 @@ pthread_rwlock_unlock(&m_hRwLock);
 
 int
 CBlitz::Process(etBLZPMode PMode,		// processing mode
+		char *pszExprName,				// experiment name
+		char *pszExprDescr,				// experiment description
+		char *pszParams,				// string containing blitz parameters
 		etBLZSensitivity Sensitivity,	// sensitivity 0 - standard, 1 - high, 2 - very high, 3 - low sensitivity
 		eALStrand AlignStrand,			// align on to watson, crick or both strands of target
+		int MismatchScore,				// decrease score by this for each mismatch bp
+		int ExactMatchScore,			// increase score by this for each exactly matching bp
+		int GapOpenScore,				// decrease score by this for each gap open
 		int  CoreLen,					// use this core length (0 if determined from total target sequence length) as the exactly matching seed length to be 5' and 3' extended whilst no more than m_MaxSubRate
 		int  CoreDelta,					// offset cores by this many bp
 		int MaxExtnScoreThres,			// terminate overlap extension if curent extension score more than this; if mismatch then extension score += 2, if match and score > 0 then score -= 1 
@@ -811,7 +870,7 @@ CBlitz::Process(etBLZPMode PMode,		// processing mode
 		int QueryLenAlignedPct,			// only report alignment paths if the percentage of total aligned bases to the query sequence length is at least this percentage (1..100)
 		int  MaxPathsToReport,			// report at most this many alignment paths for any query
 		etBLZRsltsFomat RsltsFormat,	// output results format
-		char *pszInputFile,				// name of input file containting query sequences
+		char *pszInputFile,				// name of input file containing query sequences
 		char *pszSfxFile,				// target as suffix array
 		char *pszOutFile,				// where to write alignments
 		int NumThreads)					// number of worker threads to use
@@ -822,6 +881,9 @@ Init();
 m_ProcMode = PMode;
 m_Sensitivity = Sensitivity;				
 m_AlignStrand = AlignStrand;	
+m_MismatchScore = MismatchScore;
+m_ExactMatchScore = ExactMatchScore;
+m_GapOpenScore = GapOpenScore;
 m_CoreLen = CoreLen;
 m_CoreDelta = CoreDelta;
 m_MaxOccKMerDepth = MaxOccKMerDepth;		
@@ -898,31 +960,26 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Genome assembly suffix array loaded");
 // from the total sequence length then determine the core length to use
 // the autodetermined core length is that length such that on average there would be expected ~ 128 to 256 copies of the core sequence in a random sequence of same length as targeted genome
 UINT64 TotSeqsLen = m_pSfxArray->GetTotSeqsLen();
-int AutoCoreLen = 1;
+int AutoCoreLen = 10;
 while(TotSeqsLen >>= 2)
 	AutoCoreLen++;
 
 if(CoreLen == 0)
 	{
 	CoreLen = AutoCoreLen;
-	if(CoreLen >= 15)
-		CoreLen -= 2;
-	else	
-		if(CoreLen >= 10)
-			CoreLen -= 1;	 
 
 	switch(Sensitivity) {
 		case eBLZSdefault:			// default sensitivity
 			break;
 		case eBLZSMoreSens:			// more sensitive - slower
-			CoreLen -= 1;
+			CoreLen -= 2;
 			break;
 		case eBLZSUltraSens:		// ultra sensitive - much slower
-			CoreLen -= 2;
+			CoreLen -= 4;
 			break;
 		case eBLZSLessSens:			// less sensitive - quicker
 		default:
-			CoreLen += 2;
+			CoreLen += 4;
 		}
 	if(CoreLen > cMaxCoreLen)
 		CoreLen = cMaxCoreLen;
@@ -964,7 +1021,7 @@ if(MinPathScore == 0)
 
 m_MaxIter = MaxOccKMerDepth;
 
-// restrict the max core iterations and substutions thresholding according to the requested sensitivity
+// restrict the max core iterations and substitutions thresholding according to the requested sensitivity
 switch(Sensitivity) {
 	case eBLZSdefault:			// default sensitivity
 		if(!MaxOccKMerDepth)
@@ -1004,12 +1061,63 @@ if(MaxOccKMerDepth == 0)
 
 m_pSfxArray->SetMaxIter(m_MaxIter);
 
-if((Rslt = m_pSfxArray->InitOverOccKMers(CoreLen,m_MaxIter))!=eBSFSuccess)
+if(CoreLen <= cMaxKmerLen)
 	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Failed to initialise for over occurring K-mers");
-	Reset(false);
-	return(Rslt);
+	if((Rslt = m_pSfxArray->InitOverOccKMers(CoreLen,m_MaxIter))!=eBSFSuccess)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Failed to initialise for over occurring K-mers");
+		Reset(false);
+		return(Rslt);
+		}
 	}
+
+
+if(RsltsFormat == eBLZRsltsSQLite)
+	{
+	if((m_pSQLitePSL = new CSQLitePSL)==NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to instantiate instance of CSQLitePSL");
+		return(eBSFerrObj);
+		}
+
+	if(m_pSQLitePSL->CreateDatabase(pszOutFile,false)==NULL)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to create SQLite database '%s'",pszOutFile);
+		delete m_pSQLitePSL;
+		m_pSQLitePSL = NULL;
+		return(eBSFerrObj);
+		}
+
+	if((m_ExprID = m_pSQLitePSL->CreateExperiment(pszExprName,pszOutFile,pszInputFile,pszSfxFile,pszExprDescr,pszParams,0)) < 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to initialise SQLite database '%s' with experiment details",pszOutFile);
+		delete m_pSQLitePSL;
+		m_pSQLitePSL = NULL;
+		return(m_ExprID);
+		}
+
+	if((Rslt=m_pSQLitePSL->BeginPopulatingTables())!=eBSFSuccess)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to begin SQLite database '%s' table populating",pszOutFile);
+		delete m_pSQLitePSL;
+		m_pSQLitePSL = NULL;
+		return(Rslt);
+		}
+
+	// add summary instances for all the target sequences
+	char szSeqIdent[100];
+	UINT32 SeqLen;
+	int NumEntryIDs;
+	int CurEntryID;
+	NumEntryIDs = m_pSfxArray->GetNumEntries();
+	for(CurEntryID = 1; CurEntryID <= NumEntryIDs; CurEntryID+=1)
+		{
+		m_pSfxArray->GetIdentName(CurEntryID,sizeof(szSeqIdent)-1,szSeqIdent);
+		SeqLen = m_pSfxArray->GetSeqLen(CurEntryID);
+		m_pSQLitePSL->AddAlignSummary(m_ExprID,NULL,0,szSeqIdent,SeqLen);		
+		}
+	}
+
 
 // reads are loaded asynchronously to the alignment processing
 if((Rslt=InitLoadQuerySeqs()) < eBSFSuccess)
@@ -1019,8 +1127,10 @@ if((Rslt=InitLoadQuerySeqs()) < eBSFSuccess)
 	return(Rslt);
 	}
 
+if(RsltsFormat != eBLZRsltsSQLite)
+	{
 #ifdef _WIN32
-m_hOutFile = open(pszOutFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
+	m_hOutFile = open(pszOutFile,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
 #else
 if((m_hOutFile = open(pszOutFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
 	if(ftruncate(m_hOutFile,0)!=0)
@@ -1030,35 +1140,37 @@ if((m_hOutFile = open(pszOutFile,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
 		return(eBSFerrCreateFile);
 		}
 #endif
-if(m_hOutFile < 0)
-	{
-	gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output file '%s'",pszOutFile);
-	Reset(false);
-	return(eBSFerrCreateFile);
+	if(m_hOutFile < 0)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Process: unable to create/truncate output file '%s'",pszOutFile);
+		Reset(false);
+		return(eBSFerrCreateFile);
+		}
+
+	// write out format specific headers
+	switch(RsltsFormat) {
+		case eBLZRsltsPSL:
+			m_szLineBuffIdx = sprintf(m_pszLineBuff,"psLayout version 3\nGenerated by %s %s, Version %s\n",gszProcName,gpszSubProcess->pszName,cpszProgVer);
+			m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"match	mis- 	rep. 	N's	Q gap	Q gap	T gap	T gap	strand	Q        	Q   	Q    	Q  	T        	T   	T    	T  	block	blockSizes 	qStarts	 tStarts\n");
+			m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"     	match	match	   	count	bases	count	bases	      	name     	size	start	end	name     	size	start	end	count\n");
+			m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"---------------------------------------------------------------------------------------------------------------------------------------------------------------\n");
+			break;
+		case eBLZRsltsPSLX:
+			m_szLineBuffIdx = sprintf(m_pszLineBuff,"psLayout version 3\nGenerated by %s %s, Version %s\n",gszProcName,gpszSubProcess->pszName,cpszProgVer);
+			m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"match	mis- 	rep. 	N's	Q gap	Q gap	T gap	T gap	strand	Q        	Q   	Q    	Q  	T        	T   	T    	T  	block	blockSizes 	qStarts	 tStarts\n");
+			m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"     	match	match	   	count	bases	count	bases	      	name     	size	start	end	name     	size	start	end	count\n");
+			m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"---------------------------------------------------------------------------------------------------------------------------------------------------------------\n");
+			break;
+		case eBLZRsltsMAF:
+			m_szLineBuffIdx = sprintf(m_pszLineBuff,"##maf version=1 scoring=blitz");
+			break;
+		case eBLZRsltsBED:
+			m_szLineBuffIdx = sprintf(m_pszLineBuff,"track type=bed name=\"Blitz\" description=\"Biokanga Blitz alignments\"\n");
+			break;
+		}
+	CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,m_szLineBuffIdx);
 	}
 
-// write out format specific headers
-switch(RsltsFormat) {
-	case eBLZRsltsPSL:
-		m_szLineBuffIdx = sprintf(m_pszLineBuff,"psLayout version 3\nGenerated by %s %s, Version %s\n",gszProcName,gpszSubProcess->pszName,cpszProgVer);
-		m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"match	mis- 	rep. 	N's	Q gap	Q gap	T gap	T gap	strand	Q        	Q   	Q    	Q  	T        	T   	T    	T  	block	blockSizes 	qStarts	 tStarts\n");
-		m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"     	match	match	   	count	bases	count	bases	      	name     	size	start	end	name     	size	start	end	count\n");
-		m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"---------------------------------------------------------------------------------------------------------------------------------------------------------------\n");
-		break;
-	case eBLZRsltsPSLX:
-		m_szLineBuffIdx = sprintf(m_pszLineBuff,"psLayout version 3\nGenerated by %s %s, Version %s\n",gszProcName,gpszSubProcess->pszName,cpszProgVer);
-		m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"match	mis- 	rep. 	N's	Q gap	Q gap	T gap	T gap	strand	Q        	Q   	Q    	Q  	T        	T   	T    	T  	block	blockSizes 	qStarts	 tStarts\n");
-		m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"     	match	match	   	count	bases	count	bases	      	name     	size	start	end	name     	size	start	end	count\n");
-		m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"---------------------------------------------------------------------------------------------------------------------------------------------------------------\n");
-		break;
-	case eBLZRsltsMAF:
-		m_szLineBuffIdx = sprintf(m_pszLineBuff,"##maf version=1 scoring=blitz");
-		break;
-	case eBLZRsltsBED:
-		m_szLineBuffIdx = sprintf(m_pszLineBuff,"track type=bed name=\"Blitz\" description=\"Biokanga Blitz alignments\"\n");
-		break;
-	}
-CUtility::SafeWrite(m_hOutFile,m_pszLineBuff,m_szLineBuffIdx);
 m_szLineBuffIdx = 0;
 
 InitQuerySeqThreads(NumThreads,cNumAllocdAlignNodes);	
@@ -1108,6 +1220,20 @@ if(m_hOutFile != -1)
 #endif
 	close(m_hOutFile);
 	m_hOutFile = -1;
+	}
+
+if(RsltsFormat == eBLZRsltsSQLite)
+	{
+	if((Rslt=m_pSQLitePSL->EndPopulatingTables())!=eBSFSuccess)
+		{
+		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to complete SQLite database '%s' table populating",pszOutFile);
+		delete m_pSQLitePSL;
+		m_pSQLitePSL = NULL;
+		return(Rslt);
+		}
+	delete m_pSQLitePSL;
+	m_pSQLitePSL = NULL;
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"SQLite database ready for use");
 	}
 
 Reset(false);
@@ -1309,9 +1435,20 @@ int PutHighScore;
 tsQueryAlignNodes *pCurNode;
 tsQueryAlignNodes *pExploreNode;
 pCurNode = &pAlignNodes[ExploreNodeIdx - 1];
-CurNodeScore = ((pCurNode->AlignLen - pCurNode->NumMismatches) * 3) + pCurNode->NumMismatches;
+
 if(pCurNode->FlgScored)
 	return(pCurNode->HiScore);
+
+// score for exactly matching bp
+CurNodeScore = ((pCurNode->AlignLen - pCurNode->NumMismatches) * m_ExactMatchScore);
+// penalise score for mismatches
+if(pCurNode->NumMismatches)
+	{
+	CurNodeScore -= (pCurNode->NumMismatches * m_MismatchScore);
+	if(CurNodeScore < 0)		// much easier in subsequent processing to not worry about negative scores!
+		CurNodeScore = 0;
+	}
+
 pCurNode->HiScore = CurNodeScore;
 pExploreNode = pAlignNodes;
 BestHighScore = 0;
@@ -1336,7 +1473,7 @@ for(NodeIdx = 1; NodeIdx <= NumNodes; NodeIdx++,pExploreNode++)
 	GapScore = 1 + ((GapLen / 10) * cGapExtendCost);
 	if(GapScore > cGapExtendCostLimit)
 		GapScore = cGapExtendCostLimit;
-	GapScore += cGapOpenCost;
+	GapScore += m_GapOpenScore;
 
 	if(pExploreNode->FlgScored)
 		PutHighScore = pExploreNode->HiScore;
@@ -1344,6 +1481,8 @@ for(NodeIdx = 1; NodeIdx <= NumNodes; NodeIdx++,pExploreNode++)
 		PutHighScore = HighScoreSW(QueryLen,TargSeqLen,bStrand,NodeIdx,NumNodes,pAlignNodes);
 	PutHighScore += CurNodeScore;
 	PutHighScore -= GapScore;
+	if(PutHighScore < 0)
+		PutHighScore = 0;		// much easier in subsequent processing to not worry about negative scores!
 	if(PutHighScore > BestHighScore)
 		{
 		BestHighScore = PutHighScore;
@@ -1564,6 +1703,78 @@ if(pmisMatches != NULL)
 if(pnCount != NULL)
 	*pnCount = TotNCount;
 return(NumBlocks);
+}
+
+
+// reporting alignment as SQLite PSL format
+int 
+CBlitz::ReportAsSQLitePSL(UINT32 Matches,				// Number of bases that match that aren't repeats
+					UINT32 misMatches,			// Number of bases that don't match
+					UINT32 repMatches,			// Number of bases that match but are part of repeats
+					UINT32 nCount,				// Number of 'N' bases
+					UINT32	qNumInsert,			// Number of inserts in query
+					UINT32 qBaseInsert,			// Number of bases inserted in query
+					UINT32 tNumInsert,			// Number of inserts in target
+					UINT32 tBaseInsert,			// Number of bases inserted in target
+					char  Strand,				// query sequence strand, '+' or '-'
+					char *pszQuerySeqIdent,     // this query sequence
+					UINT32 qSize,				// Query sequence size
+					UINT32 qStart,				// Alignment start position in query
+					UINT32 qEnd,				// Alignment end position in query
+					char *pszTargName,			// aligning to this target
+					UINT32 tSize,				// Target sequence size 
+					UINT32 TargPathStartOfs,	// at this starting offset
+					UINT32 TargPathEndOfs,		// ending at this offset (inclusive)
+					UINT32 NumPathNodes,		// number of alignment nodes in alignment path
+					int SortedPathIdx,
+					tsQueryAlignNodes *pAlignNodes,		// alignment nodes
+					tsQueryAlignNodes **ppFirst2Rpts) // allocated to hold ptrs to alignment nodes which are marked as being FlgFirst2tRpt
+{
+int Score;				// Alignment score (using Blat pslScore() function)
+int Identity;           // Alignment identity (using Blat 100.0 - pslCalcMilliBad(psl, TRUE) * 0.1)
+int StrandQStart;
+int StrandQEnd;
+char szStrand[2];
+UINT32 *pBlockLens;
+UINT32 *pQueryBlockStarts;
+UINT32 *pTargBlockStarts;
+UINT32 BlockLens[5000];
+UINT32 QueryBlockStarts[5000];
+UINT32 TargBlockStarts[5000];
+
+tsQueryAlignNodes *pCurNode;
+
+StrandQStart = Strand == '+' ? qStart : qSize - (qEnd + 1),
+StrandQEnd = Strand == '+' ? qEnd+1 : qSize - qStart,
+
+szStrand[0] = Strand;
+szStrand[1] = '\0';
+// block sizes and starts
+pCurNode = ppFirst2Rpts[SortedPathIdx];
+pBlockLens = BlockLens;
+pQueryBlockStarts = QueryBlockStarts;
+pTargBlockStarts = TargBlockStarts;
+do {
+	*pBlockLens++ = pCurNode->AlignLen;
+	*pQueryBlockStarts++ = pCurNode->QueryStartOfs;
+	*pTargBlockStarts++ = pCurNode->TargStartOfs;
+	if(pCurNode->HiScorePathNextIdx > 0)
+		pCurNode = &pAlignNodes[pCurNode->HiScorePathNextIdx-1];
+	else
+		pCurNode = NULL;
+	}
+while(pCurNode != NULL);
+
+Score = m_pSQLitePSL->pslScore(Matches,misMatches,repMatches,qNumInsert,tNumInsert,szStrand,tSize,TargPathStartOfs,TargPathEndOfs+1,NumPathNodes,(int *)BlockLens,(int *)QueryBlockStarts,(int *)TargBlockStarts);
+double pslIdent = (double)m_pSQLitePSL->pslCalcMilliBad(Matches,misMatches,repMatches,qNumInsert,tNumInsert,qSize,StrandQStart,StrandQEnd,szStrand,tSize,TargPathStartOfs,TargPathEndOfs,NumPathNodes,(int *)BlockLens,(int *)QueryBlockStarts,(int *)TargBlockStarts,true); 
+Identity = (int)(100.0 - pslIdent * 0.1);
+AcquireLock(true);
+
+m_pSQLitePSL->AddAlignment(m_ExprID,Score,Identity,Matches,misMatches,repMatches,nCount,qNumInsert,qBaseInsert,tNumInsert,tBaseInsert,szStrand,pszQuerySeqIdent,qSize,StrandQStart,StrandQEnd,pszTargName,tSize,TargPathStartOfs,TargPathEndOfs+1,NumPathNodes,(int *)BlockLens,(int *)QueryBlockStarts,(int *)TargBlockStarts);
+
+m_ReportedPaths += 1;				
+ReleaseLock(true);
+return(NumPathNodes);
 }
 
 // reporting alignment as PSL format
@@ -2115,6 +2326,20 @@ for(SortedPathIdx=0; SortedPathIdx < min((int)NumHeadNodes,MaxPathsToReport); So
 	BlocksAlignStats(&Matches,&MisMatches,NULL,&NumbNs,bStrand == true ? '-' : '+',pQuerySeq,QueryLen,pCurNode->TargSeqID,TargSeqLen,TargPathStartOfs,TargPathEndOfs,NumPathNodes,SortedPathIdx,pAlignNodes,ppFirst2Rpts); 
 
 	switch(m_RsltsFormat) {
+		case eBLZRsltsSQLite:
+				ReportAsSQLitePSL(Matches,MisMatches,0,NumbNs,						// TotalAlignLen -TotalMMs,TotalMMs,0,0,
+									qNumInsert,								// qNumInsert, Number of inserts in query
+									qBaseInsert,							// qBaseInsert, Number of bases inserted in query
+									tNumInsert,								// tNumInsert, Number of inserts in target
+									tBaseInsert,							// tBaseInsert, Number of bases inserted in target
+									bStrand == true ? '-' : '+',
+									pszQuerySeqIdent,QueryLen,QueryPathStartOfs,QueryPathEndOfs,
+									szTargName,TargSeqLen,TargPathStartOfs,TargPathEndOfs,
+									NumPathNodes,SortedPathIdx,pAlignNodes,ppFirst2Rpts);
+			break;
+
+
+
 		case eBLZRsltsPSL:
 			ReportAsPSL(Matches,MisMatches,0,NumbNs,						// TotalAlignLen -TotalMMs,TotalMMs,0,0,
 									qNumInsert,								// qNumInsert, Number of inserts in query
@@ -2308,6 +2533,9 @@ psQuery->pQuerySeq = NULL;
 strncpy(pszQueryIdent,psQuery->szQueryIdent,MaxLenQueryIdent);
 pszQueryIdent[MaxLenQueryIdent-1] = '\0';
 m_NumQuerySeqs -= 1;
+
+if(m_RsltsFormat == eBLZRsltsSQLite)
+	m_pSQLitePSL->AddAlignSummary(m_ExprID,pszQueryIdent,*pQuerySeqLen,NULL,0);
 ReleaseLock(true);
 return(pSeq);
 }
