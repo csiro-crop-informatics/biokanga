@@ -10,7 +10,7 @@ const int cSigMaxWaitSecs = 600;		// master thread times out after cSigMaxWaitSe
 const int cSigTermWaitSecs = 2;			// background readahead thread is allowed at most cSigTermWaitSecs to self terminate if requested to terminate
 
 const int cDfltMaxIter = 50000;			// default max iterations per subsegmented sequence when matching that subsegment
-const int cMaxKmerLen = 19;				// limit on length of KMers which can be frequency counted when checking for over-occurances
+const int cMaxKmerLen = 18;				// limit on length of KMers which can be frequency counted when checking for over-occurrences
 
 const int cMaxNumIdentNodes = 1024000;	// allow at most this many TargSeqIDs to be hash linked per thread
 const int cHashEntries = 0x03fff;		// TargSeqID start loci are hashed into this many entries

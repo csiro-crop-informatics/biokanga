@@ -5973,8 +5973,7 @@ if(m_pOccKMerClas != NULL)
 
 m_MaxKMerOccs = MaxKMerOccs;
 m_OccKMerLen = KMerLen;
-m_AllocOccKMerClasMem = 1;
-while(KMerLen--) m_AllocOccKMerClasMem *= 4;
+m_AllocOccKMerClasMem = (size_t)0x01 << ((KMerLen-1) * 2);
 
 #ifdef _WIN32
 m_pOccKMerClas = (UINT8 *) malloc(m_AllocOccKMerClasMem);
