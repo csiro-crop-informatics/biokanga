@@ -116,6 +116,7 @@ typedef struct TAG_sSSWCell {
 	UINT32 LeftInDelLen;		// current left (insert relative to target) gap length
 	UINT32 DownInDelLen;		// current down (deletion relative to target) gap length
 	UINT32 CurExactLen;			// current exactly matching sequence length
+	UINT32 CurMismatchLen;		// current not exactly (mismatches) sequence length
 } tsSSWCell;
 
 

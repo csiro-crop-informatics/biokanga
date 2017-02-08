@@ -1250,7 +1250,6 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 				pCell->CurScore = m_MatchScore;
 				pCell->PeakScore = m_MatchScore;
 				pCell->NumMatches = pCell->NumExacts = pCell->CurExactLen = 1;
-				 
 				if(pTraceback != NULL)
 					{
 					pTraceback->IdxP = pCell->StartPOfs | cTrBkFlgStart;
@@ -1333,11 +1332,12 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 			}
 
 		// select highest score into cell together with traceback and gap opened flag..
-		if(DiagScore >= DownScore && DiagScore >= LeftScore) // if diag score at least equal highest then preference matches
+		if(DiagScore >= DownScore && DiagScore >= LeftScore) // if diag score at least equal highest then preference matches, either exact or mismatch, over InDels
 			{
-			if(DiagCell.StartPOfs == 0	&&				// if starting a new path then check
+			if((DiagCell.StartPOfs == 0	&&				// if starting a new path then check
 					(IdxP > (UINT32)m_MaxInitiatePathOfs || IdxT > (UINT32)m_MaxInitiatePathOfs ||	// can only start paths if within m_MaxInitiatePathOfs and
-					!(bMatch && bMatchNxt3)))            // path starts with at least 4 exacts
+					!(bMatch && bMatchNxt3))) ||            // path starts with at least 4 exacts
+					DiagCell.CurMismatchLen > 16)			// chances of more than 16 bases in a row without at least one base exactly matching are extremely low when underlying substitution rate is only a 2% 
 				{
 				memset(pCell,0,sizeof(tsSSWCell));	
 				continue;		
@@ -1372,6 +1372,7 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 					}
 				pCell->NumExacts+=1;
 				pCell->CurExactLen += 1;
+				pCell->CurMismatchLen = 0;
 				if(pCell->CurExactLen >= m_AnchorLen)  // succession of exact matches qualify as anchor?
 					{
 					pCell->PLastAnchorEndOfs = m_ProbeStartRelOfs + IdxP + 1;
@@ -1384,9 +1385,18 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 					}
 				}
 			else
+				{
 				pCell->CurExactLen = 0;
+				pCell->CurMismatchLen += 1;
+				}
 			}
 		else
+			{
+			if(DownInDelLen > 20 || LeftInDelLen > 20)	// very, very few InDels expected to be longer than 20bp, vast majority expected to be within 4bp 
+				{
+				memset(pCell,0,sizeof(tsSSWCell));	
+				continue;		
+				}
 			if(DownScore >= LeftScore) // down score at least as high as left score, note this means that insertions into the target are being preferenced
 				{			
 				*pCell = pCell[-1];
@@ -1407,6 +1417,7 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 				if(DownInDelLen == 1)
 					pCell->NumGapsDel += 1;
 				pCell->CurExactLen = 0;
+				pCell->CurMismatchLen = 0;
 				}
 			else
 				{			
@@ -1428,7 +1439,9 @@ for(IdxP = 0; IdxP < ProbeRelLen; IdxP++)
 				if(LeftInDelLen == 1)
 					pCell->NumGapsIns += 1;
 				pCell->CurExactLen = 0; 
+				pCell->CurMismatchLen = 0;
 				}
+			}
 
 
 		if(pCell->NumExacts >= (UINT32)m_MinNumExactMatches && pCell->CurExactLen >= 4) // only interested in putative paths which are terminating with at least 4 exact matches at terminal end - paths needed at least 4 exacts to start

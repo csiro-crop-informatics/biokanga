@@ -192,7 +192,7 @@ struct arg_int  *transcriptomelens = arg_int0("t","transcriptome","<int>",	   "t
 
 
 struct arg_int *minpbseqlen = arg_int0("l","minpbseqlen","<int>",		"minimum individual PacBio sequence length to error correct (default 10000, range 500 to 100000)");
-struct arg_int *maxpbseqlen = arg_int0("L", "maxpbseqlen", "<int>",		"maximum individual PacBio sequence length (default 35000, minimum minpbseqlen)");
+struct arg_int *maxpbseqlen = arg_int0("L", "maxpbseqlen", "<int>",		"maximum individual PacBio sequence length (default 50000, minimum minpbseqlen)");
 
 struct arg_int *minpbseqovl = arg_int0("b","minpbseqovl","<int>",		"minimum PacBio overlap onto PacBio length required (default 5000, range 500 to 100000)");
 
@@ -200,24 +200,24 @@ struct arg_int *minhcseqlen = arg_int0("p","minhcseqlen","<int>",		"minimum indi
 struct arg_int *minhcseqovl = arg_int0("P","minhcseqovl","<int>",		"minimum high confidence sequence overlap onto PacBio length required (default 500, range 250 to 100000)");
 struct arg_int *hcrelweighting = arg_int0("r","hcrelweighting","<int>",	"high confidence sequence relative weighting when consensus base calling (default 3, range 1 to 10)");
 
-struct arg_int *minfilthomolen = arg_int0("H","minfilthomolen","<int>",			"filtering for near homopolymer runs of at least this length (default 16, 0 to disable, accepted range 12 to 25)");
+struct arg_int *minfilthomolen = arg_int0("H","minfilthomolen","<int>",			"filtering for near homopolymer runs of at least this length (default 20, 0 to disable, accepted range 12 to 25)");
 
 
-struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 14, range 12 to 50)");
-struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",				"require at least this many accepted seed cores between overlapping sequences to use SW (default 10, range 1 to 50)");
+struct arg_int *minseedcorelen = arg_int0("c","seedcorelen","<int>",			"use seed cores of this length when identifying putative overlapping sequences (default 16, range 12 to 50)");
+struct arg_int *minseedcores = arg_int0("C","minseedcores","<int>",				"require at least this many accepted seed cores between overlapping sequences to use SW (default 20, range 1 to 50)");
 
 struct arg_int *deltacoreofs = arg_int0("d","deltacoreofs","<int>",				"offset cores (default 2, range 1 to 25)");
-struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",				"explore cores of less than this maximum depth (default 15000, range 1000 to 20000)");
+struct arg_int *maxcoredepth = arg_int0("D","maxcoredepth","<int>",				"explore cores of less than this maximum depth (default 5000, range 1000 to 50000)");
 
-struct arg_int *matchscore = arg_int0("x","matchscore","<int>",					"SW score for matching bases (default 3, range 1 to 50)");
-struct arg_int *mismatchpenalty = arg_int0("X","mismatchpenalty","<int>",		"SW mismatch penalty (default 7, range 1 to 50)");
-struct arg_int *gapopenpenalty = arg_int0("y","gapopenpenalty","<int>",			"SW gap opening penalty (default 4, range 1 to 50)");
-struct arg_int *gapextnpenalty = arg_int0("Y","gapextnpenalty","<int>",			"SW gap extension penalty (default 1, range 1 to 50)");
+struct arg_int *matchscore = arg_int0("x","matchscore","<int>",					"SW score for matching bases (default 1, range 1 to 50)");
+struct arg_int *mismatchpenalty = arg_int0("X","mismatchpenalty","<int>",		"SW mismatch penalty (default 25, range 1 to 50)");
+struct arg_int *gapopenpenalty = arg_int0("y","gapopenpenalty","<int>",			"SW gap opening penalty (default 3, range 1 to 50)");
+struct arg_int *gapextnpenalty = arg_int0("Y","gapextnpenalty","<int>",			"SW gap extension penalty (default 2, range 1 to 50)");
 struct arg_int *progextnpenaltylen = arg_int0("z","progextnpenaltylen","<int>",	"SW gap extension penalty only applied for gaps of at least this number of bases (default 2, range 1 to 63)");
 
 struct arg_int *minconcscore = arg_int0("s","minconcscore","<int>",			     "error corrected sequences trimmed until mean 50bp concensus score is at least this threshold (default 3, range 0 to 9)");
 struct arg_int *minerrcorrectlen = arg_int0("S","minerrcorrectlen","<int>",		 "error corrected and trimmed sequences must be at least this minimum length (default 5000, range 500 to 20000)");
-struct arg_int *maxartefactdev = arg_int0("A","artefactdev","<int>",			 "classify overlaps as artefactual if 500bp window score deviates by more than this percentage from complete overlap mean (0 to disable, range 1 to 70)");
+struct arg_int *maxartefactdev = arg_int0("A","artefactdev","<int>",			 "classify overlaps as artefactual if 500bp window score deviates by more than this percentage from complete overlap mean (0 to disable,default 70, range 1 to 80)");
 
 struct arg_file *hiconffiles = arg_filen("I","hiconffile","<file>",0,cMaxInFileSpecs,		"optional, names of input files containing higher confidence reads or sequences to be used in error correcton of PacBio reads (wildcards allowed)");
 struct arg_file *pacbiofiles = arg_filen("i","pacbiofile","<file>",1,cMaxInFileSpecs,		"names of input files containing PacBio sequences to be error corrected (wildcards allowed)");
@@ -235,9 +235,6 @@ struct arg_int *maxrmi = arg_int0("n","maxrmi","<int>",							"maximum number of
 struct arg_str  *rmihost = arg_str0("u", "rmihost", "<string>",					"listening on this host name or IPv4/IPv5 address for connections by SW service providers (default 127.0.0.1)");
 struct arg_str  *rmiservice = arg_str0("U", "rmiservice", "<string>",			"Listen on this service name or port for connections by SW service providers (default 43123)");
 
-// struct arg_str *adapterseqs = arg_str0("e", "adapterseqs", "<string>",				"when loading reads then adapter trim (default 'aagcagtggtatcaacgcagagtac')");
-
-
 struct arg_file *summrslts = arg_file0("q","sumrslts","<file>",				"Output results summary to this SQLite3 database file");
 struct arg_str *experimentname = arg_str0("w","experimentname","<str>",		"experiment name SQLite3 database file");
 struct arg_str *experimentdescr = arg_str0("W","experimentdescr","<str>",	"experiment description SQLite3 database file");
@@ -247,7 +244,7 @@ struct arg_end *end = arg_end(200);
 void *argtable[] = {help,version,FileLogLevel,LogFile,
 					pmode,rmihost,rmiservice,maxnonrmi,maxrmi,minfilthomolen,senseonlyovlps,minseedcorelen,minseedcores,deltacoreofs,maxcoredepth,
 					matchscore,mismatchpenalty,gapopenpenalty,gapextnpenalty,progextnpenaltylen,
-					transcriptomelens,/* adapterseqs, */ minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
+					transcriptomelens, minpbseqlen,maxpbseqlen,minpbseqovl,minhcseqlen,minhcseqovl,hcrelweighting,minconcscore,minerrcorrectlen,maxartefactdev,
 					summrslts,pacbiofiles,hiconffiles,experimentname,experimentdescr,
 					outfile,mafile,scaffovrlapsfile,sampleinrate,sampleacceptrate,threads,
 					end};
@@ -462,8 +459,8 @@ if (!argerrors)
 		{
 		if(PMode == ePBPMErrCorrect)
 			{
-			// simply clamping FiltMinHomoLen to be 0 or in the range of 12..25 with a default of 16
-			FiltMinHomoLen = minfilthomolen->count ? minfilthomolen->ival[0] : 16;
+			// simply clamping FiltMinHomoLen to be 0 or in the range of 12..25 with a default of 20
+			FiltMinHomoLen = minfilthomolen->count ? minfilthomolen->ival[0] : 20;
 			if(FiltMinHomoLen <= 0)
 				FiltMinHomoLen = 0;
 			else
@@ -521,9 +518,9 @@ if (!argerrors)
 			MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxSeedCoreDepth;
 		else
 			MaxSeedCoreDepth = maxcoredepth->count ? maxcoredepth->ival[0] : cDfltMaxConsolidateSeedCoreDepth;
-		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > 100000)
+		if(MaxSeedCoreDepth < 1000 || MaxSeedCoreDepth > cDfltMaxConsolidateSeedCoreDepth)
 			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..100000",MaxSeedCoreDepth);
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: maximum depth to explore seed cores '-D%d' must be in range 1000..50000",MaxSeedCoreDepth);
 			return(1);
 			}
 
@@ -1492,6 +1489,15 @@ m_SWGapOpenPenalty = cDfltSWGapOpenPenalty;
 m_SWGapExtnPenalty = cDfltSWGapExtnPenalty;
 m_SWProgExtnPenaltyLen = cDfltSWProgExtnLen;	
 
+m_NumReadsUnderLen = 0;
+m_SumLenUnderLen = 0;
+m_NumReadsOverLen = 0;
+m_SumLenOverLen = 0;
+m_NumReadsBinned = 0;
+m_SumReadsBinnedLen = 0;
+m_FirstBinStartLen = 0;
+m_NumLenBins = 0;
+
 memset(m_ExactKmerDists,0,sizeof(m_ExactKmerDists));
 m_TotAlignSeqLen = 0;
 m_TotAlignSeqs = 0;
@@ -2441,6 +2447,86 @@ for (int n = 0; Rslt >= eBSFSuccess &&  n < glob.FileCount(); ++n)
 	}
 return(eBSFSuccess);
 
+}
+
+int				// returns number of bins containing at least 1 read, 0 if no bins, < 0 if errors
+CPBErrCorrect::ReadLenBinning(UINT32 NumLenBins,		// binning read lengths into this number of bins
+			   UINT32 BinLenRange,			// each bin is to hold this delta length range 
+			   UINT32 FirstBinStartLen,		// first bin starts at this read length
+			   UINT16 RjctSeqFlagsSet,		// slough reads with any of these flags set
+			   UINT16 RjctSeqFlagsReset)	// slough reads with any of these flags not set
+{
+UINT32 CurNodeID;
+int NumTargSeqs;
+tsPacBioLenBin *pCurReadLenBin; 	
+UINT32 CurReadLen;
+UINT32 BinIdx;
+UINT32 NumBins;
+UINT16 SeqFlags;
+
+if(m_pSfxArray == NULL || NumLenBins > cMaxBinnedReadLens || BinLenRange == 0 || FirstBinStartLen == 0)
+	return(eBSFerrParams);
+NumTargSeqs = m_pSfxArray->GetNumEntries();
+
+m_NumReadsUnderLen = 0;
+m_SumLenUnderLen = 0;
+m_NumReadsOverLen = 0;
+m_SumLenOverLen = 0;
+m_NumReadsBinned = 0;
+m_SumReadsBinnedLen = 0;
+m_FirstBinStartLen = FirstBinStartLen;
+m_NumLenBins = NumLenBins;
+
+CurReadLen = m_FirstBinStartLen;
+pCurReadLenBin = m_PacBioReadLenBins;
+for(BinIdx = 0; BinIdx < m_NumLenBins; BinIdx++, pCurReadLenBin++)
+	{
+	pCurReadLenBin->NumReads = 0;
+	pCurReadLenBin->SumLen = 0;
+	pCurReadLenBin->StartLen = CurReadLen;
+	pCurReadLenBin->EndLen = CurReadLen + m_LenBinSize - 1;
+	m_LastBinEndLen = pCurReadLenBin->EndLen;
+	CurReadLen = m_LastBinEndLen + 1;
+	}
+
+if((NumTargSeqs = m_pSfxArray->GetNumEntries()) < 1)
+	return(0);
+
+NumBins = 0;
+for(CurNodeID = 1; CurNodeID <= (UINT32)NumTargSeqs; CurNodeID++)
+	{
+	SeqFlags = m_pSfxArray->GetIdentFlags(CurNodeID);
+	if(RjctSeqFlagsSet & SeqFlags)
+		continue;
+	if(!(RjctSeqFlagsReset & SeqFlags))
+		continue;
+
+	CurReadLen = m_pSfxArray->GetSeqLen(CurNodeID);
+	if(m_FirstBinStartLen > 0 && CurReadLen < m_FirstBinStartLen)
+		{
+		m_NumReadsUnderLen += 1;
+		m_SumLenUnderLen += CurReadLen;
+		continue;
+		}
+
+	if(CurReadLen > m_LastBinEndLen)
+		{
+		m_NumReadsOverLen += 1;
+		m_SumLenOverLen += CurReadLen;
+		continue;
+		}
+
+	BinIdx = (CurReadLen - CurReadLen) / m_LenBinSize;
+	pCurReadLenBin = &m_PacBioReadLenBins[BinIdx];
+	
+	if(pCurReadLenBin->NumReads == 0)
+		NumBins += 1;
+	pCurReadLenBin->NumReads += 1;
+	m_NumReadsBinned += 1;
+	pCurReadLenBin->SumLen += CurReadLen;
+	m_SumReadsBinnedLen += CurReadLen;
+	}
+return(NumBins);
 }
 
 int

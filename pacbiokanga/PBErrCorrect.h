@@ -31,12 +31,12 @@ const UINT8 cLCWeightingFactor = (0x01);   // if a low confidence sequence used 
 const UINT8 cHCDfltWeightingFactor = (0x83);   // if a high confidence sequence used to generate a consensus then use this relative weighting (4x) on bases from this sequence, note bit 7 set as this is a high confidence sequence
 
 const int cMinMaxArtefactDev = 1;			// user can specify down to this minimum or 0 to disable
-const int cDfltMaxArtefactDev = 50;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
-const int cDfltMaxConsolidateArtefactDev = 20;	// default percentage deviation from the mean allowed when classing overlaps as being artefactual if consolidating
-const int cDfltScaffMaxArtefactDev = 20;		// but when scaffolding with error corrected reads there should a much smaller percentage deviation from the mean
-const int cMaxMaxArtefactDev = 70;			// user can specify up to this maximum 
+const int cDfltMaxArtefactDev = 70;			// default percentage deviation from the mean allowed when classing overlaps as being artefactual
+const int cDfltMaxConsolidateArtefactDev = 30;	// default percentage deviation from the mean allowed when classing overlaps as being artefactual if consolidating
+const int cDfltScaffMaxArtefactDev = 30;		// but when scaffolding with error corrected reads there should a much smaller percentage deviation from the mean
+const int cMaxMaxArtefactDev = 80;			// user can specify up to this maximum 
 
-const int cReqConsensusCoverage = 20;   // targeting this mean probe sequence coverage to have confidence in consensus error correction
+const int cReqConsensusCoverage = 10;   // targeting this mean probe sequence coverage to have confidence in consensus error correction
 
 const int cMaxPacBioErrCorLen = cMaxSWQuerySeqLen;			// allowing for error corrected read sequences of up to this length
 const int cMaxPacBioMAFLen    = cMaxSWMAFBuffSize;			// allowing for multialignment format buffering of up to this length
@@ -59,6 +59,8 @@ const int cMaxAdapterSeqs = 20;						// allowing for at most this many different
 const char szDflt5Adaptor[] = "aagcagtggtatcaacgcagagtac";	// default 5' adapter sequence if none explicitly specified when transcriptome processing
 const char szDflt3Adaptor[] = "gtactctgcgttgataccactgctt";	// default 3' adapter sequence if none explicitly specified when transcriptome processing
 
+const int cMaxBinnedReadLens = 1000;					// allowing for at most this many read length bins
+
 typedef enum TAG_ePBPMode {								// processing mode
 	ePBPMErrCorrect,									// error correct
 	ePBPMConsensus,										// generate consensus from previously generated multiple alignments
@@ -68,6 +70,15 @@ typedef enum TAG_ePBPMode {								// processing mode
 
 
 #pragma pack(1)
+
+// binned length distributions for reads to be error corrected
+typedef struct TAG_sPacBioLenBin {
+	UINT32 StartLen;	// bin holds read counts for reads in length range starting from this length
+	UINT32 EndLen;		// with range ending at this length inclusive
+	UINT32 NumReads;	// there were this many reads in this length range
+	UINT64 SumLen;		// reads in this length range summed to this total length
+	} tsPacBioLenBin;
+
 
 // seed core hits 
 typedef struct TAG_sPBECoreHit {
@@ -268,6 +279,20 @@ class CPBErrCorrect
 	char m_szChkPtsFile[_MAX_PATH];			// name of file used for checkpointing in case resume processing is required
 	int m_hChkPtsFile;						// opened file handle for checkpointing
 
+	UINT32 m_NumReadsUnderLen;	// number of reads unable to be binned because they had length < m_FirstBinStartLen
+	UINT64 m_SumLenUnderLen;	// reads under length summed to this total length
+	UINT32 m_NumReadsOverLen;	// number of reads unable to be binned because they had length > m_LastBinEndLen
+	UINT64 m_SumLenOverLen;		// reads over length summed to this total length
+
+	UINT32 m_NumReadsBinned;	// total number of reads which were binned
+	UINT64 m_SumReadsBinnedLen;		// reads which were binned summed to this total length
+
+	UINT32 m_FirstBinStartLen;	// length binning starts with reads >= this length
+	UINT32 m_LastBinEndLen;		// length binning ends with reads <= this length
+	UINT32 m_NumLenBins;		// there are this many read length bins
+	UINT32 m_LenBinSize;		// each bin covers this differential read length
+	tsPacBioLenBin m_PacBioReadLenBins[cMaxBinnedReadLens];	// read length bins
+
 
 	int ErrCorBuffIdx;						// index into m_szErrCorLineBuff at which to next copy a corrected sequence
 	int AllocdErrCorLineBuff;				// allocation size for m_pszErrCorLineBuff
@@ -306,6 +331,13 @@ class CPBErrCorrect
 				etSeqBase *pAdapter3Seq,		// when loading reads then end trim for this 5' adapter sequence when loading sequences
 				int NumTargFiles,char **pszTargFiles,	// parse, and index sequences in these files into memory resident suffix array; file expected to contain either fasta or fastq sequences
 				int Flags = cFlgLCSeq);			// which by default are low confidence PacBio read sequences
+
+	int				// returns number of bins containing at least 1 read, 0 if no bins containing any reads, < 0 if errors
+		ReadLenBinning(UINT32 NumLenBins,		// binning read lengths into this number of bins
+					   UINT32 BinLenRange,		// each bin is to hold this delta length range 
+					   UINT32 FirstBinStartLen, // first bin starts at this read length
+					   UINT16 RjctSeqFlagsSet = cFlgHCSeq,	// slough reads with any of these flags set
+					   UINT16 RjctSeqFlagsReset = cFlgLCSeq);	// slough reads with any of these flags not set
 
 	int					// sequence length after any adapter trimming 
 		AdapterTrim(bool bTrim3,			// if false then trim the 5' end, if true then trim the 3' end
