@@ -4650,10 +4650,6 @@ do
 				// check for self matches
 				pEntry = MapChunkHit2Entry(TargSeqLeftIdx);
 
-				if(ProbeEntry > 1)
-					{
-					int one = 1;
-					}
 				if(ProbeEntry == pEntry->EntryID)
 					{
 					HitLoci = (UINT32)(TargSeqLeftIdx - pEntry->StartOfs);

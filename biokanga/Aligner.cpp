@@ -5463,7 +5463,8 @@ int RefID;
 int BAMRefID;
 tsReadHit *pNxtRead; 
 bool bLastAligned;
-bool bAcceptPE;
+int  ReadIs;				// 0 if SE, 1 if PE1 of a PE, 2 if PE2 of a PE
+
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reported %s %u read alignments",SAMFormat == etSAMFformat ? "SAM" : "BAM",NumReportedBAMreads);
 RefID = 0;
@@ -5472,6 +5473,11 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 	{
 	if(pReadHit->NAR == eNARAccepted || ProcMode == eFMsamAll)
 		{
+		if(!bPEProc)
+			ReadIs = 0;
+		else
+			ReadIs = pReadHit->PairReadID & 0x080000000 ? 0x02 : 0x01;
+
 		if(pReadHit->NAR == eNARAccepted)
 			{
 			if(pReadHit->HitLoci.Hit.Seg[0].ChromID != (UINT32)m_PrevSAMTargEntry)
@@ -5480,17 +5486,15 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 				m_PrevSAMTargEntry = pReadHit->HitLoci.Hit.Seg[0].ChromID;
 				}
 			BAMRefID = 0;
-			bAcceptPE = bPEProc && pReadHit->FlgPEAligned ? true : false;
 			}
 		else   // else also reporting reads not accepted as being aligned
 			{
 			BAMRefID = -1;
 			m_szSAMTargChromName[0] = '*';
 			m_szSAMTargChromName[1] = '\0';
-			bAcceptPE = false;
 			}
 
-		if((Rslt = ReportBAMread(pReadHit,BAMRefID,bAcceptPE,&BAMalign)) < eBSFSuccess)
+		if((Rslt = ReportBAMread(pReadHit,BAMRefID,ReadIs,&BAMalign)) < eBSFSuccess)
 			return(Rslt);
 		strcpy(BAMalign.szRefSeqName,m_szSAMTargChromName);
 
@@ -5512,7 +5516,7 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 			{
 			time_t Now = time(0);
 			unsigned long ElapsedSecs = (unsigned long) (Now - Started);
-			if(ElapsedSecs >= (60 * 10))
+			if(ElapsedSecs >= 60)
 				{
 				gDiagnostics.DiagOut(eDLInfo,gszProcName,"Reported %s %u read alignments",SAMFormat == etSAMFformat ? "SAM" : "BAM",NumReportedBAMreads);
 				Started = Now;
@@ -5574,7 +5578,7 @@ return i;
 int
 CAligner::ReportBAMread(tsReadHit *pReadHit,	// read to report
 			int RefID,							// read aligns to this BAM refID (-1) if unaligned
- 			bool bPEread,						// true if read is from a PE
+			int  ReadIs,						// 0 if SE, 1 if PE1 of a PE, 2 if PE2 of a PE
 			tsBAMalign *pBAMalign)				// BAM alignment to return
 {
 tsReadHit *pPEReadHit;
@@ -5583,7 +5587,6 @@ char *pszSEQName;
 char *pszPEQName;
 char *pszQName;
 char *pszRNext;
-bool bIsPE2;
 
 int SeqIdx;
 etSeqBase Sequence[cMaxFastQSeqLen+1];	// to hold sequence (sans quality scores) for current read
@@ -5618,50 +5621,118 @@ int LimitGapErrs;
 if(pReadHit == NULL)
 	return(eBSFerrInternal);
 
-memset(pBAMalign,0,sizeof(tsBAMalign));
+pBAMalign->block_size = 0; 	
+pBAMalign->refID = 0; 
+pBAMalign->pos = 0; 
+pBAMalign->end = 0; 
+pBAMalign->bin_mq_nl = 0; 
+pBAMalign->flag_nc = 0; 
+pBAMalign->l_seq = 0; 
+pBAMalign->next_refID = 0; 
+pBAMalign->next_pos = 0; 
+pBAMalign->tlen = 0; 
+pBAMalign->NumReadNameBytes = 0; 
+pBAMalign->NumCigarBytes = 0; 
+pBAMalign->NumSeqBytes = 0; 
+pBAMalign->NumAux = 0; 
+pBAMalign->szRefSeqName[0] = 0; 
+pBAMalign->szMateRefSeqName[0] = 0; 
+pBAMalign->read_name[0] = 0;
+pBAMalign->cigar[0] = 0;
+pBAMalign->seq[0] = 0;
+pBAMalign->qual[0] = 0;
+pBAMalign->auxData[0].array_type = 0; 
+pBAMalign->auxData[0].NumVals = 0; 
+pBAMalign->auxData[0].tag[0] = 0;
+pBAMalign->auxData[0].value[0] = 0;
+pBAMalign->auxData[0].val_type = 0;
 
-strcpy(szSEQName,ReplaceTabs((char *)pReadHit->Read));
+memcpy(szSEQName,(char *)pReadHit->Read,pReadHit->DescrLen+1);
 pszSEQName = szSEQName;
 pszQName = pszSEQName;
 
-if(pReadHit->NAR == eNARAccepted)
-	{
-	SEStart = AdjAlignStartLoci(&pReadHit->HitLoci.Hit);
-	SELen = AdjAlignHitLen(&pReadHit->HitLoci.Hit);
-	}
-else
-	{
-	SEStart = 0;
-	SELen = 0;
-	}
+pPEReadHit = NULL;
+Flags = 0;
+SEStart = 0;
+SELen = 0;
+PNext = 0;
+TLen = 0;
+pszRNext = (char *)"*";
+pszPEQName = NULL;
 
-if(bPEread)
-	{
-	// locate partner read for current read
-	// if current read is PE1 then PE2 will be next read, if PE2 then PE1 will be previous read
-	bIsPE2 = pReadHit->PairReadID & 0x80000000 ? true : false;	// top bit set if PE2
-	if(bIsPE2)	
-		pPEReadHit = (tsReadHit *)((UINT8 *)pReadHit - pReadHit->PrevSizeOf);   
-	else
+switch(ReadIs) {
+	case 0:			// reads have been processed as SE reads
+		if(pReadHit->NAR == eNARAccepted)
+			{	
+			Flags = pReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? 0 : cSAMFlgAS;	// accepted as aligned, flag which strand alignment was to
+			SEStart = AdjAlignStartLoci(&pReadHit->HitLoci.Hit);
+			SELen = AdjAlignHitLen(&pReadHit->HitLoci.Hit);
+			}
+		else
+			Flags = cSAMFlgUnmapped;		// read was unaligned
+		break;
+
+	case 1:			// PE1 of a PE pair
+		Flags = cSAMFlgReadPaired | cSAMFlgReadPairMap | cSAMFlgPE1;
+		if(pReadHit->NAR == eNARAccepted)
+			{
+			Flags |= pReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? 0 : cSAMFlgAS;	// accepted as aligned, flag which strand alignment was to
+			SEStart = AdjAlignStartLoci(&pReadHit->HitLoci.Hit);
+			SELen = AdjAlignHitLen(&pReadHit->HitLoci.Hit);
+			}
+		else
+			Flags |= cSAMFlgUnmapped;
+
 		pPEReadHit = (tsReadHit *)((UINT8 *)pReadHit + sizeof(tsReadHit) + pReadHit->ReadLen + pReadHit->DescrLen);
+		if(pReadHit->FlgPEAligned && pPEReadHit->FlgPEAligned && pPEReadHit->NAR == eNARAccepted)
+			{
+			Flags |= pPEReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? 0 : cSAMFlgMateAS;	// accepted as aligned, flag which strand alignment was to
 
-	pszRNext = (char *)"=";
-	PNext = 0;
-	PEStart = AdjAlignStartLoci(&pPEReadHit->HitLoci.Hit);
-	PELen = AdjAlignHitLen(&pPEReadHit->HitLoci.Hit);
+			if(pReadHit->NAR == eNARAccepted)
+				{
+				pszRNext = (char *)"=";
+				PEStart = AdjAlignStartLoci(&pPEReadHit->HitLoci.Hit);
+				PELen = AdjAlignHitLen(&pPEReadHit->HitLoci.Hit);
 
-	if(SEStart <= PEStart)
-		TLen = (PEStart - SEStart) + PELen;
-	else
-		TLen = (SEStart - PEStart) + SELen;
-	}
-else    // else SE or if PE then treating as if SE with no partner to be reported
-	{
-	pszRNext = (char *)"*";
-	pszPEQName = NULL;
-	bIsPE2 = false;
-	PNext = 0;
-	TLen = 0;
+				if(SEStart <= PEStart)
+					TLen = (PEStart - SEStart) + PELen;
+				else
+					TLen = (SEStart - PEStart) + SELen;
+				}
+			}
+		else
+			Flags |= cSAMFlgMateUnmapped;
+		break;
+
+	case 2:			// this read is PE2 of a PE
+		Flags = cSAMFlgReadPaired | cSAMFlgReadPairMap | cSAMFlgPE2;
+		if(pReadHit->NAR == eNARAccepted)
+			{
+			Flags |= pReadHit->HitLoci.Hit.Seg[0].Strand  == '+' ? 0 : cSAMFlgAS;	// accepted as aligned, flag which strand alignment was to
+			SEStart = AdjAlignStartLoci(&pReadHit->HitLoci.Hit);
+			SELen = AdjAlignHitLen(&pReadHit->HitLoci.Hit);
+			}
+		else
+			Flags |= cSAMFlgUnmapped;
+
+		pPEReadHit = (tsReadHit *)((UINT8 *)pReadHit - pReadHit->PrevSizeOf);
+		if(pReadHit->FlgPEAligned && pPEReadHit->FlgPEAligned && pPEReadHit->NAR == eNARAccepted)
+			{
+			Flags |= pPEReadHit->HitLoci.Hit.Seg[0].Strand  == '+' ? 0 : cSAMFlgMateAS;	// accepted as aligned, flag which strand alignment was to
+			if(pReadHit->NAR == eNARAccepted)
+				{
+				pszRNext = (char *)"=";
+				PEStart = AdjAlignStartLoci(&pPEReadHit->HitLoci.Hit);
+				PELen = AdjAlignHitLen(&pPEReadHit->HitLoci.Hit);
+				if(SEStart <= PEStart)
+					TLen = (PEStart - SEStart) + PELen;
+				else
+					TLen = (SEStart - PEStart) + SELen;		
+				}
+			}
+		else
+			Flags |= cSAMFlgMateUnmapped;
+		break;
 	}
 
 LimitGapErrs = 10;
@@ -5693,22 +5764,6 @@ else
 			}
 		}
 	}
-
-if(pReadHit->NAR == eNARAccepted)
-	{
-	Flags = pReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? 0x00 : 0x010;
-
-	if(bPEread)						// if PE
-		{
-		Flags |= 0x03;				// assumes if PE then both have been mapped
-		Flags |= bIsPE2 ? 0x080 : 0x040;
-// although the SAM specification treats templates as linear some toolsets are assuming that the PE2 read references the sense of the PE1 read as being the next in the template in the flags field!!!! 
-//		if(!bIsPE2) // originally pre-3.7.4 was folllowing specification
-		Flags |= pPEReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? 0x00 : 0x020; // post-3.7.4 to enable samtools stats to process sense distributions
-		}
-	}
-else
-	Flags = 0x04;			// flags as being unmapped
 
 MAPQ = 255;
 
@@ -5789,7 +5844,7 @@ if(pReadHit->NAR == eNARAccepted)
 			}
 		}
 
-	if(bPEread)
+	if(ReadIs > 0 && pReadHit->FlgPEAligned && pPEReadHit->FlgPEAligned && pPEReadHit->NAR == eNARAccepted)
 		PNext = AdjStartLoci(&pPEReadHit->HitLoci.Hit.Seg[0]);
 	else
 		PNext = -1;
@@ -5810,6 +5865,7 @@ if(pReadHit->NAR == eNARAccepted)
 		pBAMalign->tlen = -1 * abs(TLen);
 	pBAMalign->l_seq = pReadHit->ReadLen;
 	pBAMalign->NumSeqBytes = (pReadHit->ReadLen + 1)/2;
+	pBAMalign->NumAux = 0;
 	}
 else   // treating as being unaligned
 	{
@@ -8231,7 +8287,7 @@ if(m_BlockTotSeqLen < 20000000)				    // covers yeast
 	m_MinCoreLen = cMinCoreLen;
 else
 	if(m_BlockTotSeqLen < 250000000)		    // covers arabidopsis and fly
-		m_MinCoreLen = cMinCoreLen+3; 
+		m_MinCoreLen = cMinCoreLen+4; 
 	else
 		m_MinCoreLen = cMinCoreLen+6; 			// covers the big guys...
 
@@ -8239,19 +8295,19 @@ else
 // more slides enables higher sensitivity but negatively impacts on alignment throughput
 switch(m_PMode) {
 	case ePMUltraSens:				// ultra sensitive - much slower
-		MaxNumSlides = 8;			// leave m_MinCoreLen at it's minimum
+		MaxNumSlides = 7;			// leave m_MinCoreLen at it's minimum
 		break;
 	case ePMMoreSens:				// more sensitive - slower
 		m_MinCoreLen += 1;
-		MaxNumSlides = 7;
+		MaxNumSlides = 6;
 		break;
 	case ePMdefault:				// default processing mode
 		m_MinCoreLen += 3;
-		MaxNumSlides = 6;
+		MaxNumSlides = 5;
 		break;
 	case ePMLessSens:				// less sensitive but quicker
 		m_MinCoreLen += 5;
-		MaxNumSlides = 5;
+		MaxNumSlides = 4;
 		break;
 	default:
 		MaxNumSlides = 4;			// few slides, low sensitivity and much quicker
@@ -8638,11 +8694,12 @@ while(ThreadedIterReads(&ReadsHitBlock))
 														pPars->NumIdentNodes,			// memory has been allocated by caller for holding up to this many tsIdentNodes
 														pPars->pIdentNodes);			// memory allocated by caller for holding tsIdentNodes
 
-				if(HitRslt == eHRhits)
+				if(HitRslt == eHRhits && m_pPriorityRegionBED != NULL)
 					{
 					int NumInPriorityRegions;
 					int NumInNonPriorityRegions;
 					tsHitLoci *pPriorityHits;
+
 					NumInPriorityRegions = 0;
 					NumInNonPriorityRegions = 0;
 					pHit = pPars->pMultiHits;
@@ -8801,7 +8858,6 @@ while(ThreadedIterReads(&ReadsHitBlock))
 					}
 				}
 			}
-
 
 		Rslt = 0;
 		switch(HitRslt) {

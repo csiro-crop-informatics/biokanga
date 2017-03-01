@@ -12,7 +12,7 @@
 //   Please contact stuart.stephen@csiro.au for support or 
 //   to submit modifications to this source
 
-// The code is this module is copied, with relatively minor modifications, from the source code (PBSIM 1.0.3) released in support
+//  code is this module is copied, with relatively minor modifications, from the source code (PBSIM 1.0.3) released in support
 // of the following paper and full attribution is hereby given to the authors:
 // "PBSIM: PacBio reads simulator - toward accurate genome assembly" 
 // Yukiteru Ono, Kiyoshi Asai and Michiaki Hamada 

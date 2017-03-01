@@ -720,32 +720,50 @@ while((LineLen = GetNxtSAMline(szLine)) > 0)
 return(LineLen);
 }
 
+UINT32
+CSAMfile::GenNameHash(char *pszRefSeqName) // reference sequence name to generate a 32bit hash over
+{
+UINT32 Hash;
+UINT32 TopBits;
+char Chr;
+Hash = 0;
+while((Chr=*pszRefSeqName++) != '\0')
+	{
+	TopBits = (Hash >> 29) & 0x05;
+	Hash <<= 5;
+	Hash |= (tolower(Chr) & 0x01f) ^ TopBits;
+	}
+
+return(Hash);
+}
 
 // It is expected that sequence names will have been added with AddSeqName() in alpha ascending order such that when locating
-// names then the exhustative search can early terminate
+// names then the exhaustive search can early terminate
 int				// locates reference sequence name and returns it's SeqID, returns 0 if unable to locate a match
 CSAMfile::LocateRefSeqID(char *pszRefSeqName) // reference sequence name to locate
 {
-int CmpRslt;
 int Idx;
 int NameLen;
+UINT32 Hash;
 
 tsRefSeq *pRefSeq; 
 if(pszRefSeqName == NULL || pszRefSeqName[0] == '\0' || m_pRefSeqs == NULL || m_NumBAMSeqNames < 1)
 	return(0);
 
+
 // linear search; shouldn't take too long as not expecting too many reference chroms
 // Wheat is a little different!
 NameLen = (int)strlen(pszRefSeqName);
+Hash = GenNameHash(pszRefSeqName);
 
-// one optimisation is that a short history is maintained containing the last 10 successful searches and this history is
+// one optimisation is that a short history is maintained containing the last cMaxLocateRefSeqHist (currently 25) successful searches and this history is
 // searched before the full reference sequence names
 if(m_LocateRefSeqHistDepth)
 	{
 	for(Idx = 0; Idx < (int)m_LocateRefSeqHistDepth; Idx++)
 		{
 		pRefSeq = m_pLocateRefSeqHist[Idx];
-		if(NameLen == pRefSeq->SeqNameLen && !stricmp(pszRefSeqName,pRefSeq->szSeqName))
+		if(NameLen == pRefSeq->SeqNameLen && pRefSeq->Hash == Hash && !stricmp(pszRefSeqName,pRefSeq->szSeqName))
 			{
 			if(Idx > 0)
 				{
@@ -762,8 +780,7 @@ if(m_LocateRefSeqHistDepth)
 pRefSeq = m_pRefSeqs;
 for(Idx = 0; Idx < (int)m_NumBAMSeqNames; Idx++)
 	{
-	CmpRslt = 0;
-	if(NameLen == pRefSeq->SeqNameLen && (CmpRslt = stricmp(pszRefSeqName,pRefSeq->szSeqName)) == 0)
+	if(NameLen == pRefSeq->SeqNameLen && pRefSeq->Hash == Hash && !stricmp(pszRefSeqName,pRefSeq->szSeqName))
 		{
 		if(m_LocateRefSeqHistDepth < cMaxLocateRefSeqHist)
 			m_LocateRefSeqHistDepth += 1;
@@ -1368,7 +1385,7 @@ else  // reading from BAM
 return(0);
 }
 
-int										// creat and initiate processing for SAM or BAM - with optional index - file generation
+int										// create and initiate processing for SAM or BAM - with optional index - file generation
 CSAMfile::Create(eSAMFileType SAMType,	// file type, expected to be either eSFTSAM or eSFTBAM_BAI or eSFTBAM_CSI 
 				char *pszSAMFile,		// SAM(gz) or BAM file name
 				int ComprLev,			// if BAM then BGZF compress at this requested level (0..9)
@@ -1562,6 +1579,7 @@ m_NumBAMSeqNames += 1;
 m_NumRefSeqNames += 1;
 pRefSeq = (tsRefSeq *)((UINT8 *)m_pRefSeqs + m_CurRefSeqsLen);
 pRefSeq->SeqID = m_NumRefSeqNames;
+pRefSeq->Hash = GenNameHash(pszSeqName);
 pRefSeq->SeqLen = SeqLen;
 pRefSeq->SeqNameLen = (int)strlen(pszSeqName);
 strcpy(pRefSeq->szSeqName,pszSeqName);
@@ -2083,7 +2101,7 @@ if(m_SAMFileType == eSFTSAM || m_SAMFileType == eSFTSAMgz)
 	{
 	char CigarOp;
 	int OpLen;
-	if(m_CurBAMLen + (cMaxFastQSeqLen * 10) > m_AllocBAMSize)
+	if(m_CurBAMLen + (cMaxFastQSeqLen * 2) > m_AllocBAMSize)
 		{
 		if(m_SAMFileType == eSFTSAM)
 			CUtility::SafeWrite(m_hOutSAMfile,m_pBAM,m_CurBAMLen);

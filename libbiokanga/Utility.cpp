@@ -334,17 +334,15 @@ return(Max2Write == 0 ? true : false);
 bool				// true if requested number of bytes was written to hOutFile 
 CUtility::SafeWrite(int hOutFile,void *pBuff,size_t Max2Write)
 {
-time_t Now;
-time_t Then;
-UINT32 LastWriteSecs;
+UINT32 Secs2Write;
 int Written;
 int BuffLen;
 UINT8 *pByte = (UINT8 *)pBuff;
 Written = 0;
-Then = time(NULL);
+Secs2Write = 0;
 while(Written >= 0 && Max2Write > 0)
 	{
-	BuffLen = (int)min(Max2Write,(size_t)0x01fffffff);			// limit writes to max of 512M bytes at a time
+	BuffLen = (int)min(Max2Write,(size_t)0x03fffffff);			// limit writes to max of 1GB at a time
 	while(BuffLen) {
 		Written = write(hOutFile, pByte, BuffLen);
 		if(Written == -1 && errno != EINTR)
@@ -352,23 +350,30 @@ while(Written >= 0 && Max2Write > 0)
 			printf("SafeWrite: failed - %s",strerror(errno));
 			return(false);
 			}
-		if(Written < 1)		// write may not have been able to actually write to hOutFile because of a temp blockage or perhaps EINTR; timeout if block doesn't clear within 60 seconds
+		if(Written > 0)		
 			{
-			Now = time(NULL);
-			if((LastWriteSecs = (UINT32)(Now - Then)) > 60)
-				{
-				printf("SafeWrite: failed with %d secs since last write success",LastWriteSecs);
-				return(false);
-				}
-			Written = 0;
-			continue;
+			pByte += Written;
+			BuffLen -= Written;
+			Max2Write -= (size_t)Written;
 			}
 
-		pByte += Written;
-		BuffLen -= Written;
-		Max2Write -= Written;
+		if(Written <= 0 && Max2Write)
+			{
+			Secs2Write += 1;
+			if(Secs2Write > 60)
+				{
+				printf("SafeWrite: timed out");
+				return(false);
+				}
+#ifdef _WIN32
+			Sleep(1000);	// if write() was blocked or interrupted then no point in hammering the system, back off for 1 sec
+#else
+			sleep(1);
+#endif
+			}
+		else
+			Secs2Write = 0;
 		Written = 0;
-		Then = time(NULL);
 		}
 	}
 return(Max2Write == 0 ? true : false);

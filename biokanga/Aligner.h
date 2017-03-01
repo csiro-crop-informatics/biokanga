@@ -28,7 +28,7 @@ const int cMaxExcludeChroms = 20;		// max number of exclude chromosomes regular 
 const int cDfltAllowedSubs = 10;		// default max number of aligner induced substitutions per 100bp
 const int cMaxAllowedSubs = 15;			// allow at most this many aligner induced substitutions per 100bp
 const int cMaxTotAllowedSubs = 63;		// irrespective of length, limit total number of subs to 63
-const int cMinCoreLen = 5;				// absolute minimum core length supported
+const int cMinCoreLen = 8;				// absolute minimum core length supported
 const int cMaxCoreLen = 100;			// absolute maximum core length supported
 
 const int cSNPBkgndRateWindow = 51;		// window size within which the substitution background rate is determined for SNP detection processing
@@ -42,10 +42,10 @@ const int cDfltMaxDiSNPSep = 300;       // DiSNPs (TriSNPs) are two (three) indi
 const int cMinMarkerLen = 25;			// minimum allowed marker length
 const int cMaxMarkerLen = 500;			// maximum allowed marker length
 
-const int cDfltSensCoreIters  = 10000;	// default sensitivity core explore depth 
-const int cMoreSensCoreIters  = 25000;	// more sensitivity core explore depth
-const int cUltraSensCoreIters = 50000;	// ultra sensitivity core explore depth
-const int cMinSensCoreIters   = 5000;	// min sensitivity core explore depth
+const int cDfltSensCoreIters  = 5000;	// default sensitivity core explore depth 
+const int cMoreSensCoreIters  = 10000;	// more sensitivity core explore depth
+const int cUltraSensCoreIters = 20000;	// ultra sensitivity core explore depth
+const int cMinSensCoreIters   = 2500;	// min sensitivity core explore depth
 
 const int cPriorityExacts = 10;			// when attempting to prioritorise exactly matching reads to higher confidence sequence then allow for this many more multiloci exact (no subs) hits
 
@@ -74,7 +74,7 @@ const int cDfltReadLen = 200;			 // assume reads plus descriptors combined of of
 const size_t cReadsHitReAlloc = 50000000; // realloc allocation to hold this many read instances
 
 const int cPairMinLen =	25;				// apparent paired reads sequences must be of at least this minimum length
-const int cPairMaxLen = 20000;			// apparent paired reads sequences are restricted be of this maximum length
+const int cPairMaxLen = 100000;			// apparent paired reads sequences are restricted be of this maximum length
 const int cDfltPairMinLen = 100;		// default apparent paired reads sequences insert size must be of at least this length
 const int cDfltPairMaxLen = 1000;		// default apparent paired reads sequences insert size must be no longer than this length
 
@@ -194,7 +194,7 @@ typedef struct TAG_sReadHit {
 	UINT32 PrevSizeOf;			// size of the previously loaded tsReadHit - allows easy referencing of partner pairs
 	UINT32 ReadHitIdx;			// current read hit index + 1 for this read
 	UINT32 ReadID;				// read identifier from the preprocessed read (tsRawReadV5)
-	UINT32 PairReadID;			// this read's paired raw read identifier (0 if not a paired read) bit32 reset if 5' fwd read, bit32 set if 3' read of pair
+	UINT32 PairReadID;			// this read's paired raw read identifier (0 if not a paired read) bit31 reset if 5' fwd read, bit31 set if 3' read of pair
 	UINT32 NumReads;			// number of source reads merged into this read
 	UINT8 DescrLen;				// descriptor length
 	UINT16 ReadLen;				// read length of sequence packed into Read following the descriptor
@@ -202,7 +202,7 @@ typedef struct TAG_sReadHit {
 	INT8   LowMMCnt;			// lowest number of mismatches for this read thus far
 	INT8   NxtLowMMCnt;			// next lowest number of mismatches for this read thus far
 	INT16  NumHits;				// number of target hits for this read, currently limited to be at most 1
-	UINT8  NAR:6;				// if not eNARAccepted then reason (etNAR) for this read not being acccepted as being aligned
+	UINT8  NAR:6;				// if not eNARAccepted then reason (etNAR) for this read not being accepted as being aligned
 	UINT8  FlgPEAligned:1;      // PE read accepted as PE alignment
 	tsReadHitLoci HitLoci;		// this is currently the best hit for this read
 	UINT8  SiteIdx;				// read has been characterised into this index into m_OctSitePrefs[]
@@ -822,7 +822,7 @@ class CAligner
 
 	int ReportBAMread(tsReadHit *pReadHit,		// read to report
 			int RefID,							// read aligns to this BAM refID (-1) if unaligned
- 			bool bPEread,						// true if read is from a PE
+			int  ReadIs,						// 0 if SE, 1 if PE1 of a PE, 2 if PE2 of a PE
 			tsBAMalign *pBAMalign);				// BAM alignment to return
 
 	// calculate bin given an alignment covering [beg,end) (zero-based, half-close-half-open)

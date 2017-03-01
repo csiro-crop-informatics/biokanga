@@ -4,6 +4,20 @@
 
 const char cszProgVer[] = "1.1.0";		 // default versioning if not supplied by application in initial Create()
 
+// SAM format flags are a combination of the following
+const UINT32 cSAMFlgReadPaired = 0x01;		// read loaded as pair ended, either PE1 or PE2 
+const UINT32 cSAMFlgReadPairMap = 0x02;		// read map processing as pair
+const UINT32 cSAMFlgUnmapped = 0x04;		// read is unmapped
+const UINT32 cSAMFlgMateUnmapped = 0x08;	// mate of this read is unmapped
+const UINT32 cSAMFlgAS = 0x010;				// read aligned antisense
+const UINT32 cSAMFlgMateAS = 0x020;			// mate aligned antisense
+const UINT32 cSAMFlgPE1 = 0x040;			// read is 1st in PE 
+const UINT32 cSAMFlgPE2 = 0x080;			// read is 2nd in PE
+const UINT32 cSAMFlgNotPrimary = 0x0100;	// not the primary alignment for this read
+const UINT32 cSAMFlgFailsQC = 0x0200;		// read fails QC checks
+const UINT32 cSAMFlgPCRDuplicate = 0x0400;	// PCR or optiocal duplicate
+const UINT32 cSAMFlgSuppAlign = 0x0800;		// supplementary alignment
+
 const int cMaxBAMSeqLen = cMaxReadLen+1;	// max length sequence which can be processed
 const int cMaxBAMAuxValLen = 100;			// max length BAM aux value length
 const int cMaxBAMCigarOps = 20;				// max number of BAM MAGIC ops handled
@@ -18,8 +32,8 @@ const size_t cMaxCSIRefSeqLen = 0x7fffffff; // CSI indexes have no inherient lim
 const int cMaxRptSAMSeqsThres = 10000;	// default number of chroms to report if SAM output
 const int cDfltComprLev = 6;			// default compression level if BAM output
 
-const size_t cAllocBAMSize = (size_t)cMaxRptSAMSeqsThres * (3 * cMaxDatasetSpeciesChrom);	// initial allocation for  to hold BAM header which includes the sequence names + sequence lengths
-const size_t cAllocSAMSize = (size_t)cMaxRptSAMSeqsThres * (10 * cMaxDatasetSpeciesChrom);	// initial allocation for holding SAM header 
+const size_t cAllocBAMSize = (size_t)0x003ffffff;	// initial allocation for  to hold BAM header which includes the sequence names + sequence lengths
+const size_t cAllocSAMSize = (size_t)0x01fffffff;	// initial allocation for holding SAM header and subsequently the alignments 
 
 const size_t cAllocBAISize = (size_t)cMaxRptSAMSeqsThres * cMaxGeneNameLen * 10;	// initial allocation for  to hold BAI, will be realloc'd if required
 const size_t cAllocRefSeqSize = (size_t)cMaxRptSAMSeqsThres * cMaxGeneNameLen * 5;	// initial allocation for  to hold reference sequences, will be realloc'd if required
@@ -32,7 +46,7 @@ const int cNumSAIBins = 37450;          // total number of SAI bins (bins are re
 										// bins 585-4680 span 128Kbp each
 										// bins span 4681-37449 span 16Kbp each
 
-const int cMaxLocateRefSeqHist = 10;		// search history for reference sequence identifiers is maintained to this depth
+const int cMaxLocateRefSeqHist = 25;		// search history for reference sequence identifiers is maintained to this depth
 
 typedef enum TAG_etSAMFileType {
 	eSFTSAMUnknown=0,		// SAM type is unknown
@@ -58,30 +72,31 @@ typedef struct TAG_sBAMauxData {
 typedef struct TAG_tBAMalign {
 		UINT32 block_size;		// length of this alignment record incl any auxiliary data	
 		INT32  refID;			// Reference sequence ID,  -1 <= refID < n_ref; -1 for a read without a mapping position
-		char szRefSeqName[cMaxDescrIDLen+1]; // reference sequence name; truncated if longer than cMaxDescrIDLen
 		INT32  pos;				// 0-based leftmost coordinate (= POS - 1) 
 		INT32  end;				// 0-based rightmost coordinate
 		UINT32 bin_mq_nl;		// bin<<16|MAPQ<<8|l_read_name ; bin is computed by the reg2bin(); l_read_name is the length of read name below (= length(QNAME) + 1).
 		UINT32 flag_nc;			// FLAG<<16|n_cigar_op; n_cigar_op is the number of operations in CIGAR
 		INT32 l_seq;			// Length of SEQ
 		INT32 next_refID;		// Ref-ID of the next segment (-1 <= mate_refID < n_ref)
-		char szMateRefSeqName[cMaxDescrIDLen+1]; // next segment sequence name; truncated if longer than cMaxDescrIDLen
 		INT32 next_pos;		    // 0-based leftmost pos of the next segment (= PNEXT - 1)
 		INT32 tlen;				// Template length (= TLEN)
 		INT32 NumReadNameBytes;  // number of bytes required for read_name (includes terminating '\0';
+		INT32 NumCigarBytes;	// number of bytes required for cigar
+		INT32 NumSeqBytes;		// number of bytes required for seq
+		int NumAux;				// actual number of auxiliary data items (auxData[]) in this alignment record
+		char szRefSeqName[cMaxDescrIDLen+1]; // reference sequence name; truncated if longer than cMaxDescrIDLen
+		char szMateRefSeqName[cMaxDescrIDLen+1]; // next segment sequence name; truncated if longer than cMaxDescrIDLen
 		char read_name[cMaxDescrIDLen+1];	// char[l_read name] | NULL terminated (QNAME plus a tailing `\0')
-		INT32 NumCigarBytes;  // number of bytes required for cigar
 		UINT32 cigar[cMaxBAMCigarOps];      // uint32[n_cigar_op] | CIGAR: op_len<<4|op. `MIDNSHP=X' --> `012345678' 
-		INT32 NumSeqBytes;  // number of bytes required for seq
 		UINT8 seq[(cMaxBAMSeqLen+1)/2];   // UINT8 t[(l_seq+1)/2] | 4-bit encoded read: `=ACMGRSVTWYHKDBN'! [0; 15]; other characters mapped to `N'; high nybble first (1st base in the highest 4-bit of the 1st byte)
 		UINT8 qual[cMaxBAMSeqLen];		  // char[l_seq]  | Phred base quality (a sequence of 0xFF if absent)
-		int NumAux;				// actual number of auxiliary data items (auxData[]) in this alignment record
 		tsBAMauxData auxData[cMaxBAMAuxTags]; // to hold any auxiliary data
 } tsBAMalign;
 
 // reference sequence name dictionary
 typedef struct {
 	int SeqID;		// unique identifier for this reference sequence (1..n)
+	UINT32 Hash;		// hash on the sequence name
 	int SeqLen;		// reference sequence length
 	int SeqNameLen;	// sequence name length (excludes terminating '\0')
 	char szSeqName[1]; // to hold '\0' terminated sequence name
@@ -232,9 +247,12 @@ public:
 			  INT32 *pEstMeanSeqLen,		// estimated mean sequence length
 			  INT32 *pEstScoreSchema);		// currently will always return 0: no scoring 
 
-
 	int										// open and initiate processing for SAM/BAM reads processing
 		Open(char *pszSAMFile);				// expected to be a SAM(gz) or if extension '.BAM' then a BAM file
+
+
+	UINT32
+		GenNameHash(char *pszRefSeqName); // reference sequence name to generate a 32bit hash over
 
 	int				// locates reference sequence name and returns it's SeqID, returns 0 if unable to locate a match
 		LocateRefSeqID(char *pszRefSeqName); // reference sequence name to locate
