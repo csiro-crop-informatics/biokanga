@@ -17,7 +17,7 @@
 #define HAVE_LIBRT 1
 
 /* Name of package */
-#define PACKAGE "biosolutions"
+#define PACKAGE "biokanga"
 
 /* Define to the address where bug reports for this package should be sent. */
 #define PACKAGE_BUGREPORT ""
@@ -38,4 +38,4 @@
 #define PACKAGE_VERSION ""
 
 /* Version number of package */
-#define VERSION "0.1.1"
+#define VERSION "0.9.0"
