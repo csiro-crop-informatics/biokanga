@@ -1,0 +1,143 @@
+biokanga blitz
+Blat-like biokanga local aligner
+
+Version 4.2.0
+===========================
+Released December 18th 2016
+
+
+This subprocess is used to perform a local alignment, similar to Blat or
+Blast, of query genomic sequences against a targeted assembly or
+transcriptome. Seeds of a specified K-mer length are generated from the query
+sequences and where these seeds align to the target then the seed alignments
+are maximally extended left and right subject to the number of mismatches
+encountered in the extension remaining below a threshold. These seeded
+extensions are deemed as sequences and scored by length together with their
+identity relative to the targeted sequence they were aligned to. When all seed
+extended sequencese have been generated for a given combination of query
+sequence and aligned to target sequence these extended sequences are processed
+using a Smith-Waterman style dynamic programing with afine gap scoring
+identifying maximally high scoring paths. Paths may contain one or more seed
+extension sequences with the gaps between contained sequences due to perhaps
+poorly assembled query or target sequences, genuine biological deletions or
+insertions or rearrangements, or if transcriptomic alignments then exonic or
+intronic gaps.
+
+Indexing Options:
+
+-h, --help
+	This option will display the list of options and brief help as to the
+	function of each of these options together with default values, and
+	then terminates the process
+
+-v, --version, --ver
+	This option displays the application build version and then terminates
+
+-f, --FileLogLevel=<int>
+	Use this option to control the level of diagnostics written to screen
+	and logfile. Currently most log messages are written at the default
+	level of diagnostics (3)
+
+-F, --log=<file>
+	Use to specify the log file to which diagnostics are to be written.
+	If not specified then diagnostics will be written to screen only
+
+-q, --sumrslts=<file>
+	Output results summary to this SQLite3 database file
+
+-w, --experimentname=<str>
+        Specifies experiment name to use in SQLite3 database file
+
+-W, --experimentdescr=<str>
+	Specifies experiment description to use in SQLite3 database file
+
+-m, --mode=<int>
+        Alignment processing mode:
+		0 - Currently just the standard alignment mode is supported
+
+-s, --sensitivity=<int>
+	Sensitivity controls the defaults used for the core or seed length,
+	the core delta, over occurring seed alignments, and minimum path
+	length scoring thresholds.
+	Sensitivity:
+	0 - standard (default)
+	1 - high
+	2 - very high (caution alignments may take some time!)
+	3 - low	sensitivity
+
+-Q, --alignstrand=<int>
+	Alignments are relative to the query sequence sense:
+	0 - align both sense (+) and antisense (-)
+	1 - align sense (+) only
+	2 - align antisense (-) only
+
+-C, --corelen=<int>
+  	Specifies the core (seed) K-mer length to use when seeding alignment
+	extensions.
+	Default is 0 for auto determination, user specified range is 5..16
+
+-c, --coredelta=<int>
+ 	The core (seed) delta (step) size is used to specify the
+	number of bases the seed window is to be slide to the right
+	along the query sequence when determining the K-mer sequence to next
+	use in seeding alignment extensions.
+	Default is 0 for auto determination, with a user specified range 1..50
+
+-k, --maxocckmerdepth=<int>
+  	Maximum depth, or putative seed alignments, at which to not explore
+	for seed  over-occurring seed K-mer extensions. The threshold can be
+	set with this parameter.
+	Default is 0 for auto determination, user specified range range 100 to
+	20000.
+
+-e, --extnscorethres=<int>
+  	Extension score threshold, core overlap extensions with extension
+	score above this threshold are terminated; extension score += 2 if
+	mismatch, extension score -= 1 if match and score > 0 (default is 12)
+
+-p, --minpathscore=<int>
+  	Minimum required alignment path score before that path will be
+	reported.
+	Default is 0 for auto determination, range 50..500
+
+-a, --querylendpct=<int>
+  	Minimum required percentage of query sequence length aligned before
+	the path will be reported.
+	Default is that at least 25% of query sequence be aligned, and the
+	user specified range is from 5% to 100%.
+
+-P, --maxpathstoreport=<int>
+  	There can be many putative paths for a given combination of
+	query and target sequences. Use this parameter to restrict the
+	maximum number of paths which can be reported for any of the
+	query to target combinations.
+	The default is 10 and can be user specified to be 1 or more.
+
+-M, --format=<int>
+  	The output alignments format can be specified as:
+	0 - PSL version 3 (default)
+	1 - PSLX
+	2 - MAF
+	3 - UCSC BED
+
+-i, --in=<file>
+  	Load input query sequences to be aligned from this file
+
+-I, --sfx=<file>
+  	Align against this suffix array (kangax generated) file containing the
+	targeted sequences.
+
+-o, --out=<file>
+  	Output alignments to this file in the format (PSL, PSLX, MAF or BED)
+	as specified with the '-M' parameter which defaults to PSL.
+
+-T, --threads=<int>
+	Number of processing threads 0..n (defaults to 0 which sets threads
+	to number of CPU cores, max 128)
+
+Note: Options and associated parameters can be entered into an option parameter
+file, one option and it's associated parameter per line.
+To specify usage of this option paramter file to the BioKanga toolkit
+components then precede it's name with '@', e.g. biokanga blitz @myparams.txt
+
+

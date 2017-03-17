@@ -1,0 +1,63 @@
+biokanga remaploci 
+remap aligned reads loci to known features
+
+Version 4.2.0
+===========================
+Released December 18th 2016
+
+
+-h, --help
+	This option will display the list of options and brief help as to the
+	function of each of these options together with default values, and
+	then terminates the process
+
+-v, --version, --ver
+	This option displays the Biokanga build version and then
+	terminates
+
+-f, --FileLogLevel=<int>
+	Use this option to control the level of diagnostics written to screen
+	and logfile. Currently most log messages are written at the default
+	level of diagnostics (3)
+
+-F, --log=<file>
+	Use to specify the log file to which diagnostics are to be written.
+	If not specified then diagnostics will be written to screen only
+
+-q, --sumrslts=<file>
+	Output results summary to this SQLite3 database file
+
+-w, --experimentname=<str>
+        Specifies experiment name to use in SQLite3 database file
+
+-W, --experimentdescr=<str>
+	Specifies experiment description to use in SQLite3 database file
+
+-m, --mode=<int>          
+        Processing mode: 
+                0 - full length attributes (default)
+                1 - 5' attributes associations
+                2 - 5' dyad attribute associations (default = 0)
+
+-t, --filetype=<int>      
+        Input element file format: 
+                0 - auto (default)
+                1 - CSV (not currently supported)
+                2 - BED
+                3 - SAM/BAM
+
+-i, --inloci=<file>       
+        Input alignments file with loci to be remapped (BED, SAM/BAM) file
+
+-I, --inbed=<file>
+        Input BED file containing remapping loci
+
+-o, --output=<file>
+        Write remapped alignments to this file, same format as input alignment file
+
+Note: Options and associated parameters can be entered into an option parameter
+file, one option and it's associated parameter per line.
+To specify usage of this option paramter file to the BioKanga toolkit
+components then precede it's name with '@', e.g. biokanga remaploci @myparams.txt
+
+

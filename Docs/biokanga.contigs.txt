@@ -1,0 +1,73 @@
+pacbiokanga contigs 
+Assemble error corrected PacBio reads into contigs
+Version 4.2.0
+=======================
+Released December 18th 2016
+
+Options ---
+
+-h, --help
+	This option will display the list of options and brief help as to the
+	function of each of these options together with default values, and
+	then terminates the process
+
+-v, --version, --ver
+	This option displays the Biokanga build version and then
+	terminates
+
+-f, --FileLogLevel=<int>
+	Use this option to control the level of diagnostics written to screen
+	and logfile. Currently most log messages are written at the default
+	level of diagnostics (3)
+
+-F, --log=<file>
+	Use to specify the log file to which diagnostics are to be written.
+	If not specified then diagnostics will be written to screen only
+
+-q, --sumrslts=<file>
+	Output results summary to this SQLite3 database file
+
+-w, --experimentname=<str>
+        Specifies experiment name to use in SQLite3 database file
+
+-W, --experimentdescr=<str>
+	Specifies experiment description to use in SQLite3 database file
+
+-m, --pmode=<int>         
+        Processing mode: 
+        0 - use pregenerated overlap loci details file and error corrected sequences
+        1 - generate GEXF output format
+        2 - generate GraphML output format
+
+-l, --minscafflen=<int>
+        Minimum individual sequence length (default 5000, range 500 to 100000)
+
+-L, --minscaffovl=<int>
+        Minimum overlap required to merge reads into single contig (default 5000, range 250 to 100000)
+
+-s, --min1kscore=<int>
+        Minimum normalised 1Kbp overlap score required (default 980, range 800 to 1000)
+
+-S, --orphanseqs
+        Accept orphan sequences not overlapped by any other sequence
+
+-a, --senseonlyovlps
+        Accepting sense only overlaps (default is to accept both sense/antisense and sense/sense)
+
+-I, --pacbiosovlps=<file>
+        Input file containing pregenerated error corrected overlap detail
+
+-i, --pacbiofile=<file>
+        Names of input files containing error corrected sequences to be used for contigs
+
+-o, --out=<file>
+        Output merged contig sequences (processing mode 0) or GEFX or GraphML format to this file
+
+-T, --threads=<int>
+        Number of processing threads 0..128 (defaults to 0 which sets threads to number of CPU cores)
+
+Note: Options and associated parameters can be entered into an option parameter
+file, one option and it's associated parameter per line.
+To specify usage of this option parameter file to the BioKanga toolkit
+components then precede it's name with '@', e.g. biokanga contigs @myparams.txt
+
