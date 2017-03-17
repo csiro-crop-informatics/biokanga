@@ -11,7 +11,8 @@ Linux Basic Compilation
 =======================
 
 1: 'cd' into the top level directory containing the 'libbiokanga' and 'biokanga' source directories
-2: From the shell prompt type the command 'sh ./configure' which will initialise Makefiles with system dependent build variable values
+2: From the shell prompt type the command `autoreconf -fi`
+3: From the shell prompt type the command `sh ./configure` which will initialise Makefiles with system dependent build variable values
 3: When './configure' has successfully completed then type the command 'make' which will compile and link the 'biokanga' toolkit
 4: The 'biokanga' and 'pacbiokanga' executables will be created in their same named source directories from where they can be copied to a directory on the users $PATH
    Alternatively, 'make install' will compile/link 'biokanga' and 'pacbiokanga' and then copy the executables into the system dependent default path, e.g. '/usr/local/bin'
