@@ -4798,7 +4798,7 @@ fi
 
 
 
-ac_config_files="$ac_config_files Makefile libbiokanga/Makefile libBKPLPlot/Makefile biokanga/Makefile pacbiokanga/Makefile"
+ac_config_files="$ac_config_files Makefile libbiokanga/Makefile libBKPLPlot/Makefile genhyperconserved/Makefile genbiobed/Makefile genbiomultialign/Makefile splitmultifasta/Makefile genelementseq/Makefile psl2csv/Makefile genhyperdropouts/Makefile gencomposition/Makefile FindShortApproxMatches/Makefile locsfx/Makefile csvmerge/Makefile csv2bed/Makefile csv2fasta/Makefile csvfilter/Makefile bed2csv/Makefile FastaToPE/Makefile locseqs/Makefile gensampler/Makefile csv2stats/Makefile fasta2bed/Makefile genloci2gene/Makefile genalignstats/Makefile fasta2dist/Makefile locsw/Makefile quickcount/Makefile csv2feat/Makefile genalignref2relloci/Makefile genalignloci2core/Makefile maploci2features/Makefile processcsvfiles/Makefile genalignconf/Makefile Loci2Phylip/Makefile blast2csv/Makefile genrollups/Makefile gengoterms/Makefile gengoassoc/Makefile goassoc/Makefile genWiggle/Makefile gencentroidmetrics/Makefile proccentroids/Makefile DNAseqSitePotential/Makefile SimulateMNase/Makefile filterreads/Makefile prednucleosomes/Makefile RNAseqSitePotential/Makefile genDESeq/Makefile fasta2struct/Makefile kangarg/Makefile genultras/Makefile LocateROI/Makefile genstructprofile/Makefile genstructstats/Makefile predconfnucs/Makefile gennucstats/Makefile fastafilter/Makefile BEDMerge/Makefile BEDFilter/Makefile genElementProfiles/Makefile genzygosity/Makefile genGenomeFromAGP/Makefile genmarkers/Makefile HammingDist/Makefile genreadsde/Makefile ufilter/Makefile uhamming/Makefile genseqcandidates/Makefile GFFfilter/Makefile loci2dist/Makefile genNormWiggle/Makefile GTFfilter/Makefile genDiffExpr/Makefile dmpbioseq/Makefile genpseudogenome/Makefile usimdiffexpr/Makefile RNAFragSim/Makefile mergeoverlaps/Makefile kanga/Makefile kangar/Makefile kangasr/Makefile kangahrdx/Makefile kangade/Makefile kangas/Makefile kangapr/Makefile csv2sqlite/Makefile biokanga/Makefile locmarkers/Makefile PEscaffold/Makefile SSRdiscovery/Makefile pacbiokanga/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -5534,7 +5534,94 @@ do
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "libbiokanga/Makefile") CONFIG_FILES="$CONFIG_FILES libbiokanga/Makefile" ;;
     "libBKPLPlot/Makefile") CONFIG_FILES="$CONFIG_FILES libBKPLPlot/Makefile" ;;
+    "genhyperconserved/Makefile") CONFIG_FILES="$CONFIG_FILES genhyperconserved/Makefile" ;;
+    "genbiobed/Makefile") CONFIG_FILES="$CONFIG_FILES genbiobed/Makefile" ;;
+    "genbiomultialign/Makefile") CONFIG_FILES="$CONFIG_FILES genbiomultialign/Makefile" ;;
+    "splitmultifasta/Makefile") CONFIG_FILES="$CONFIG_FILES splitmultifasta/Makefile" ;;
+    "genelementseq/Makefile") CONFIG_FILES="$CONFIG_FILES genelementseq/Makefile" ;;
+    "psl2csv/Makefile") CONFIG_FILES="$CONFIG_FILES psl2csv/Makefile" ;;
+    "genhyperdropouts/Makefile") CONFIG_FILES="$CONFIG_FILES genhyperdropouts/Makefile" ;;
+    "gencomposition/Makefile") CONFIG_FILES="$CONFIG_FILES gencomposition/Makefile" ;;
+    "FindShortApproxMatches/Makefile") CONFIG_FILES="$CONFIG_FILES FindShortApproxMatches/Makefile" ;;
+    "locsfx/Makefile") CONFIG_FILES="$CONFIG_FILES locsfx/Makefile" ;;
+    "csvmerge/Makefile") CONFIG_FILES="$CONFIG_FILES csvmerge/Makefile" ;;
+    "csv2bed/Makefile") CONFIG_FILES="$CONFIG_FILES csv2bed/Makefile" ;;
+    "csv2fasta/Makefile") CONFIG_FILES="$CONFIG_FILES csv2fasta/Makefile" ;;
+    "csvfilter/Makefile") CONFIG_FILES="$CONFIG_FILES csvfilter/Makefile" ;;
+    "bed2csv/Makefile") CONFIG_FILES="$CONFIG_FILES bed2csv/Makefile" ;;
+    "FastaToPE/Makefile") CONFIG_FILES="$CONFIG_FILES FastaToPE/Makefile" ;;
+    "locseqs/Makefile") CONFIG_FILES="$CONFIG_FILES locseqs/Makefile" ;;
+    "gensampler/Makefile") CONFIG_FILES="$CONFIG_FILES gensampler/Makefile" ;;
+    "csv2stats/Makefile") CONFIG_FILES="$CONFIG_FILES csv2stats/Makefile" ;;
+    "fasta2bed/Makefile") CONFIG_FILES="$CONFIG_FILES fasta2bed/Makefile" ;;
+    "genloci2gene/Makefile") CONFIG_FILES="$CONFIG_FILES genloci2gene/Makefile" ;;
+    "genalignstats/Makefile") CONFIG_FILES="$CONFIG_FILES genalignstats/Makefile" ;;
+    "fasta2dist/Makefile") CONFIG_FILES="$CONFIG_FILES fasta2dist/Makefile" ;;
+    "locsw/Makefile") CONFIG_FILES="$CONFIG_FILES locsw/Makefile" ;;
+    "quickcount/Makefile") CONFIG_FILES="$CONFIG_FILES quickcount/Makefile" ;;
+    "csv2feat/Makefile") CONFIG_FILES="$CONFIG_FILES csv2feat/Makefile" ;;
+    "genalignref2relloci/Makefile") CONFIG_FILES="$CONFIG_FILES genalignref2relloci/Makefile" ;;
+    "genalignloci2core/Makefile") CONFIG_FILES="$CONFIG_FILES genalignloci2core/Makefile" ;;
+    "maploci2features/Makefile") CONFIG_FILES="$CONFIG_FILES maploci2features/Makefile" ;;
+    "processcsvfiles/Makefile") CONFIG_FILES="$CONFIG_FILES processcsvfiles/Makefile" ;;
+    "genalignconf/Makefile") CONFIG_FILES="$CONFIG_FILES genalignconf/Makefile" ;;
+    "Loci2Phylip/Makefile") CONFIG_FILES="$CONFIG_FILES Loci2Phylip/Makefile" ;;
+    "blast2csv/Makefile") CONFIG_FILES="$CONFIG_FILES blast2csv/Makefile" ;;
+    "genrollups/Makefile") CONFIG_FILES="$CONFIG_FILES genrollups/Makefile" ;;
+    "gengoterms/Makefile") CONFIG_FILES="$CONFIG_FILES gengoterms/Makefile" ;;
+    "gengoassoc/Makefile") CONFIG_FILES="$CONFIG_FILES gengoassoc/Makefile" ;;
+    "goassoc/Makefile") CONFIG_FILES="$CONFIG_FILES goassoc/Makefile" ;;
+    "genWiggle/Makefile") CONFIG_FILES="$CONFIG_FILES genWiggle/Makefile" ;;
+    "gencentroidmetrics/Makefile") CONFIG_FILES="$CONFIG_FILES gencentroidmetrics/Makefile" ;;
+    "proccentroids/Makefile") CONFIG_FILES="$CONFIG_FILES proccentroids/Makefile" ;;
+    "DNAseqSitePotential/Makefile") CONFIG_FILES="$CONFIG_FILES DNAseqSitePotential/Makefile" ;;
+    "SimulateMNase/Makefile") CONFIG_FILES="$CONFIG_FILES SimulateMNase/Makefile" ;;
+    "filterreads/Makefile") CONFIG_FILES="$CONFIG_FILES filterreads/Makefile" ;;
+    "prednucleosomes/Makefile") CONFIG_FILES="$CONFIG_FILES prednucleosomes/Makefile" ;;
+    "RNAseqSitePotential/Makefile") CONFIG_FILES="$CONFIG_FILES RNAseqSitePotential/Makefile" ;;
+    "genDESeq/Makefile") CONFIG_FILES="$CONFIG_FILES genDESeq/Makefile" ;;
+    "fasta2struct/Makefile") CONFIG_FILES="$CONFIG_FILES fasta2struct/Makefile" ;;
+    "kangarg/Makefile") CONFIG_FILES="$CONFIG_FILES kangarg/Makefile" ;;
+    "genultras/Makefile") CONFIG_FILES="$CONFIG_FILES genultras/Makefile" ;;
+    "LocateROI/Makefile") CONFIG_FILES="$CONFIG_FILES LocateROI/Makefile" ;;
+    "genstructprofile/Makefile") CONFIG_FILES="$CONFIG_FILES genstructprofile/Makefile" ;;
+    "genstructstats/Makefile") CONFIG_FILES="$CONFIG_FILES genstructstats/Makefile" ;;
+    "predconfnucs/Makefile") CONFIG_FILES="$CONFIG_FILES predconfnucs/Makefile" ;;
+    "gennucstats/Makefile") CONFIG_FILES="$CONFIG_FILES gennucstats/Makefile" ;;
+    "fastafilter/Makefile") CONFIG_FILES="$CONFIG_FILES fastafilter/Makefile" ;;
+    "BEDMerge/Makefile") CONFIG_FILES="$CONFIG_FILES BEDMerge/Makefile" ;;
+    "BEDFilter/Makefile") CONFIG_FILES="$CONFIG_FILES BEDFilter/Makefile" ;;
+    "genElementProfiles/Makefile") CONFIG_FILES="$CONFIG_FILES genElementProfiles/Makefile" ;;
+    "genzygosity/Makefile") CONFIG_FILES="$CONFIG_FILES genzygosity/Makefile" ;;
+    "genGenomeFromAGP/Makefile") CONFIG_FILES="$CONFIG_FILES genGenomeFromAGP/Makefile" ;;
+    "genmarkers/Makefile") CONFIG_FILES="$CONFIG_FILES genmarkers/Makefile" ;;
+    "HammingDist/Makefile") CONFIG_FILES="$CONFIG_FILES HammingDist/Makefile" ;;
+    "genreadsde/Makefile") CONFIG_FILES="$CONFIG_FILES genreadsde/Makefile" ;;
+    "ufilter/Makefile") CONFIG_FILES="$CONFIG_FILES ufilter/Makefile" ;;
+    "uhamming/Makefile") CONFIG_FILES="$CONFIG_FILES uhamming/Makefile" ;;
+    "genseqcandidates/Makefile") CONFIG_FILES="$CONFIG_FILES genseqcandidates/Makefile" ;;
+    "GFFfilter/Makefile") CONFIG_FILES="$CONFIG_FILES GFFfilter/Makefile" ;;
+    "loci2dist/Makefile") CONFIG_FILES="$CONFIG_FILES loci2dist/Makefile" ;;
+    "genNormWiggle/Makefile") CONFIG_FILES="$CONFIG_FILES genNormWiggle/Makefile" ;;
+    "GTFfilter/Makefile") CONFIG_FILES="$CONFIG_FILES GTFfilter/Makefile" ;;
+    "genDiffExpr/Makefile") CONFIG_FILES="$CONFIG_FILES genDiffExpr/Makefile" ;;
+    "dmpbioseq/Makefile") CONFIG_FILES="$CONFIG_FILES dmpbioseq/Makefile" ;;
+    "genpseudogenome/Makefile") CONFIG_FILES="$CONFIG_FILES genpseudogenome/Makefile" ;;
+    "usimdiffexpr/Makefile") CONFIG_FILES="$CONFIG_FILES usimdiffexpr/Makefile" ;;
+    "RNAFragSim/Makefile") CONFIG_FILES="$CONFIG_FILES RNAFragSim/Makefile" ;;
+    "mergeoverlaps/Makefile") CONFIG_FILES="$CONFIG_FILES mergeoverlaps/Makefile" ;;
+    "kanga/Makefile") CONFIG_FILES="$CONFIG_FILES kanga/Makefile" ;;
+    "kangar/Makefile") CONFIG_FILES="$CONFIG_FILES kangar/Makefile" ;;
+    "kangasr/Makefile") CONFIG_FILES="$CONFIG_FILES kangasr/Makefile" ;;
+    "kangahrdx/Makefile") CONFIG_FILES="$CONFIG_FILES kangahrdx/Makefile" ;;
+    "kangade/Makefile") CONFIG_FILES="$CONFIG_FILES kangade/Makefile" ;;
+    "kangas/Makefile") CONFIG_FILES="$CONFIG_FILES kangas/Makefile" ;;
+    "kangapr/Makefile") CONFIG_FILES="$CONFIG_FILES kangapr/Makefile" ;;
+    "csv2sqlite/Makefile") CONFIG_FILES="$CONFIG_FILES csv2sqlite/Makefile" ;;
     "biokanga/Makefile") CONFIG_FILES="$CONFIG_FILES biokanga/Makefile" ;;
+    "locmarkers/Makefile") CONFIG_FILES="$CONFIG_FILES locmarkers/Makefile" ;;
+    "PEscaffold/Makefile") CONFIG_FILES="$CONFIG_FILES PEscaffold/Makefile" ;;
+    "SSRdiscovery/Makefile") CONFIG_FILES="$CONFIG_FILES SSRdiscovery/Makefile" ;;
     "pacbiokanga/Makefile") CONFIG_FILES="$CONFIG_FILES pacbiokanga/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
@@ -6261,5 +6348,4 @@ if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: unrecognized options: $ac_unrecognized_opts" >&5
 $as_echo "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
-
 
