@@ -59,10 +59,10 @@ am__make_running_with_option = \
   test $$has_opt = yes
 am__make_dryrun = (target_option=n; $(am__make_running_with_option))
 am__make_keepgoing = (target_option=k; $(am__make_running_with_option))
-pkgdatadir = $(datadir)/biosolutions
-pkgincludedir = $(includedir)/biosolutions
-pkglibdir = $(libdir)/biosolutions
-pkglibexecdir = $(libexecdir)/biosolutions
+pkgdatadir = $(datadir)/biokanga
+pkgincludedir = $(includedir)/biokanga
+pkglibdir = $(libdir)/biokanga
+pkglibexecdir = $(libexecdir)/biokanga
 am__cd = CDPATH="$${ZSH_VERSION+.}$(PATH_SEPARATOR)" && cd
 install_sh_DATA = $(install_sh) -c -m 644
 install_sh_PROGRAM = $(install_sh) -c
@@ -223,7 +223,7 @@ LTLIBOBJS =
 MAKEINFO = makeinfo
 MKDIR_P = /bin/mkdir -p
 OBJEXT = o
-PACKAGE = biosolutions
+PACKAGE = biokanga
 PACKAGE_BUGREPORT = 
 PACKAGE_NAME = 
 PACKAGE_STRING = 
@@ -235,11 +235,11 @@ RANLIB = ranlib
 SET_MAKE = 
 SHELL = /bin/bash
 STRIP = 
-VERSION = 0.1.1
-abs_builddir = /home/ste69r/biosolutions
-abs_srcdir = /home/ste69r/biosolutions
-abs_top_builddir = /home/ste69r/biosolutions
-abs_top_srcdir = /home/ste69r/biosolutions
+VERSION = 0.9.0
+abs_builddir = /home/wha022/biosolutions
+abs_srcdir = /home/wha022/biosolutions
+abs_top_builddir = /home/wha022/biosolutions
+abs_top_srcdir = /home/wha022/biosolutions
 ac_ct_CC = gcc
 ac_ct_CXX = g++
 am__include = include
@@ -259,7 +259,7 @@ host_alias =
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /home/ste69r/install-sh
+install_sh = ${SHELL} /home/wha022/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -268,7 +268,7 @@ mandir = ${datarootdir}/man
 mkdir_p = $(MKDIR_P)
 oldincludedir = /usr/include
 pdfdir = ${docdir}
-prefix = /home/ste69r
+prefix = /home/wha022
 program_transform_name = s,x,x,
 psdir = ${docdir}
 sbindir = ${exec_prefix}/sbin
@@ -279,24 +279,7 @@ target_alias =
 top_build_prefix = 
 top_builddir = .
 top_srcdir = .
-SUBDIRS = libbiokanga libBKPLPlot genhyperconserved genbiobed \
-	  genbiomultialign splitmultifasta genhyperdropouts \
-	  genelementseq psl2csv FindShortApproxMatches locsfx \
-	  csvmerge csv2bed csv2fasta bed2csv csvfilter \
-	  locseqs gensampler gencomposition \
-	  csv2stats genloci2gene locsw \
-	  fasta2dist fasta2bed FastaToPE quickcount csv2feat genalignstats \
-	  genalignref2relloci genalignloci2core maploci2features \
-	  processcsvfiles genalignconf Loci2Phylip blast2csv genrollups \
-	  genWiggle proccentroids gencentroidmetrics SimulateMNase predconfnucs \
-	  gengoterms gengoassoc goassoc \
-	  DNAseqSitePotential RNAseqSitePotential prednucleosomes gennucstats \
-          uhamming LocateROI genDESeq genGenomeFromAGP kangarg genultras \
-	  genstructprofile genstructstats filterreads fasta2struct ufilter genseqcandidates genmarkers GFFfilter \
-	  genElementProfiles BEDMerge BEDFilter loci2dist genzygosity genNormWiggle GTFfilter genDiffExpr \
-          dmpbioseq genpseudogenome usimdiffexpr genreadsde HammingDist RNAFragSim mergeoverlaps fastafilter \
-          kangasr kangar kangahrdx kangade kangas kangapr csv2sqlite biokanga locmarkers PEscaffold SSRdiscovery pacbiokanga
-
+SUBDIRS = libbiokanga libBKPLPlot biokanga pacbiokanga
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
 
