@@ -1,0 +1,249 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{B3C27BBA-C272-4753-8859-13AED0A6A753}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>BKPLPlot</RootNamespace>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>Release64\</OutDir>
+    <IntDir>Release64\</IntDir>
+    <IncludePath>$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>Debug64\</OutDir>
+    <IntDir>Debug64\</IntDir>
+    <IncludePath>$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>
+      </FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <BrowseInformation>true</BrowseInformation>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+    <Lib>
+      <IgnoreSpecificDefaultLibraries>
+      </IgnoreSpecificDefaultLibraries>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="BKPLPlot.cpp" />
+    <ClCompile Include="csa.cpp" />
+    <ClCompile Include="dspline.cpp" />
+    <ClCompile Include="dsplint.cpp" />
+    <ClCompile Include="ltdl_win32.cpp" />
+    <ClCompile Include="mem.cpp" />
+    <ClCompile Include="mt19937ar.cpp" />
+    <ClCompile Include="pdfutils.cpp" />
+    <ClCompile Include="plaffine.cpp" />
+    <ClCompile Include="plarc.cpp" />
+    <ClCompile Include="plargs.cpp" />
+    <ClCompile Include="plbox.cpp" />
+    <ClCompile Include="plbuf.cpp" />
+    <ClCompile Include="plcont.cpp" />
+    <ClCompile Include="plcore.cpp" />
+    <ClCompile Include="plctrl.cpp" />
+    <ClCompile Include="plcvt.cpp" />
+    <ClCompile Include="pldtik.cpp" />
+    <ClCompile Include="plf2ops.cpp" />
+    <ClCompile Include="plfill.cpp" />
+    <ClCompile Include="plfreetype.cpp" />
+    <ClCompile Include="plgradient.cpp" />
+    <ClCompile Include="plgridd.cpp" />
+    <ClCompile Include="plhist.cpp" />
+    <ClCompile Include="plimage.cpp" />
+    <ClCompile Include="pllegend.cpp" />
+    <ClCompile Include="plline.cpp" />
+    <ClCompile Include="plmap.cpp" />
+    <ClCompile Include="plot3d.cpp" />
+    <ClCompile Include="plpage.cpp" />
+    <ClCompile Include="plsdef.cpp" />
+    <ClCompile Include="plshade.cpp" />
+    <ClCompile Include="plstdio.cpp" />
+    <ClCompile Include="plstripc.cpp" />
+    <ClCompile Include="plsym.cpp" />
+    <ClCompile Include="pltick.cpp" />
+    <ClCompile Include="pltime.cpp" />
+    <ClCompile Include="plvect.cpp" />
+    <ClCompile Include="plvpor.cpp" />
+    <ClCompile Include="plwind.cpp" />
+    <ClCompile Include="qsastime.cpp" />
+    <ClCompile Include="qsastime_extra.cpp" />
+    <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="svg.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="BKPLPlot.h" />
+    <ClInclude Include="csa.h" />
+    <ClInclude Include="dirent_msvc.h" />
+    <ClInclude Include="disptab.h" />
+    <ClInclude Include="drivers.h" />
+    <ClInclude Include="dspline.h" />
+    <ClInclude Include="dsplint.h" />
+    <ClInclude Include="EmbeddedPalettes.h" />
+    <ClInclude Include="ltdl_win32.h" />
+    <ClInclude Include="metadefs.h" />
+    <ClInclude Include="mt19937ar.h" />
+    <ClInclude Include="nan.h" />
+    <ClInclude Include="pdf.h" />
+    <ClInclude Include="plConfig.h" />
+    <ClInclude Include="plcore.h" />
+    <ClInclude Include="pldebug.h" />
+    <ClInclude Include="plDevs.h" />
+    <ClInclude Include="pldll.h" />
+    <ClInclude Include="plevent.h" />
+    <ClInclude Include="plfci-truetype.h" />
+    <ClInclude Include="plfci-type1.h" />
+    <ClInclude Include="plfreetype.h" />
+    <ClInclude Include="plhershey-unicode.h" />
+    <ClInclude Include="plplot.h" />
+    <ClInclude Include="plplotcanvas-hacktext.h" />
+    <ClInclude Include="plplotcanvas.h" />
+    <ClInclude Include="plplotP.h" />
+    <ClInclude Include="plplot_config.h" />
+    <ClInclude Include="plstnd5.fnt.h" />
+    <ClInclude Include="plstrm.h" />
+    <ClInclude Include="plunicode-type1.h" />
+    <ClInclude Include="plxtnd5.fnt.h" />
+    <ClInclude Include="plxwd.h" />
+    <ClInclude Include="ps.h" />
+    <ClInclude Include="qsastime.h" />
+    <ClInclude Include="qsastimedll.h" />
+    <ClInclude Include="qsastimeP.h" />
+    <ClInclude Include="qsastime_extra.h" />
+    <ClInclude Include="qt.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="tai-utc.h" />
+    <ClInclude Include="targetver.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
