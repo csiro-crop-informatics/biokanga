@@ -178,7 +178,6 @@
     <ClInclude Include="PBErrCorrect.h" />
     <ClInclude Include="PBFilter.h" />
     <ClInclude Include="PBAssemb.h" />
-    <ClInclude Include="PBSim.h" />
     <ClInclude Include="PBSWService.h" />
     <ClInclude Include="SeqStore.h" />
     <ClInclude Include="SQLiteSummaries.h" />
@@ -198,7 +197,6 @@
     <ClCompile Include="PBErrCorrect.cpp" />
     <ClCompile Include="PBFilter.cpp" />
     <ClCompile Include="PBAssemb.cpp" />
-    <ClCompile Include="PBSim.cpp" />
     <ClCompile Include="PBSWService.cpp" />
     <ClCompile Include="SeqStore.cpp" />
     <ClCompile Include="SQLiteSummaries.cpp" />
