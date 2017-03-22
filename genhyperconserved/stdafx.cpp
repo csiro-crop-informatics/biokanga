@@ -9,7 +9,7 @@
 
 //&&Str Class Implementation Include
 //The following include will bring in the non-inline Str code; do not remove!
-#include "str_implement.cpp"
-#include "str_impadvanced.cpp"
+#include "../libbiokanga/str_implement.cpp"
+#include "../libbiokanga/str_impadvanced.cpp"
 //&&End of Str Class Implementation Include
 

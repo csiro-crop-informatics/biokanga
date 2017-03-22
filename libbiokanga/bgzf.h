@@ -43,8 +43,6 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-#include "./zlib/zlib.h"
-
 #define BGZF_BLOCK_SIZE     0xff00 // make sure compressBound(BGZF_BLOCK_SIZE) < BGZF_MAX_BLOCK_SIZE
 #define BGZF_MAX_BLOCK_SIZE 0x10000
 
