@@ -5,6 +5,7 @@
 #include "./StopWatch.h"
 #include "./ErrorCodes.h"
 #include "./Endian.h"
+#include "../zlibstatic/zlib.h"
 #include "./Conformation.h"
 #include "./SeqTrans.h"
 #include "./Diagnostics.h"
@@ -30,7 +31,7 @@
 #include "./GOAssocs.h"
 #include "./GOTerms.h"
 #include "./SimpleRNG.h"
-#include "./zlib/zlib.h"
+
 #ifdef _WIN32
 #include "./MemAlloc.h"
 #endif

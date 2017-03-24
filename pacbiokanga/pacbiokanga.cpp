@@ -31,11 +31,10 @@
 
 #include "pacbiokanga.h"
 
-const char *cpszProgVer = "4.3.4";		// increment with each release
+const char *cpszProgVer = "4.3.5";		// increment with each release
 const char *cpszProcOverview = "BioKanga PacBio Processing Toolset";
 
 // Subprocesses 
-extern int ProcPBSim(int argc, char* argv[]);
 #ifdef USEPBfilter
 extern int ProcFilter(int argc, char* argv[]);
 #endif
@@ -76,7 +75,6 @@ return(pszRawText);
 }
 
 tsSubProcess SubProcesses[] = {
-	{"pbsim","Simulate Reads", "Simulate PacBio reads (NOTE: using integrated PBSIM module)", ProcPBSim },
 #ifdef USEPBfilter
 	{"filter","Filter Reads", "Filter PacBio reads for retained hairpins", ProcFilter },
 #endif

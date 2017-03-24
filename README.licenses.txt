@@ -162,21 +162,6 @@ SimpleGlob is a cross platform file name globbing library.
 
  ===============================================================================================
 
-pacbiokanga includes code derived from PBSIM PacBio reads simulator
-
-The PBSIM source code is licensed under the GNU General Public License, version 2 
-http://www.gnu.org/licenses/old-licenses/gpl-2.0.html
-
-PBSIM: PacBio reads simulator - toward accurate genome assembly 
-Yukiteru Ono, Kiyoshi Asai and Michiaki Hamada 
-Bioinformatics (2013) 29 (1) 119-121.  
-doi: 10.1093/bioinformatics/bts649 
-
-Code downloaded from https://code.google.com/archive/p/pbsim/
-
-
-=================================================================================================
-
 zlibstatic includes code derived from the zlib general purpose compression library
 
 zlib.h contains the following license statement-

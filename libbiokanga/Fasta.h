@@ -1,7 +1,5 @@
 #pragma once
 #include "./commdefs.h"
-#include "./zlib/zlib.h"
-
 
 /*
 Fastq scoring schema (from http://en.wikipedia.org/wiki/FASTQ_format )
