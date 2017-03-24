@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.26228.4
+VisualStudioVersion = 15.0.26228.9
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "genbiomultialign", "genbiomultialign\genbiomultialign.vcxproj", "{6F95EE3A-F21D-4B80-B46F-029010EE22C0}"
 	ProjectSection(ProjectDependencies) = postProject
@@ -476,8 +476,16 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FindShortApproxMatches", "F
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SimulateMNase", "SimulateMNase\SimulateMNase.vcxproj", "{5AA7570C-DB19-4505-A2CD-B1F77698D382}"
+	ProjectSection(ProjectDependencies) = postProject
+		{1993DF20-CD76-4FA0-9831-B30AF743CF54} = {1993DF20-CD76-4FA0-9831-B30AF743CF54}
+		{FA01A337-8819-434E-A920-27AB942C0B3A} = {FA01A337-8819-434E-A920-27AB942C0B3A}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "genDESeq", "genDESeq\genDESeq.vcxproj", "{6C6200DE-74B8-415B-901E-CFAC5D58EBB0}"
+	ProjectSection(ProjectDependencies) = postProject
+		{1993DF20-CD76-4FA0-9831-B30AF743CF54} = {1993DF20-CD76-4FA0-9831-B30AF743CF54}
+		{FA01A337-8819-434E-A920-27AB942C0B3A} = {FA01A337-8819-434E-A920-27AB942C0B3A}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
