@@ -8,5 +8,4 @@ WORKDIR "/biosolutions"
 RUN autoreconf -f -i
 RUN ./configure
 RUN make
-RUN biokanga --help
 
