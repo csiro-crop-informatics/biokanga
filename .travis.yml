@@ -1,1 +1,3 @@
 language: cpp
+before_script: autoreconf -f -i
+script: ./configure && make
