@@ -293,7 +293,7 @@ if (help->count > 0)
 		printf("\nNote: Parameters can be entered into a parameter file, one parameter per line.");
 		printf("\n      To invoke this parameter file then precede it's name with '@'");
 		printf("\n      e.g. %s @myparams.txt\n",gszProcName);
-		printf("\nPlease report any issues regarding usage of %s to stuart.stephen@csiro.au\n\n",gszProcName);
+		printf("\nPlease report any issues regarding usage of %s at https://github.com/csiro-crop-informatics/biokanga/issues\n\n",gszProcName);
 		return(1);
         }
 
@@ -510,7 +510,7 @@ if (help->count > 0)
 		printf("\nNote: Parameters can be entered into a parameter file, one parameter per line.");
 		printf("\n      To invoke this parameter file then precede it's name with '@'");
 		printf("\n      e.g. %s @myparams.txt\n",gszProcName);
-		printf("\nPlease report any issues regarding usage of %s to stuart.stephen@csiro.au\n\n",gszProcName);
+		printf("\nPlease report any issues regarding usage of %s at https://github.com/csiro-crop-informatics/biokanga/issues\n\n",gszProcName);
 		return(1);
         }
 
@@ -724,7 +724,7 @@ if (help->count > 0)
 		printf("\nNote: Parameters can be entered into a parameter file, one parameter per line.");
 		printf("\n      To invoke this parameter file then precede it's name with '@'");
 		printf("\n      e.g. %s @myparams.txt\n",gszProcName);
-		printf("\nPlease report any issues regarding usage of %s to stuart.stephen@csiro.au\n\n",gszProcName);
+		printf("\nPlease report any issues regarding usage of %s at https://github.com/csiro-crop-informatics/biokanga/issues\n\n",gszProcName);
 		return(1);
         }
 
