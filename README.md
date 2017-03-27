@@ -1,17 +1,13 @@
 # BioKanga 
-
 BioKanga is an integrated toolkit of high performance bioinformatics subprocesses targeting the challenges of next generation sequencing analytics. Kanga is an acronym standing for 'K-mer Adaptive Next Generation Aligner'.
 
 ## Why YAL (Yet Another Aligner)
------------------------------
 The BioKanga alignment subprocess is a highly efficient short-read aligner which incorporates an empirically derived understanding of sequence uniqueness within a target genome to enable robust alignment of next generation sequencer short read datasets in either colorspace (ABI SOLiD) or basespace (Illumina).
 Compared with other widely used aligners, BioKanga provides substantial gains in both the proportion and quality of aligned sequence reads at competitive or increased computational efficiency. Unlike most other aligners, BioKanga utilises Hamming distances between putative alignments to the targeted genome assembly for any given read as the discrimative acceptance criteria rather than relying on sequencer generated quality scores.
 
 Another primary differentiator for BioKanga is that this toolkit can process billions of reads against targeted genomes containing 100 million contigs and totalling up to 100Gbp of sequence.
 
-
 ## Toolset Components
-
 The BioKanga toolset contains a number of subprocesses, each of which is targeting a specific bioinformatics analytics task. Primary subprocesses provide functionality for:
  - Generate simulated NGS datasets
  - Quality check the raw NGS reads to identify potential processing issues
@@ -40,10 +36,9 @@ The BioKanga toolset contains a number of subprocesses, each of which is targeti
  - Generate SQLite DE Database from RNA-seq DE
  - Generate SQLite Blat alignment PSL database
 
+
 ## Build and installation
-
 ### Linux
-
 To build on linux, clone this repository, run `autoreconf`, `configure` and `make`. The following example will install the biokanga toolkit to a `bin` directory underneath the user's home directory.
 
 ```
@@ -57,17 +52,21 @@ make install
 Alternatively, the binary built for the appropriate platform can be used directly.
 
 ### Windows
-
-To build on Windows, the current version requires Visual Studio 2015 or 2017 *with build tools v140*. Open the `biokanga.sln` file in Visual Studio. Under the Build menu, select Configuration Manager. For Active solution platform, select x64. The project can then be built. By default, executables will be copied into the `Win64` directory.
+To build on Windows, the current version requires Visual Studio 2015 or 2017 **with build tools v140**. 
+1. Open the `biokanga.sln` file in Visual Studio. 
+2. Under the Build menu, select Configuration Manager. 
+3. For Active solution platform, select x64. 
+4. The project can then be built. By default, executables will be copied into the `Win64` directory.
 
 Alternatively, the windows binaries can be used directly.
 
-## Contributing
+## Documentation
+Documentation for the core functionality of biokanga and pacbiokanga is available under the `Docs` directory.
 
+## Contributing
 BioKanga is maintained by the Crop Bioinformatics and Data Science team at CSIRO in Canberra, Australia. We welcome contributions via pull requests.
 
 Please report issues on the [github project](https://github.com/csiro-crop-informatics/biokanga/issues).
 
 ## Authors
-
 BioKanga has been developed by Dr Stuart Stephen, with contributions from other team member in CSIRO.
