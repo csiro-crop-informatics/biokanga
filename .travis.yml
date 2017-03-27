@@ -1,2 +1,3 @@
 language: cpp
+before_install: apt-get install -y libgsl0-dev
 script: autoreconf -f -i && ./configure && make -k
