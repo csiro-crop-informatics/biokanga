@@ -1,0 +1,30 @@
+Release 2.76.7 Added support for reporting orphan PE reads as SE
+Release 2.76.8 Fix for PE insert size distribution report - bug was introduced in 2.76.7
+Release 2.80.0 Extended read alignment classifications and added target loci base constraint processing
+Release 2.80.1 Fix for duplicate non-aligned classification tag in SAM/BAM
+Release 2.95.0 Added NGS readset quality processing and reporting
+Release 2.97.0 Added NGS readset simulations with improvements to assembly and scaffolding processing
+Release 2.97.1 Fix for edge case when scaffolding
+Release 2.97.4 Reduced overlap K-mer sizes over fewer steps when assembling (improves throughput) and allowed upto 75 samples for control and experiment in the gendeseq subprocess
+Release 2.98.0 Limit of number of input files raised to 100 for SE and 200 (PE1 and PE2 each 100) files accepted. Rate of intermediate log progress writes reduced to 1 every 10 minutes (formerly was 1 every minute) and main thread stack size in sub-process 'scaffold' increased to 100MB
+Release 2.98.8 Added additional subprocess for loading Blat generated PSL alignments into SQLite for ease of subsequent ad Hoc queries
+Release 3.0.4  Added additional subprocess for reporting of Nxx length distributions
+Release 3.0.9  de Novo assembly and scaffolding processing improvements
+Release 3.1.0  Extends the mate pair end orientation support in the de Novo assembly and scaffolding subprocesses
+Release 3.1.1  Iterative scaffolding with different mate pair libraries now supported
+Release 3.3.5  BLAT/BLAST style DNA seeded local alignments now supported with the 'blitz' processing module
+Release 3.3.8  Relaxed stringency of minimum overlap requirements in the assembly module
+Release 3.4.0  Integrated loci remapping and reporting of regions of interest which are covered by reads
+Release 3.4.2  Added vector contaminate processing to ngsqc and filter submodules
+Release 3.4.3  Auto-switch to CSI indexes from SAI when aligning with BAM output format if any targeted sequence more than 512Mbp long
+Release 3.4.5  Read lengths increased to 16Kbp, seed fastq up to 16Kbp accepted as seed contigs when assembling, default insert sizes for PE changed to be min 100bp and max 1000bp when aligning PE.
+Release 3.4.18  Read lengths increased to 64Kbp, user can generate pseudorandom genome of up to 1Tbp and index same for benchmarking large memory host systems.
+Release 3.5.1  Improved throughput during filtering and PE ends now treated as if SE during final assembly phases
+Release 3.5.9  Bug fix for Phred score processing if enabled during the filter processing - post 3.4.x was effectively disabled
+Release 3.6.0  Bug fix for NGSQC segfault under Ubuntu 14.04 when compiled optimised and Biokanga now under GIT version control
+Release 3.7.6  Added chimeric read alignment capability and the ability to call di/tri-SNPs to the aligner.
+Release 4.3.2  PacBioKanga toolkit for processing PacBio reads forms part of this release
+               Both PacBioKanga and BioKanga are licensed under the CSIRO Open Source Software License Agreement (variation of the BSD / MIT License)
+               Copyright (c) 2017, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230. 
+               Conditions of this license are contained in the accompanying README.licenses.txt
+

@@ -1,5 +1,0 @@
-ltdl_win32.o: ltdl_win32.cpp /usr/include/stdc-predef.h stdafx.h
-
-/usr/include/stdc-predef.h:
-
-stdafx.h:

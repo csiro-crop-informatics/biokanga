@@ -1,0 +1,110 @@
+biokanga maploci 
+Map aligned reads loci to known features
+
+Version 4.2.0
+===========================
+Released December 18th 2016
+
+
+-h, --help
+	This option will display the list of options and brief help as to the
+	function of each of these options together with default values, and
+	then terminates the process
+
+-v, --version, --ver
+	This option displays the Biokanga build version and then
+	terminates
+
+-f, --FileLogLevel=<int>
+	Use this option to control the level of diagnostics written to screen
+	and logfile. Currently most log messages are written at the default
+	level of diagnostics (3)
+
+-F, --log=<file>
+	Use to specify the log file to which diagnostics are to be written.
+	If not specified then diagnostics will be written to screen only
+
+-q, --sumrslts=<file>
+	Output results summary to this SQLite3 database file
+
+-w, --experimentname=<str>
+        Specifies experiment name to use in SQLite3 database file
+
+-W, --experimentdescr=<str>
+	Specifies experiment description to use in SQLite3 database file
+
+-m, --mode=<int>
+	processing mode:
+		0 - full length attributes
+		1 - 5' attributes associations
+		2 - 5' dyad attribute associations (default = 0)
+
+-d, --dedupe
+	Dedupe the input elements (default is to process all input elements)
+
+-t, --filetype=<int>
+	Input element file format:
+		0 - auto (default)
+		1 - CSV
+		2 - BED
+		3 - SAM or BAM ('.bam' file extension)
+
+-z, --featinsts
+	Associate to individual features
+
+-x, --isoform=<int>
+	Feature isoform processing:
+		0 - report highest RPKM
+		1 - report highest total reads
+		2 - report all
+
+-y, --onecntread
+	Prioritise functional regions so that there is only one count per read
+
+-s, --strandproc=<int>
+	Strand processing:
+		0 - independent (default)
+		1 - sense
+		2 - antisense
+
+-c, --informat=<int>
+	If input CSV file processing:
+		0 - Loci
+		1 - locsfx probe
+		2 - locsfx target
+
+-i, --inloci=<file>
+	Input element loci (CSV, BED, SAM) file
+
+-I, --inbed=<file>
+	Input gene or feature biobed BED file
+
+-o, --output=<file>
+	Optional mapped element output file
+
+-O, --feats=<file>
+	Optional mapped features output file
+
+-C, --chromsumm=<file>
+	Optional chrom mapping summary output file
+
+-r, --updnstream=<int>
+	Length of 5'up or 3'down  stream regulatory region length, defaults to
+	2000), range 0..1000000
+
+-l, --minlength=<int>
+	Minimum element length (default 0)
+
+-L, --maxlength=<int>
+	Maximum element length (default 1000000)
+
+-j, --joinoverlap=<int>
+	Joins cores which only differ by this many bases in start loci
+	(default 0)
+
+Note: Options and associated parameters can be entered into an option parameter
+file, one option and it's associated parameter per line.
+To specify usage of this option paramter file to the BioKanga toolkit
+components then precede it's name with '@', e.g. biokanga maploci @myparams.txt
+
+

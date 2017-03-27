@@ -1,0 +1,58 @@
+biokanga pescaffold 
+Scaffold assembly contigs using PE read alignments
+
+Version 4.2.0
+===========================
+Released December 18th 2016
+
+
+-h, --help
+	This option will display the list of options and brief help as to the
+	function of each of these options together with default values, and
+	then terminates the process
+
+-v, --version, --ver
+	This option displays the Biokanga build version and then
+	terminates
+
+-f, --FileLogLevel=<int>
+	Use this option to control the level of diagnostics written to screen
+	and logfile. Currently most log messages are written at the default
+	level of diagnostics (3)
+
+-F, --log=<file>
+	Use to specify the log file to which diagnostics are to be written.
+	If not specified then diagnostics will be written to screen only
+
+-q, --sumrslts=<file>
+	Output results summary to this SQLite3 database file
+
+-w, --experimentname=<str>
+        Specifies experiment name to use in SQLite3 database file
+
+-W, --experimentdescr=<str>
+	Specifies experiment description to use in SQLite3 database file
+
+-m, --mode=<int>
+ 	Processing mode:
+		0 default
+
+-p, --seqidterm=<str>
+ 	Truncate sequence identifiers prefixes at rightmost instance of any one
+	of these chars (default is for no truncation)
+
+-i, --in=<file>
+ 	Input SAM or BAM ('.bam' file extension) file containing PE1 alignments
+
+-I, --in=<file>
+ 	Input SAM or BAM ('.bam' file extension) file containing PE2 alignments
+
+-o, --out=<file>
+ 	Output corelations to this CSV file
+
+Note: Options and associated parameters can be entered into an option parameter
+file, one option and it's associated parameter per line.
+To specify usage of this option paramter file to the BioKanga toolkit
+components then precede it's name with '@', e.g. biokanga pescaffold @myparams.txt
+
+

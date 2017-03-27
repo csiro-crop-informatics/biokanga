@@ -1,13 +1,10 @@
-// usimreads.cpp : Defines the entry point for the console application.
-//
 #include "stdafx.h"
-
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-
 #if _WIN32
-#include "../conservlib/commhdrs.h"
+
+#include "../libbiokanga/commhdrs.h"
 #else
 #include "../libbiokanga/commhdrs.h"
 #endif

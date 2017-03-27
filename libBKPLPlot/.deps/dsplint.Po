@@ -1,7 +1,0 @@
-dsplint.o: dsplint.cpp /usr/include/stdc-predef.h stdafx.h dsplint.h
-
-/usr/include/stdc-predef.h:
-
-stdafx.h:
-
-dsplint.h:

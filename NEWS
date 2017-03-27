@@ -1,0 +1,41 @@
+This is the public release of the source code for the 'biokanga' bioinformatics toolkit.
+Initial release was Version 2.74.3 which has now been progressively updated to Version 4.3.x
+
+Biokanga can be built for either Windows or Linux processing environments.
+
+To obtain help then type 'biokanga -h'
+
+Help for biokanga Version 3.7.6
+  BioKanga NGS Processing Toolset
+  Please specify one of the following subprocesses:
+  simreads              Generate simulated NGS readsets
+  ngsqc                 Process NGS reads and report quality scores with compositional distributions
+  fasta2nxx             Generate N10..N90 over Fasta sequences
+  filter                Filter NGS reads for sequencer errors and/or exact duplicates
+  assemb                de Novo assemble filtered reads into contigs
+  scaffold              Scaffold de Novo assembled contigs
+  index                 Generate index over genome assembly or sequences
+  kmarkers              NGS reads alignment-less K-mer derived marker sequences generation
+  prekmarkers           NGS reads alignment-less prefix K-mer derived marker sequences generation
+  pseudogenome          Concatenate sequences to create pseudo-genome assembly
+  align                 Align NGS reads to indexed genome assembly or sequences
+  pescaffold            Scaffold assembly contigs using PE read alignments
+  ssr                   Identify SSRs in multifasta sequences
+  maploci               Map aligned reads loci to known features
+  rnade                 RNA-seq differential expression analyser with optional Pearsons generation
+  gendeseq              Generate tab delimited counts file for input to DESeq or EdgeR
+  xfasta                Extract fasta sequences from multifasta file
+  mergeoverlaps         Merge PE short insert overlap reads
+  snpmarkers            SNP alignment derived marker sequences identification
+  markerseqs            Generate marker sequences from SNP loci
+  blitz                 Blat like local align genomic sequences
+  remaploci             Remap alignment loci
+  locateroi             Locate and report regions of interest
+  psl2sqlite            Generate SQLite Blat alignment Database from Blat generated PSL alignments
+  snpm2sqlite           Generate SQLite Marker Database from SNP markers
+  snps2sqlite           Generate SQLite SNP Database from aligner identified SNPs
+  de2sqlite             Generate SQLite DE Database from RNA-seq DE
+
+To obtain parameter help on any subprocess then enter that subprocess name e.g:
+biokanga filter -h
+
