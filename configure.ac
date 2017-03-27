@@ -4,7 +4,7 @@ AC_CHECK_LIB(gsl,main)
 AC_CHECK_LIB(pthread,main)
 AC_CHECK_LIB(dl,main)
 AC_CHECK_LIB(rt,main)
-PACKAGE=biosolutions
+PACKAGE=biokanga
 VERSION=4.3.5
 AM_INIT_AUTOMAKE($PACKAGE,$VERSION)
 AC_PROG_RANLIB

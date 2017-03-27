@@ -1,8 +1,0 @@
-Version 4.3.x
-===========================
-Released March 1st 2017
- 
-This directory contains the source code and building configuration files for 'biokanga' and 'pacbiokanga' - Enjoy.
-Biokanga and pacbiokanga can be natively built for either Windows with Visual Studio 2015 or for Linux with
-the standard GNU compiler toolchain. Read the INSTALL file for build details.
-
