@@ -23,7 +23,6 @@ AC_OUTPUT(Makefile libbiokanga/Makefile libBKPLPlot/Makefile genhyperconserved/M
 	 fasta2dist/Makefile quickcount/Makefile csv2feat/Makefile
 	 genalignref2relloci/Makefile genalignloci2core/Makefile maploci2features/Makefile
 	 processcsvfiles/Makefile genalignconf/Makefile Loci2Phylip/Makefile blast2csv/Makefile genrollups/Makefile
-	 gengoterms/Makefile gengoassoc/Makefile goassoc/Makefile
 	 genWiggle/Makefile gencentroidmetrics/Makefile proccentroids/Makefile DNAseqSitePotential/Makefile SimulateMNase/Makefile
 	 filterreads/Makefile prednucleosomes/Makefile RNAseqSitePotential/Makefile
 	 genDESeq/Makefile fasta2struct/Makefile kangarg/Makefile genultras/Makefile
