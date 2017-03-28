@@ -8,7 +8,6 @@ SUBDIRS = libbiokanga libBKPLPlot genhyperconserved genbiobed \
 	  genalignref2relloci genalignloci2core maploci2features \
 	  processcsvfiles genalignconf Loci2Phylip blast2csv genrollups \
 	  genWiggle proccentroids gencentroidmetrics SimulateMNase predconfnucs \
-	  gengoterms gengoassoc goassoc \
 	  DNAseqSitePotential RNAseqSitePotential prednucleosomes gennucstats \
           uhamming LocateROI genDESeq genGenomeFromAGP kangarg genultras \
 	  genstructprofile genstructstats filterreads fasta2struct ufilter genseqcandidates genmarkers GFFfilter \
