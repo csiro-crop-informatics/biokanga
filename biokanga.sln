@@ -445,8 +445,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "pacbiokanga", "pacbiokanga\
 		{B3C27BBA-C272-4753-8859-13AED0A6A753} = {B3C27BBA-C272-4753-8859-13AED0A6A753}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cblas_windows", "gsl_windows\win32\cblas.vcxproj", "{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FindShortApproxMatches", "FindShortApproxMatches\FindShortApproxMatches.vcxproj", "{B1B1208B-8B28-4C30-8593-EEA3BB2F633E}"
 	ProjectSection(ProjectDependencies) = postProject
 		{1993DF20-CD76-4FA0-9831-B30AF743CF54} = {1993DF20-CD76-4FA0-9831-B30AF743CF54}
@@ -1992,28 +1990,6 @@ Global
 		{C451A21C-9604-4F43-81C5-26FE1AF26FFA}.Template|Win32.ActiveCfg = Release|Win32
 		{C451A21C-9604-4F43-81C5-26FE1AF26FFA}.Template|Win32.Build.0 = Release|Win32
 		{C451A21C-9604-4F43-81C5-26FE1AF26FFA}.Template|x64.ActiveCfg = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Debug|Any CPU.ActiveCfg = Debug|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Debug|Mixed Platforms.Build.0 = Debug|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Debug|Win32.ActiveCfg = Debug|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Debug|Win32.Build.0 = Debug|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Debug|x64.ActiveCfg = Debug|x64
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Debug|x64.Build.0 = Debug|x64
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Release|Any CPU.ActiveCfg = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Release|Mixed Platforms.ActiveCfg = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Release|Mixed Platforms.Build.0 = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Release|Win32.ActiveCfg = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Release|Win32.Build.0 = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Release|x64.ActiveCfg = Release|x64
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Release|x64.Build.0 = Release|x64
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|Any CPU.ActiveCfg = Release|x64
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|Any CPU.Build.0 = Release|x64
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|Mixed Platforms.ActiveCfg = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|Mixed Platforms.Build.0 = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|Win32.ActiveCfg = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|Win32.Build.0 = Release|Win32
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|x64.ActiveCfg = Release|x64
-		{5A3A2F64-12A8-4DA7-A98A-EE21464EF37C}.Template|x64.Build.0 = Release|x64
 		{B1B1208B-8B28-4C30-8593-EEA3BB2F633E}.Debug|Any CPU.ActiveCfg = Debug|Win32
 		{B1B1208B-8B28-4C30-8593-EEA3BB2F633E}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
 		{B1B1208B-8B28-4C30-8593-EEA3BB2F633E}.Debug|Mixed Platforms.Build.0 = Debug|Win32
