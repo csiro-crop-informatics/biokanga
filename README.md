@@ -1,3 +1,6 @@
+https://travis-ci.org/csiro-crop-informatics/biokanga.svg?branch=master
+https://ci.appveyor.com/api/projects/status/7087y5pwrb8va0uv/branch/master?svg=true
+
 # BioKanga 
 BioKanga is an integrated toolkit of high performance bioinformatics subprocesses targeting the challenges of next generation sequencing analytics. Kanga is an acronym standing for 'K-mer Adaptive Next Generation Aligner'.
 
