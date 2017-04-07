@@ -1650,31 +1650,31 @@ else
 		if(m_CSI_depth < 5)
 			m_CSI_depth = 5;
 #ifdef _WIN32
-		m_hOutSAMfile = open(m_szBAIfileName,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
+              m_hOutBAIfile = open(m_szBAIfileName,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
 #else
-		if((m_hOutSAMfile = open(m_szBAIfileName,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
-			if(ftruncate(m_hOutSAMfile,0)!=0)
-				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",m_szBAIfileName,strerror(errno));
-				Reset();
-				return(eBSFerrCreateFile);
-				}
+              if((m_hOutBAIfile = open(m_szBAIfileName,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+                      if(ftruncate(m_hOutBAIfile,0)!=0)
+                             {
+                             gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",m_szBAIfileName,strerror(errno));
+                             Reset();
+                             return(eBSFerrCreateFile);
+                             }
 #endif
-		if(m_hOutSAMfile < 0)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"StartAlignments: unable to create/truncate output file '%s'",m_szBAIfileName);
-			Reset();
-			return(eBSFerrCreateFile);
-			}
-		char szLevel[10];
-		sprintf(szLevel,"w%d",m_ComprLev);
-		if((m_pgzOutCSIfile = bgzf_dopen(m_hOutSAMfile, szLevel))==NULL)
-			{
-			gDiagnostics.DiagOut(eDLFatal,gszProcName,"StartAlignments: unable to initialise for BGZF compression (level %d) on file '%s'",m_szBAIfileName,m_ComprLev);
-			Reset();
-			return(eBSFerrMem);
-			}
-		m_hOutSAMfile = -1;
+              if(m_hOutBAIfile < 0)
+                      {
+                     gDiagnostics.DiagOut(eDLFatal,gszProcName,"StartAlignments: unable to create/truncate output file '%s'",m_szBAIfileName);
+                      Reset();
+                      return(eBSFerrCreateFile);
+                      }
+              char szLevel[10];
+              sprintf(szLevel,"w%d",m_ComprLev);
+              if((m_pgzOutCSIfile = bgzf_dopen(m_hOutBAIfile, szLevel))==NULL)
+                      {
+                     gDiagnostics.DiagOut(eDLFatal,gszProcName,"StartAlignments: unable to initialise for BGZF compression (level %d) on file '%s'",m_szBAIfileName,m_ComprLev);
+                      Reset();
+                      return(eBSFerrMem);
+                      }
+              m_hOutBAIfile = -1;
 		m_pBAI[0] = (UINT8)'C';
 		m_pBAI[1] = (UINT8)'S';
 		m_pBAI[2] = (UINT8)'I';
