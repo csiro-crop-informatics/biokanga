@@ -37,7 +37,7 @@ const size_t cAllocSAMSize = (size_t)0x01fffffff;	// initial allocation for hold
 
 const size_t cAllocBAISize = (size_t)cMaxRptSAMSeqsThres * cMaxGeneNameLen * 10;	// initial allocation for  to hold BAI, will be realloc'd if required
 const size_t cAllocRefSeqSize = (size_t)cMaxRptSAMSeqsThres * cMaxGeneNameLen * 5;	// initial allocation for  to hold reference sequences, will be realloc'd if required
-const int cAllocBAIChunks = 10000;		// initial allocation for this many BAI chunks, will be realloc'd if more chunks required
+const int cAllocBAIChunks = 1000000;		// initial allocation for this many BAI chunks, will be realloc'd if more chunks required
 const int cNumSAIBins = 37450;          // total number of SAI bins (bins are referenced as bins 0 to 37449)
 										// Bin 0 spans a 512Mbp region,
 										// bins 1-8 span 64Mbp each
@@ -45,6 +45,7 @@ const int cNumSAIBins = 37450;          // total number of SAI bins (bins are re
 										// bins 73-584 span 1Mbp each
 										// bins 585-4680 span 128Kbp each
 										// bins span 4681-37449 span 16Kbp each
+const int cNumCSIBins = cNumSAIBins * 8; // with CSI index limited to cover at most a cMaxCSIRefSeqLen (in this implementation 2Gbp) then this number of bins are allocated
 
 const int cMaxLocateRefSeqHist = 25;		// search history for reference sequence identifiers is maintained to this depth
 
@@ -159,6 +160,7 @@ class CSAMfile
 	UINT32 m_NumChunks;						// current number of chunks
 	tsBAIChunk *m_pBAIChunks;				// to hold BAI chunks
 	UINT32 m_NumBinsWithChunks;				// number of bins with at least one chunk
+	UINT32 m_NumAllocdChunkBins;			// this number of bins have been allocated
 	tsBAIbin *m_pChunkBins;					// for each bin has number of chunks and identifies first and last chunk for that bin
 	UINT32 m_NumOf16Kbps;					// number of virtual addresses in m_p16KOfsVirtAddrs 
 	size_t m_Alloc16KOfsVirtAddrsSize;       // currently allocated size, in bytes, of m_p16KOfsVirtAddrs 
