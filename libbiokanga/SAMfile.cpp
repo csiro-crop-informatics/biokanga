@@ -196,6 +196,7 @@ m_CurBAILen = 0;
 m_NumBAISeqNames = 0;
 
 m_NumBinsWithChunks = 0;
+m_NumAllocdChunkBins = 0;
 m_AllocBAIChunks = 0;
 m_NumChunks = 0;
 m_NumOf16Kbps = 0;
@@ -1468,13 +1469,18 @@ if(SAMType >= eSFTBAM_BAI)
 		}
 	m_AllocBAIChunks = cAllocBAIChunks;
 
-	if((m_pChunkBins = (tsBAIbin *)malloc(sizeof(tsBAIbin) * cNumSAIBins))==NULL)
+	if(SAMType == eSFTBAM_BAI)
+		m_NumAllocdChunkBins = cNumSAIBins;
+	else
+		m_NumAllocdChunkBins = cNumCSIBins;
+
+	if((m_pChunkBins = (tsBAIbin *)malloc(sizeof(tsBAIbin) * m_NumAllocdChunkBins))==NULL)
 		{
 		gDiagnostics.DiagOut(eDLFatal,gszProcName,"Create: unable to alloc memory for BAI or CSI chunks");
 		Reset();
 		return(eBSFerrMem);
 		}
-	memset(m_pChunkBins,0,sizeof(tsBAIbin) * cNumSAIBins);
+	memset(m_pChunkBins,0,sizeof(tsBAIbin) * m_NumAllocdChunkBins);
 	}
 
 // alloc to hold reference sequence names
@@ -1595,9 +1601,20 @@ if(m_SAMFileType >= eSFTBAM_BAI)
 	{
 	if(m_SAMFileType == eSFTBAM_BAI && m_MaxRefSeqLen >= cMaxSAIRefSeqLen)
 		{
+		gDiagnostics.DiagOut(eDLInfo,gszProcName,"StartAlignments: Forced generation of CSI instead of SAI index file as alignments to sequence lengths (max %lld) more than SAI 512Mbp limit",m_MaxRefSeqLen);
+		free(m_pChunkBins);
+		m_pChunkBins = NULL;
 		m_SAMFileType = eSFTBAM_CSI;
-		gDiagnostics.DiagOut(eDLInfo,gszProcName,"StartAlignments: Generating CSI instead of SAI index file as alignments to sequence lengths (max %lld) more than SAI 512Mbp limit",m_MaxRefSeqLen);
+		m_NumAllocdChunkBins = cNumCSIBins;
+		if((m_pChunkBins = (tsBAIbin *)malloc(sizeof(tsBAIbin) * m_NumAllocdChunkBins))==NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Create: unable to alloc memory for CSI chunks");
+			Reset();
+			return(eBSFerrMem);
+			}
+		memset(m_pChunkBins,0,sizeof(tsBAIbin) * m_NumAllocdChunkBins);
 		}
+
 	if(m_SAMFileType == eSFTBAM_BAI)
 		strcat(m_szBAIfileName,".bai");
 	else
@@ -1650,17 +1667,17 @@ else
 		if(m_CSI_depth < 5)
 			m_CSI_depth = 5;
 #ifdef _WIN32
-		m_hOutSAMfile = open(m_szBAIfileName,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
+		m_hOutBAIfile = open(m_szBAIfileName,( O_WRONLY | _O_BINARY | _O_SEQUENTIAL | _O_CREAT | _O_TRUNC),(_S_IREAD | _S_IWRITE));
 #else
-		if((m_hOutSAMfile = open(m_szBAIfileName,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
-			if(ftruncate(m_hOutSAMfile,0)!=0)
+		if((m_hOutBAIfile = open(m_szBAIfileName,O_WRONLY | O_CREAT,S_IREAD | S_IWRITE))!=-1)
+			if(ftruncate(m_hOutBAIfile,0)!=0)
 				{
 				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Unable to truncate %s - %s",m_szBAIfileName,strerror(errno));
 				Reset();
 				return(eBSFerrCreateFile);
 				}
 #endif
-		if(m_hOutSAMfile < 0)
+		if(m_hOutBAIfile < 0)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"StartAlignments: unable to create/truncate output file '%s'",m_szBAIfileName);
 			Reset();
@@ -1668,13 +1685,13 @@ else
 			}
 		char szLevel[10];
 		sprintf(szLevel,"w%d",m_ComprLev);
-		if((m_pgzOutCSIfile = bgzf_dopen(m_hOutSAMfile, szLevel))==NULL)
+		if((m_pgzOutCSIfile = bgzf_dopen(m_hOutBAIfile, szLevel))==NULL)
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"StartAlignments: unable to initialise for BGZF compression (level %d) on file '%s'",m_szBAIfileName,m_ComprLev);
 			Reset();
 			return(eBSFerrMem);
 			}
-		m_hOutSAMfile = -1;
+		m_hOutBAIfile = -1;
 		m_pBAI[0] = (UINT8)'C';
 		m_pBAI[1] = (UINT8)'S';
 		m_pBAI[2] = (UINT8)'I';
@@ -1843,7 +1860,7 @@ m_CurBAILen += 4;
 if(m_NumBinsWithChunks > 0)
 	{
 	pBAIbin = m_pChunkBins;
-	for(BinIdx = 0; BinIdx < cNumSAIBins; BinIdx++,pBAIbin++)
+	for(BinIdx = 0; BinIdx < (int)m_NumAllocdChunkBins; BinIdx++,pBAIbin++)
 		{
 		if(pBAIbin->NumChunks)
 			{
@@ -2285,7 +2302,7 @@ else   // BAM processing
 				{
 				if(m_NumChunks)
 					{
-					memset(m_pChunkBins,0,sizeof(tsBAIbin) * cNumSAIBins);
+					memset(m_pChunkBins,0,sizeof(tsBAIbin) * m_NumAllocdChunkBins);
 					m_NumChunks = 0;
 					}
 
@@ -2312,7 +2329,7 @@ else   // BAM processing
 				UpdateSAIIndex();
 				if(m_NumChunks)
 					{
-					memset(m_pChunkBins,0,sizeof(tsBAIbin) * cNumSAIBins);
+					memset(m_pChunkBins,0,sizeof(tsBAIbin) * m_NumAllocdChunkBins);
 					m_NumChunks = 0;
 					}
 				if(m_NumOf16Kbps)
