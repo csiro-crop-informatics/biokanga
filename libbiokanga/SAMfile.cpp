@@ -1702,7 +1702,7 @@ else
 // if generating a BAM file then need to add the sequence names 
 if(m_SAMFileType >= eSFTBAM)
 	{
-	m_CurBAMLen += sprintf((char *)&m_pBAM[m_CurBAMLen],"\n@PG\tID:%s\tVN:%s",gszProcName,m_szVer); 
+	m_CurBAMLen += sprintf((char *)&m_pBAM[m_CurBAMLen],"\n@PG\tID:%s\tVN:%s\n",gszProcName,m_szVer); 
 	*(UINT32 *)&m_pBAM[4] = (UINT32)(m_CurBAMLen - 8);
 	*(UINT32 *)&m_pBAM[m_CurBAMLen] = m_NumRefSeqNames;
 	m_CurBAMLen += 4;
