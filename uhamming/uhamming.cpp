@@ -2379,7 +2379,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumProcThreads; ThreadIdx++)
 		ApproxNumHammings = HammProcState.ApproxNumHammings;
 		pthread_mutex_unlock(&m_hMtxThreadParams);
 		if(ApproxNumChroms > PrevApproxNumChroms || ApproxNumHammings > PrevApproxNumHammings)
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %llu K-mers  processed from %d sequences",ApproxNumHammings,ApproxNumChroms);
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %llu K-mers processed from %d sequences",ApproxNumHammings,ApproxNumChroms);
 		PrevApproxNumChroms = ApproxNumChroms;
 		PrevApproxNumHammings = ApproxNumHammings;
 		ts.tv_sec += 60;
