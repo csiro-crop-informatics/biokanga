@@ -116,7 +116,7 @@ if (help->count > 0)
         arg_print_syntax(stdout,argtable,"\n");
         arg_print_glossary(stdout,argtable,"  %-25s %s\n");
 		printf("\nNote: Parameters can be entered into a parameter file, one parameter per line.");
-		printf("\n      To invoke this parameter file then precede it's name with '@'");
+		printf("\n      To invoke this parameter file then precede its name with '@'");
 		printf("\n      e.g. %s %s @myparams.txt\n",gszProcName,gpszSubProcess->pszName);
 		printf("\nPlease report any issues regarding usage of %s at https://github.com/csiro-crop-informatics/biokanga/issues\n\n",gszProcName);
 		return(1);
