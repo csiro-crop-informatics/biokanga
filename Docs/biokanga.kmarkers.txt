@@ -77,6 +77,6 @@ Released December 18th 2016
 Note: Options and associated parameters can be entered into an option parameter
 file, one option and it's associated parameter per line.
 To specify usage of this option paramter file to the BioKanga toolkit
-components then precede it's name with '@', e.g. biokanga kmarkers @myparams.txt
+components then precede its name with '@', e.g. biokanga kmarkers @myparams.txt
 
 
