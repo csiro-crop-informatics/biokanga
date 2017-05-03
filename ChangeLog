@@ -24,7 +24,7 @@ Release 3.5.9  Bug fix for Phred score processing if enabled during the filter p
 Release 3.6.0  Bug fix for NGSQC segfault under Ubuntu 14.04 when compiled optimised and Biokanga now under GIT version control
 Release 3.7.6  Added chimeric read alignment capability and the ability to call di/tri-SNPs to the aligner.
 Release 4.3.2  PacBioKanga toolkit for processing PacBio reads forms part of this release
-               Both PacBioKanga and BioKanga are licensed under the CSIRO Open Source Software License Agreement (variation of the BSD / MIT License)
+               Both PacBioKanga and BioKanga are licensed under the CSIRO Open Source Software License Agreement (GPLv3)
                Copyright (c) 2017, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230. 
                Conditions of this license are contained in the accompanying README.licenses.txt
 
