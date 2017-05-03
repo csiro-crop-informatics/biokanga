@@ -31,4 +31,5 @@ AC_OUTPUT(Makefile libbiokanga/Makefile libBKPLPlot/Makefile genhyperconserved/M
 	 HammingDist/Makefile ufilter/Makefile uhamming/Makefile genseqcandidates/Makefile GFFfilter/Makefile loci2dist/Makefile
          genNormWiggle/Makefile GTFfilter/Makefile dmpbioseq/Makefile genpseudogenome/Makefile RNAFragSim/Makefile 
          kangar/Makefile kangahrdx/Makefile kangapr/Makefile
-	 csv2sqlite/Makefile biokanga/Makefile locmarkers/Makefile PEscaffold/Makefile SSRdiscovery/Makefile pacbiokanga/Makefile )
+	 csv2sqlite/Makefile biokanga/Makefile locmarkers/Makefile PEscaffold/Makefile SSRdiscovery/Makefile pacbiokanga/Makefile
+	 genbioseq/Makefile)
