@@ -1,7 +1,7 @@
 /*
- * CSIRO Open Source Software License Agreement (variation of the BSD / MIT License)
+ * CSIRO Open Source Software License Agreement (GPLv3)
  * Copyright (c) 2017, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230.
- * See LICENCE for the complete licence information (https://github.com/csiro-crop-informatics/biokanga/LICENSE)
+ * See LICENSE for the complete license information (https://github.com/csiro-crop-informatics/biokanga/LICENSE)
  * Contact: Alex Whan <alex.whan@csiro.au>
  */
 
@@ -123,7 +123,7 @@ if (help->count > 0)
         arg_print_syntax(stdout,argtable,"\n");
         arg_print_glossary(stdout,argtable,"  %-25s %s\n");
 		printf("\nNote: Parameters can be entered into a parameter file, one parameter per line.");
-		printf("\n      To invoke this parameter file then precede it's name with '@'");
+		printf("\n      To invoke this parameter file then precede its name with '@'");
 		printf("\n      e.g. %s %s @myparams.txt\n",gszProcName,gpszSubProcess->pszName);
 		printf("\nPlease report any issues regarding usage of %s at https://github.com/csiro-crop-informatics/biokanga/issues\n\n",gszProcName);
 		return(1);

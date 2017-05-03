@@ -13,5 +13,6 @@ SUBDIRS = libbiokanga libBKPLPlot genhyperconserved genbiobed \
 	  genstructprofile genstructstats filterreads fasta2struct ufilter genseqcandidates genmarkers GFFfilter \
 	  genElementProfiles BEDMerge BEDFilter loci2dist genzygosity genNormWiggle GTFfilter \
           dmpbioseq genpseudogenome HammingDist RNAFragSim fastafilter \
-          kangar kangahrdx kangapr csv2sqlite biokanga locmarkers PEscaffold SSRdiscovery pacbiokanga
+          kangar kangahrdx kangapr csv2sqlite biokanga locmarkers PEscaffold SSRdiscovery pacbiokanga \
+          genbioseq
 AUTOMAKE_OPTIONS = foreign

@@ -263,7 +263,7 @@ if (help->count > 0)
         arg_print_syntax(stdout,argtable,"\n");
         arg_print_glossary(stdout,argtable,"  %-25s %s\n");
 		printf("\nNote: Parameters can be entered into a parameter file, one parameter per line.");
-		printf("\n      To invoke this parameter file then precede it's name with '@'");
+		printf("\n      To invoke this parameter file then precede its name with '@'");
 		printf("\n      e.g. %s @myparams.txt\n",gszProcName);
 		printf("\nPlease report any issues regarding usage of %s at https://github.com/csiro-crop-informatics/biokanga/issues\n\n",gszProcName);
 		exit(1);
@@ -2379,7 +2379,7 @@ for(ThreadIdx = 0; ThreadIdx < m_NumProcThreads; ThreadIdx++)
 		ApproxNumHammings = HammProcState.ApproxNumHammings;
 		pthread_mutex_unlock(&m_hMtxThreadParams);
 		if(ApproxNumChroms > PrevApproxNumChroms || ApproxNumHammings > PrevApproxNumHammings)
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %llu K-mers  processed from %d sequences",ApproxNumHammings,ApproxNumChroms);
+			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Progress: %llu K-mers processed from %d sequences",ApproxNumHammings,ApproxNumChroms);
 		PrevApproxNumChroms = ApproxNumChroms;
 		PrevApproxNumHammings = ApproxNumHammings;
 		ts.tv_sec += 60;

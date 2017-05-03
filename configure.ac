@@ -5,7 +5,7 @@ AC_CHECK_LIB(pthread,main)
 AC_CHECK_LIB(dl,main)
 AC_CHECK_LIB(rt,main)
 PACKAGE=biokanga
-VERSION=4.3.5
+VERSION=4.3.6
 AM_INIT_AUTOMAKE($PACKAGE,$VERSION)
 AC_PROG_RANLIB
 AC_CONFIG_HEADERS(config.h)
@@ -31,4 +31,5 @@ AC_OUTPUT(Makefile libbiokanga/Makefile libBKPLPlot/Makefile genhyperconserved/M
 	 HammingDist/Makefile ufilter/Makefile uhamming/Makefile genseqcandidates/Makefile GFFfilter/Makefile loci2dist/Makefile
          genNormWiggle/Makefile GTFfilter/Makefile dmpbioseq/Makefile genpseudogenome/Makefile RNAFragSim/Makefile 
          kangar/Makefile kangahrdx/Makefile kangapr/Makefile
-	 csv2sqlite/Makefile biokanga/Makefile locmarkers/Makefile PEscaffold/Makefile SSRdiscovery/Makefile pacbiokanga/Makefile )
+	 csv2sqlite/Makefile biokanga/Makefile locmarkers/Makefile PEscaffold/Makefile SSRdiscovery/Makefile pacbiokanga/Makefile
+	 genbioseq/Makefile)

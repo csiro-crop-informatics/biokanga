@@ -5,7 +5,6 @@
 BioKanga is an integrated toolkit of high performance bioinformatics subprocesses targeting the challenges of next generation sequencing analytics. Kanga is an acronym standing for 'K-mer Adaptive Next Generation Aligner'.
 
 ## Why YAL (Yet Another Aligner)
-The BioKanga alignment subprocess is a highly efficient short-read aligner which incorporates an empirically derived understanding of sequence uniqueness within a target genome to enable robust alignment of next generation sequencer short read datasets in either colorspace (ABI SOLiD) or basespace (Illumina).
 Compared with other widely used aligners, BioKanga provides substantial gains in both the proportion and quality of aligned sequence reads at competitive or increased computational efficiency. Unlike most other aligners, BioKanga utilises Hamming distances between putative alignments to the targeted genome assembly for any given read as the discrimative acceptance criteria rather than relying on sequencer generated quality scores.
 
 Another primary differentiator for BioKanga is that this toolkit can process billions of reads against targeted genomes containing 100 million contigs and totalling up to 100Gbp of sequence.
@@ -67,8 +66,21 @@ Alternatively, the windows binaries can be used directly.
 Documentation for the core functionality of biokanga and pacbiokanga is available under the `Docs` directory.
 
 ## Contributing
-BioKanga is maintained by the Crop Bioinformatics and Data Science team at CSIRO in Canberra, Australia. We welcome contributions via pull requests.
+BioKanga is maintained by the Crop Bioinformatics and Data Science team at CSIRO in Canberra, Australia. 
 
+Contributions are most welcome. To contribute, follow these steps.
+
+1. Fork biokanga into your own repository ([more information](https://help.github.com/articles/about-forks/))
+2. Clone and enter the repository to your development machine
+3. Checkout the `dev` branch
+4. Make and checkout a new branch for your work (`git checkout -b great-new-feature`)
+5. Make regular commits on your new branch
+6. Push your branch back to your github repository (`git push origin great-new-feature`)
+7. Create a pull request to the `dev` branch of the csiro-crop-informatics/biokanga repository ([more information](https://help.github.com/articles/creating-a-pull-request/))
+8. If you're work is related to an existing issue, refer to the issue in the pull request comment
+
+
+## Issues
 Please report issues on the [github project](https://github.com/csiro-crop-informatics/biokanga/issues).
 
 ## Authors
