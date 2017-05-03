@@ -54,9 +54,9 @@
 
     </ol>
 
-    @section licence MIT LICENCE
+    @section license MIT LICENSE
 
-    The licence text below is the boilerplate "MIT Licence" used from:
+    The license text below is the boilerplate "MIT Licence" used from:
     http://www.opensource.org/licenses/mit-license.php
 
     Copyright (c) 2006-2007, Brodie Thiesfield
