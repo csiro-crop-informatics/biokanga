@@ -558,14 +558,14 @@ for(ElID = 1; ElID <= m_NumEls; ElID++)
 			NumFeatsOverlap = 0;
 			do
 				{
-				FeatID=m_pBiobed->LocateFeatureIDinRangeOnChrom(ChromID,	// feature is on which chromsome
+				FeatID=m_pBiobed->LocateFeatureIDinRangeOnChrom(ChromID,	// feature is on which chromosome
 										 CoreStartLoci,						// feature must end on or after Start
 										 CoreEndLoci,						// and start on or before End 
 										 NumFeatsOverlap+1);				// Ith instance to return (1..n)
 
 				if(FeatID > 0 && m_pFeatCntDists != NULL)
 					{
-					Features = m_pBiobed->GetFeatureBits(ChromID,			// feature is on which chromsome
+					Features = m_pBiobed->GetFeatureBits(ChromID,			// feature is on which chromosome
 									 CoreStartLoci,							// feature must end on or after Start
 									 CoreEndLoci,							// and start on or before End
 									cRegionFeatBits,
@@ -619,7 +619,7 @@ for(ElID = 1; ElID <= m_NumEls; ElID++)
 						}
 					}
 				
-				AccumFeatures = m_pBiobed->GetFeatureBits(ChromID,	  // feature is on which chromsome
+				AccumFeatures = m_pBiobed->GetFeatureBits(ChromID,	  // feature is on which chromosome
 									 CoreStartLoci,       // feature must end on or after Start
 									 CoreEndLoci,		  // and start on or before End
 									cRegionFeatBits,
