@@ -897,7 +897,7 @@ teBSFrsltCodes Rslt;
 if(pszFile == NULL || *pszFile == '\0') // validate parameters
 	return(eBSFerrParams);
 
-Reset(false);						// reset context in case file still opened
+Reset(false);				// reset context in case file still opened
 
 #ifdef _WIN32
 if(!bCreate)
@@ -1101,6 +1101,235 @@ m_CASSeqFlags = 0;
 
 return(eBSFSuccess);
 }
+
+// Fasta2InMemSfxArray
+// Parse input fasta format file into an in-memory suffix array
+// Suffix array can then be accessed as if read from a pre-generated suffix array file
+int
+CSfxArrayV3::Fasta2InMemSfxArray(char *pszFile,	// generate in-memory suffix array from this fasta file
+	UINT32 MinSeqLen,				// skipping sequences which are less than this length
+	UINT32 MaxSeqLen,				// skipping sequences which are longer than this length
+	bool bBisulfite,				// true if Bisulfite
+	bool bColorspace)				// true if colorspace
+{
+CFasta Fasta;
+unsigned char *pSeqBuff;
+unsigned char *pMskBase;
+UINT32 MskIdx;
+size_t BuffOfs;
+size_t AllocdBuffSize;
+size_t AvailBuffSize;
+char szName[cBSFSourceSize];
+char szDescription[cBSFDescriptionSize];
+UINT32 SeqLen;
+int Descrlen;
+bool bFirstEntry;
+bool bEntryCreated;
+int Rslt;
+int SeqID;
+UINT32 NumSeqsUnderlength;
+UINT32 NumSeqsOverlength;
+
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Fasta2InMemSfxArray: generating in-memory suffix array from fasta format file '%s'", pszFile);
+
+// if not specified then default MinSeqLen to be cMinAllowSeqLen and MaxSeqLen to be cMaxAllowSeqLen
+if(MinSeqLen == 0)
+	MinSeqLen = cMinAllowInMemSeqLen;
+if(MaxSeqLen == 0)
+	MaxSeqLen = cMaxAllowInMemSeqLen;
+
+if(pszFile == NULL || pszFile[0] == '\0')
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: fasta filename not specified");
+	return(eBSFerrParams);
+	}
+
+if(MinSeqLen < cMinAllowInMemSeqLen || MaxSeqLen > cMaxAllowInMemSeqLen ||
+	MinSeqLen > MaxSeqLen)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: MinSeqLen (%u) and/or MaxSeqLen (%u) parameter error", MinSeqLen, MaxSeqLen);
+	return(eBSFerrParams);
+	}
+
+// expecting input file to be in fasta format
+if ((Rslt = Fasta.Open(pszFile, true)) != eBSFSuccess)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: Unable to open '%s' [%s] %s", pszFile, Fasta.ErrText((teBSFrsltCodes)Rslt), Fasta.GetErrMsg());
+	return(Rslt);
+	}
+
+// ensure initiated for in memory suffix processing
+Open(bBisulfite, bColorspace);
+
+AllocdBuffSize = (size_t)cMaxMemSfxSeqAlloc;
+// note malloc is used as can then simply realloc to expand as may later be required
+if ((pSeqBuff = (unsigned char *)malloc(AllocdBuffSize)) == NULL)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: Unable to allocate memory (%u bytes) for sequence buffer", (UINT32)AllocdBuffSize);
+	Fasta.Close();
+	return(eBSFerrMem);
+	}
+AvailBuffSize = AllocdBuffSize;
+
+bFirstEntry = true;
+bEntryCreated = false;
+SeqID = 0;
+BuffOfs = 0;
+NumSeqsUnderlength = 0;
+NumSeqsOverlength = 0;
+while ((Rslt = SeqLen = Fasta.ReadSequence(&pSeqBuff[BuffOfs], (int)min(AvailBuffSize, (size_t)cMaxMemSfxSeqAlloc), true, false)) > eBSFSuccess)
+	{
+	if (SeqLen == eBSFFastaDescr)		// just read a descriptor line
+		{
+		SeqID++;
+		if (bEntryCreated)				// add any previous entry
+			{
+			if (BuffOfs < (size_t)MinSeqLen || BuffOfs >(size_t)MaxSeqLen)
+				{
+				if(BuffOfs < (size_t)MinSeqLen)
+					NumSeqsUnderlength += 1;
+				else
+					NumSeqsOverlength += 1;
+				}
+			else
+				if ((Rslt = AddEntry(szName, pSeqBuff, (UINT32)BuffOfs)) < eBSFSuccess)
+					{
+					gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: AddEntry() error %d %s", Rslt, GetErrMsg());
+					if (pSeqBuff != NULL)
+						free(pSeqBuff);
+					Reset(false);
+					return(Rslt);
+					}
+			Rslt = eBSFSuccess;
+			}
+		Descrlen = Fasta.ReadDescriptor(szDescription, cBSFDescriptionSize);
+			// An assumption - will one day bite real hard - is that the
+			// fasta descriptor line starts with some form of unique identifier.
+			// Use this identifier as the entry name.
+		if (sscanf(szDescription, " %s[ ,]", szName) != 1)
+			sprintf(szName, "%s.%d", pszFile, ++SeqID);
+
+		bFirstEntry = false;
+		bEntryCreated = true;
+		BuffOfs = 0;
+		continue;
+		}
+	else
+		if (bFirstEntry)	// if there was no descriptor then dummy up one...
+			{
+			SeqID++;
+			sprintf(szName, "%s.%d", pszFile, SeqID);
+			strcpy(szDescription, "No Description provided");
+			bFirstEntry = false;
+			bEntryCreated = true;
+			}
+
+		// remove any repeat masking flags so that sorts can actually sort
+		// if run of more than 25 Ns and at least 5 Ns to end of buffer then randomly mutate
+		// every 13th N
+		//	e.g <25Ns>r<12Ns>r<12Ns> where r is a pseudorandom base
+	pMskBase = &pSeqBuff[BuffOfs];
+	int SeqNs = 0;
+	for (MskIdx = 0; MskIdx < SeqLen; MskIdx++, pMskBase++)
+		{
+		*pMskBase &= ~cRptMskFlg;
+		if (*pMskBase == eBaseN && (MskIdx + 5) < SeqLen)
+			{
+			if (++SeqNs > 25 &&
+					pMskBase[1] == eBaseN &&
+					pMskBase[2] == eBaseN &&
+					pMskBase[3] == eBaseN &&
+					pMskBase[4] == eBaseN)
+				{
+				if (!(SeqNs % 13))	// mutate every 13th
+					*pMskBase = rand() % 4;
+				}
+			}
+		else
+			SeqNs = 0;
+		}
+
+	BuffOfs += SeqLen;
+	AvailBuffSize -= SeqLen;
+	if (AvailBuffSize < (size_t)(cMaxMemSfxSeqAlloc / 8))
+		{
+		size_t NewSize = (size_t)cMaxMemSfxSeqAlloc + AllocdBuffSize;
+		unsigned char *pTmp;
+		if ((pTmp = (unsigned char *)realloc(pSeqBuff, NewSize)) == NULL)
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: Unable to reallocate memory (%u bytes) for sequence buffer", (UINT32)NewSize);
+			if (pSeqBuff != NULL)
+				free(pSeqBuff);
+			Reset(false);
+			return(eBSFerrMem);
+			}
+		pSeqBuff = pTmp;
+		AllocdBuffSize = NewSize;
+		AvailBuffSize = AllocdBuffSize - BuffOfs;
+		}
+	}
+
+if (Rslt >= eBSFSuccess && bEntryCreated && BuffOfs > 0)			// close entry
+	{
+	if (BuffOfs < (size_t)MinSeqLen || BuffOfs >(size_t)MaxSeqLen)
+		{
+		if (BuffOfs < (size_t)MinSeqLen)
+			NumSeqsUnderlength += 1;
+		else
+			NumSeqsOverlength += 1;
+		Rslt = eBSFSuccess;
+		}
+	else
+		{
+		if ((Rslt = AddEntry(szName, pSeqBuff, (UINT32)BuffOfs)) < eBSFSuccess)
+			{
+			gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: AddEntry error %d %s", Rslt, GetErrMsg());
+			if (pSeqBuff != NULL)
+				free(pSeqBuff);
+			Reset(false);
+			return(Rslt);
+			}
+		else
+			Rslt = eBSFSuccess;
+		}
+	}
+if (pSeqBuff != NULL)
+	free(pSeqBuff);
+
+if(NumSeqsUnderlength)
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Fasta2InMemSfxArray: NumSeqsUnderlength %u", NumSeqsUnderlength);
+if (NumSeqsOverlength)
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "Fasta2InMemSfxArray: NumSeqsOverlength %u", NumSeqsOverlength);
+
+if (m_pEntriesBlock->NumEntries == 0)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: No sequences accepted for indexing");
+	Close(false);
+	return(eBSFerrEntry);
+	}
+
+int NumDupEntries;
+UINT32 DupEntries[10];
+char szDupEntry[100];
+
+// check for any duplicate entry names
+if ((NumDupEntries = ChkDupEntries(10, &DupEntries[0])) > 0)
+	{
+	while (NumDupEntries--)
+		{
+		GetIdentName(DupEntries[NumDupEntries], sizeof(szDupEntry) - 1, szDupEntry); // get sequence name for specified entry identifier
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "Fasta2InMemSfxArray: duplicate sequence entry name '%s' in file '%s'", szDupEntry, pszFile);
+		}
+	Close(false);
+	return(eBSFerrFastqSeqID);
+	}
+
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Fasta2InMemSfxArray:  sorting suffix array...");
+Finalise();
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Fasta2InMemSfxArray:  completed sorting suffix array");
+return(eBSFSuccess);
+}
+
 
 
 

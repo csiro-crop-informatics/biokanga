@@ -21,7 +21,7 @@
 #include "../libbiokanga/commhdrs.h"
 #endif
 
-#define _DISNPS_ 1    // experimental, exploring the utility of generating DiSNPs
+#define _DISNPS_ 1    // experimental, exploring the utility of generating DiSNPs and TriSNPs
 
 #include "biokanga.h"
 #include "Aligner.h"
@@ -505,9 +505,9 @@ m_MinReadsLen = MinReadsLen;
 m_AvReadsLen = AvReadsLen;
 if(gProcessingID > 0)
 	{
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"ReadLen",ePTInt32,sizeof(AvReadsLen),"MeanLen",&AvReadsLen);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"ReadLen",ePTInt32,sizeof(MinReadsLen),"MinLen",&MinReadsLen);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"ReadLen",ePTInt32,sizeof(MaxReadsLen),"MaxLen",&MaxReadsLen);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"ReadLen",ePTInt32,sizeof(AvReadsLen),"MeanLen",&AvReadsLen);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"ReadLen",ePTInt32,sizeof(MinReadsLen),"MinLen",&MinReadsLen);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"ReadLen",ePTInt32,sizeof(MaxReadsLen),"MaxLen",&MaxReadsLen);
 	}
 
 if(m_InitalAlignSubs != 0)
@@ -522,14 +522,14 @@ if(m_InitalAlignSubs != 0)
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Typical allowed aligner induced substitutions was: %d (min: %d, max: %d)", MeanSubs, MinSubs, MaxSubs);
 	if(gProcessingID > 0)
 		{
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MeanSubs),"MeanSubs",&MeanSubs);
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MinSubs),"MinSubs",&MinSubs);
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MaxSubs),"MaxSubs",&MaxSubs);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MeanSubs),"MeanSubs",&MeanSubs);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MinSubs),"MinSubs",&MinSubs);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MaxSubs),"MaxSubs",&MaxSubs);
 		}
 	}
 else
 	if(gProcessingID > 0)
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MaxSubs),"MeanSubs",&m_InitalAlignSubs);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"AllowedSubs",ePTInt32,sizeof(MaxSubs),"MeanSubs",&m_InitalAlignSubs);
  
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Provisionally accepted %d aligned reads (%d uniquely, %d aligning to multiloci) aligning to a total of %d loci", m_TotAcceptedAsAligned,m_TotAcceptedAsUniqueAligned,m_TotAcceptedAsMultiAligned,m_TotLociAligned);
 
@@ -764,7 +764,7 @@ if(Rslt >= eBSFSuccess && m_NARAccepted && MinSNPreads > 0 && m_hSNPfile != -1)
 		}
 	}
 if(gProcessingID != 0)
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"SNPs",ePTInt32,sizeof(AvReadsLen),"Cnt",&m_TotNumSNPs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"SNPs",ePTInt32,sizeof(AvReadsLen),"Cnt",&m_TotNumSNPs);
 Reset(Rslt >= eBSFSuccess ? true : false);
 return(Rslt);
 }
@@ -1801,8 +1801,8 @@ if(MinFlankExacts > 0)	// do  3' and 5' autotrim? Note that currently can't trim
 
 	if(gProcessingID)
 		{
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimPlusTrimed),"5' trimmed",&m_ElimPlusTrimed);
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimMinusTrimed),"3' trimmed",&m_ElimMinusTrimed);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimPlusTrimed),"5' trimmed",&m_ElimPlusTrimed);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtering",ePTInt32,sizeof(m_ElimMinusTrimed),"3' trimmed",&m_ElimMinusTrimed);
 		}
 	}
 return(eBSFSuccess);
@@ -2097,9 +2097,9 @@ if((Rslt=SortReadHits(eRSMHitMatch,false,true)) < eBSFSuccess)
 
 if(gProcessingID)
 	{
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PCR5PrimerCorrect",ePTInt32,sizeof(NumCorrectedReads),"NumCorrectedReads",&NumCorrectedReads);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PCR5PrimerCorrect",ePTInt32,sizeof(NumCorrectedBases),"NumCorrectedBases",&NumCorrectedBases);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PCR5PrimerCorrect",ePTInt32,sizeof(NumUnacceptedReads),"NumUnacceptedReads",&NumUnacceptedReads);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PCR5PrimerCorrect",ePTInt32,sizeof(NumCorrectedReads),"NumCorrectedReads",&NumCorrectedReads);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PCR5PrimerCorrect",ePTInt32,sizeof(NumCorrectedBases),"NumCorrectedBases",&NumCorrectedBases);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PCR5PrimerCorrect",ePTInt32,sizeof(NumUnacceptedReads),"NumUnacceptedReads",&NumUnacceptedReads);
 	}
 
 return(eBSFSuccess);
@@ -2167,7 +2167,7 @@ if(NumSubDups)
 	SortReadHits(eRSMHitMatch,false,true);
 
 if(gProcessingID)
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumSubDups),"Nonunique",&NumSubDups);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumSubDups),"Nonunique",&NumSubDups);
 
 return(eBSFSuccess);
 }
@@ -2277,7 +2277,7 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Removed %d potential PCR artefact read
 if(NumSubDups)
 	SortReadHits(eRSMHitMatch,false,true);
 if(gProcessingID)
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumSubDups),"PCRartefacts",&NumSubDups);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumSubDups),"PCRartefacts",&NumSubDups);
 return(eBSFSuccess);
 }
 
@@ -2369,7 +2369,7 @@ if(SpliceJunctLen > 0)
 			}
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"From %d reads with putative splice sites %d orphans were removed", NumSpliceJuncs,NumSpliceNotAccepted);
 	if(gProcessingID)
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumSpliceNotAccepted),"OrphanSpliceJuncts",&NumSpliceNotAccepted);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumSpliceNotAccepted),"OrphanSpliceJuncts",&NumSpliceNotAccepted);
 	if(NumSpliceNotAccepted)
 		SortReadHits(eRSMHitMatch,false,true);
 	}
@@ -2465,7 +2465,7 @@ if(microInDelLen > 0)
 			}
 	gDiagnostics.DiagOut(eDLInfo,gszProcName,"From %d reads with putative microIndels %d orphans were removed", NumInDelJuncs,NumInDelsNotAccepted);
 	if(gProcessingID)
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumInDelsNotAccepted),"OrphanInDels",&NumInDelsNotAccepted);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtering",ePTInt32,sizeof(NumInDelsNotAccepted),"OrphanInDels",&NumInDelsNotAccepted);
 
 	if(NumInDelsNotAccepted)
 		SortReadHits(eRSMHitMatch,false,true);
@@ -3257,14 +3257,14 @@ if(gProcessingID > 0)
 	{
 	UINT32 NumPairsLoaded;
 	NumPairsLoaded = m_NumReadsLoaded/2;
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumPairsLoaded),"Loaded",&NumPairsLoaded);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumPaired),"Accepted",&AcceptedNumPaired);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(PartnerPaired),"RecoveredOrphans",&PartnerPaired);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnderLenPairs),"UnderInsertSize",&UnderLenPairs);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(OverLenPairs),"OverInsertSize",&OverLenPairs);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumFilteredByChrom),"FilteredByChrom",&NumFilteredByChrom);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnalignedPairs),"NonUniqueEnds",&UnalignedPairs);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumSE),"AcceptedNumSE",&AcceptedNumSE);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumPairsLoaded),"Loaded",&NumPairsLoaded);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumPaired),"Accepted",&AcceptedNumPaired);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(PartnerPaired),"RecoveredOrphans",&PartnerPaired);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnderLenPairs),"UnderInsertSize",&UnderLenPairs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(OverLenPairs),"OverInsertSize",&OverLenPairs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumFilteredByChrom),"FilteredByChrom",&NumFilteredByChrom);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnalignedPairs),"NonUniqueEnds",&UnalignedPairs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumSE),"AcceptedNumSE",&AcceptedNumSE);
 	}
 
 if(m_hStatsFile != -1)
@@ -3579,48 +3579,48 @@ if(gProcessingID > 0)
 	UINT32 Cricks;
 	Cricks = NumUniques-NumPlusHits;
 	if(m_MLMode >= eMLall)
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_OrigNumReadsLoaded),"NumLoaded",&m_OrigNumReadsLoaded);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_OrigNumReadsLoaded),"NumLoaded",&m_OrigNumReadsLoaded);
 	else
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_NumReadsLoaded),"NumLoaded",&m_NumReadsLoaded);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumUniques),"AcceptedAligned",&NumUniques);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumPlusHits),"AcceptedSense",&NumPlusHits);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(Cricks),"AcceptedAntisense",&Cricks);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumChimeric),"AcceptedChimeric",&NumChimeric);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumIndels),"AcceptedIndels",&NumIndels);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumSpliced),"AcceptedSpliced",&NumSpliced);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumMultiMatches),"RjctMultiMatches",&NumMultiMatches);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumHamming),"RjctNumHamming",&NumHamming);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_ElimPlusTrimed),"RjctPlusTrim",&m_ElimPlusTrimed);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_ElimMinusTrimed),"RjctMinusTrim",&m_ElimMinusTrimed);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumTrimmed),"NumTrimmed",&NumTrimmed);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumNoMatches),"Unalignable",&NumNoMatches);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_NumSloughedNs),"RjctExcessNs",&m_NumSloughedNs);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_NumReadsLoaded),"NumLoaded",&m_NumReadsLoaded);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumUniques),"AcceptedAligned",&NumUniques);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumPlusHits),"AcceptedSense",&NumPlusHits);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(Cricks),"AcceptedAntisense",&Cricks);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumChimeric),"AcceptedChimeric",&NumChimeric);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumIndels),"AcceptedIndels",&NumIndels);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumSpliced),"AcceptedSpliced",&NumSpliced);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumMultiMatches),"RjctMultiMatches",&NumMultiMatches);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumHamming),"RjctNumHamming",&NumHamming);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_ElimPlusTrimed),"RjctPlusTrim",&m_ElimPlusTrimed);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_ElimMinusTrimed),"RjctMinusTrim",&m_ElimMinusTrimed);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumTrimmed),"NumTrimmed",&NumTrimmed);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumNoMatches),"Unalignable",&NumNoMatches);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(m_NumSloughedNs),"RjctExcessNs",&m_NumSloughedNs);
 
 
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARUnaligned),"NARUnaligned",&NARUnaligned);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARAccepted),"NARAccepted",&NARAccepted);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARNs),"NARNs",&NARNs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARUnaligned),"NARUnaligned",&NARUnaligned);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARAccepted),"NARAccepted",&NARAccepted);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARNs),"NARNs",&NARNs);
 
 	if(m_MLMode >= eMLall)
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumNoMatches),"NARNoHit",&NumNoMatches);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NumNoMatches),"NARNoHit",&NumNoMatches);
 	else
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARNoHit),"NARNoHit",&NARNoHit);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARNoHit),"NARNoHit",&NARNoHit);
 	
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARMMDelta),"NARMMDelta",&NARMMDelta);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARMultiAlign),"NARMultiAlign",&NARMultiAlign);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARTrim),"NARTrim",&NARTrim);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARSpliceJctn),"NARSpliceJctn",&NARSpliceJctn);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARmicroInDel),"NARmicroInDel",&NARmicroInDel);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPCRdup),"NARPCRdup",&NARPCRdup);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARNonUnique),"NARNonUnique",&NARNonUnique);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARChromFilt),"NARChromFilt",&NARChromFilt);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARRegionFilt),"NARRegionFilt",&NARRegionFilt);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEInsertMin),"NARPEInsertMin",&NARPEInsertMin);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEInsertMax),"NARPEInsertMax",&NARPEInsertMax);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPENoHit),"NARPENoHit",&NARPENoHit);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEChrom),"NARPEChrom",&NARPEChrom);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEUnalign),"NARPEUnalign",&NARPEUnalign);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARLociConstrained),"NARLociConstrained",&NARLociConstrained);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARMMDelta),"NARMMDelta",&NARMMDelta);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARMultiAlign),"NARMultiAlign",&NARMultiAlign);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARTrim),"NARTrim",&NARTrim);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARSpliceJctn),"NARSpliceJctn",&NARSpliceJctn);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARmicroInDel),"NARmicroInDel",&NARmicroInDel);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPCRdup),"NARPCRdup",&NARPCRdup);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARNonUnique),"NARNonUnique",&NARNonUnique);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARChromFilt),"NARChromFilt",&NARChromFilt);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARRegionFilt),"NARRegionFilt",&NARRegionFilt);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEInsertMin),"NARPEInsertMin",&NARPEInsertMin);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEInsertMax),"NARPEInsertMax",&NARPEInsertMax);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPENoHit),"NARPENoHit",&NARPENoHit);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEChrom),"NARPEChrom",&NARPEChrom);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARPEUnalign),"NARPEUnalign",&NARPEUnalign);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Alignments",ePTUint32,sizeof(NARLociConstrained),"NARLociConstrained",&NARLociConstrained);
 	}
 
 m_NARAccepted = NARAccepted;		// further downstream processing may be interested in number of reads being reported as accepted
@@ -3922,7 +3922,7 @@ if(m_NumExcludeChroms || m_NumIncludeChroms)
 	if(MatchesFiltOut)
 		SortReadHits(eRSMHitMatch,false,true);
 	if(gProcessingID > 0)
-		gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtered",ePTInt32,sizeof(MatchesFiltOut),"Chroms",&MatchesFiltOut);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtered",ePTInt32,sizeof(MatchesFiltOut),"Chroms",&MatchesFiltOut);
 		
 	}
 return(eBSFSuccess);
@@ -3986,8 +3986,8 @@ if(MatchesFiltOut)
 
 if(gProcessingID > 0)
 	{
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtered",ePTInt32,sizeof(MatchesFiltIn),"RegionRetained",&MatchesFiltIn);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Filtered",ePTInt32,sizeof(MatchesFiltOut),"RegionRemoved",&MatchesFiltOut);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtered",ePTInt32,sizeof(MatchesFiltIn),"RegionRetained",&MatchesFiltIn);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Filtered",ePTInt32,sizeof(MatchesFiltOut),"RegionRemoved",&MatchesFiltOut);
 	}
 return(eBSFSuccess);
 }
@@ -4333,7 +4333,7 @@ if(m_pszSNPRsltsFile != NULL && m_pszSNPRsltsFile[0] != '\0' && m_MinSNPreads > 
 #ifdef _DISNPS_
 	strcpy(m_szDiSNPFile,m_pszSNPRsltsFile);	// the DiSNP file name should be parameterised!!!
 	strcat(m_szDiSNPFile,(char *)".disnp.csv");
-	strcpy(m_szTriSNPFile,m_pszSNPRsltsFile);	// the DiSNP file name should be parameterised!!!
+	strcpy(m_szTriSNPFile,m_pszSNPRsltsFile);	// the TriSNP file name should be parameterised!!!
 	strcat(m_szTriSNPFile,(char *)".trisnp.csv");
 
 
@@ -6631,6 +6631,12 @@ UINT32 LocTMM;
 UINT32 LocTM;
 CStats Stats;
 
+tsMonoSNP sMonoSNP;
+tsDiSNP sDiSNP;
+tsTriSNP sTriSNP;
+
+tsSNPcnts PrevSNPs[3]; // to hold counts for prev 2 plus currrent SNP - used when reporting Di/TriSNPs
+
 int CurDiSNPLoci;
 int PrevDiSNPLoci;
 int DiSNPBuffIdx;
@@ -6641,6 +6647,8 @@ int PrevTriSNPLoci;
 int FirstTriSNPLoci;
 int TriSNPBuffIdx;
 char szTriSNPs[4000];
+int TotNumDiSNPs;
+int TotNumTriSNPs;
 
 UINT8 SNPFlanks[9];
 UINT8 *pSNPFlank;
@@ -6683,6 +6691,8 @@ LocalBkgndRateWinFlank = cSNPBkgndRateWindow / 2;
 LocalBkgndRateWindow = (LocalBkgndRateWinFlank * 2) + 1;
 LocalTotMismatches = 0;
 LocalTotMatches = 0;
+
+
 for(Loci = 0; Loci < min(LocalBkgndRateWindow,m_pChromSNPs->ChromLen); Loci++,pSNPWinR++)
 	{
 	LocalTotMismatches += pSNPWinR->NumNonRefBases;
@@ -6694,13 +6704,8 @@ m_NumLociPValues = 0;
 pSNP = &m_pChromSNPs->Cnts[0];
 pSNPWinL = pSNP;
 LineLen = 0;
-DiSNPBuffIdx = 0;
-TriSNPBuffIdx = 0;
-CurDiSNPLoci = 0;
-PrevDiSNPLoci = -1;
-CurTriSNPLoci = 0;
-PrevTriSNPLoci = -1;
-FirstTriSNPLoci = -1;
+
+
 m_MaxDiSNPSep = m_pChromSNPs->MeanReadLen;
 for(Loci = 0; Loci < m_pChromSNPs->ChromLen;Loci++, pSNP++)
 	{
@@ -6804,120 +6809,7 @@ for(Loci = 0; Loci < m_pChromSNPs->ChromLen;Loci++, pSNP++)
 	if(LocalSeqErrRate > cMaxBkgdNoiseThres)	// don't bother attempting to call if the background is too noisy
 		continue;
 
-	// accepting as being a SNP
-
-#ifdef _DISNPS_
-	if(!m_bIsSOLiD && m_hDiSNPfile != -1)
-		{
-		// try to find all reads which are overlapping this SNP plus the prev within 300bp SNP
-		tsReadHit *pCurOverlappingRead;
-		UINT8 PrevDiSNPBase;
-		UINT8 CurDiSNPBase;
-		UINT8 FirstTriSNPBase;
-		UINT8 PrevTriSNPBase;
-		UINT8 CurTriSNPBase;
-
-		int NumHaplotypes;
-		int HaplotypeCntThres;
-		int NumReadsOverlapping;
-		int NumReadsAntisense;
-		int DiSNPIdx;
-		int DiSNPCnts[64];
-
-		CurDiSNPLoci = Loci;
-		if(PrevDiSNPLoci != -1 && CurDiSNPLoci > 0 && ((CurDiSNPLoci - PrevDiSNPLoci) <= m_MaxDiSNPSep))
-			{
-			NumReadsOverlapping = 0;
-			NumReadsAntisense = 0;
-			memset(DiSNPCnts,0,sizeof(DiSNPCnts));
-			while((pCurOverlappingRead = IterateReadsOverlapping(false,m_pChromSNPs,PrevDiSNPLoci, CurDiSNPLoci)) != NULL)
-				{
-				// get bases at both SNP loci
-				PrevDiSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,PrevDiSNPLoci);
-				if(PrevDiSNPBase > eBaseT)
-					continue;
-				CurDiSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,CurDiSNPLoci);
-				if(CurDiSNPBase > eBaseT)
-					continue;
-				NumReadsOverlapping += 1;
-				if(pCurOverlappingRead->HitLoci.Hit.Seg[0].Strand == '-')
-					NumReadsAntisense += 1;
-				DiSNPIdx = ((PrevDiSNPBase & 0x03) << 2) | (CurDiSNPBase & 0x03);
-				DiSNPCnts[DiSNPIdx] += 1;
-				}
-			if(NumReadsOverlapping >= m_MinSNPreads)
-				{
-				NumHaplotypes = 0;       // very simplistic - calling haplotype if at least 3 for any putative DiSNP and more than 5% of read depth
-				HaplotypeCntThres = max(3,NumReadsOverlapping / 20);
-				for(DiSNPIdx = 0; DiSNPIdx < 16; DiSNPIdx++) 
-					if(DiSNPCnts[DiSNPIdx] >= HaplotypeCntThres)
-						NumHaplotypes += 1;
-
-				DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx],"\"%s\",%d,%d,%d,%d,%d",szChromName,PrevDiSNPLoci,CurDiSNPLoci,NumReadsOverlapping,NumReadsAntisense,NumHaplotypes);
-
-				for(DiSNPIdx = 0; DiSNPIdx < 16; DiSNPIdx++)
-					DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx],",%d",DiSNPCnts[DiSNPIdx]);	
-				DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx],"\n");
-
-				if((DiSNPBuffIdx + 200) > sizeof(szDiSNPs))
-					{
-					CUtility::SafeWrite(m_hDiSNPfile,szDiSNPs,DiSNPBuffIdx);
-					DiSNPBuffIdx  = 0;
-					}
-				}
-			}
-		
-		CurTriSNPLoci = Loci;
-		if(FirstTriSNPLoci != -1 && PrevTriSNPLoci > 0 && CurTriSNPLoci > 0 && ((CurTriSNPLoci - FirstTriSNPLoci) <= m_MaxDiSNPSep))
-			{
-			NumReadsOverlapping = 0;
-			NumReadsAntisense = 0;
-			memset(DiSNPCnts,0,sizeof(DiSNPCnts));
-			while((pCurOverlappingRead = IterateReadsOverlapping(true,m_pChromSNPs,FirstTriSNPLoci, CurTriSNPLoci)) != NULL)
-				{
-				// get bases at all three SNP loci
-				FirstTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,FirstTriSNPLoci);
-				if(FirstTriSNPBase > eBaseT)
-					continue;
-				PrevTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,PrevTriSNPLoci);
-				if(PrevTriSNPBase > eBaseT)
-					continue;
-				CurTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead,m_pChromSNPs->ChromID,CurTriSNPLoci);
-				if(CurTriSNPBase > eBaseT)
-					continue;
-				NumReadsOverlapping += 1;
-				if(pCurOverlappingRead->HitLoci.Hit.Seg[0].Strand == '-')
-					NumReadsAntisense += 1;
-				DiSNPIdx = ((FirstTriSNPBase & 0x03) << 4) | ((PrevTriSNPBase & 0x03) << 2) | (CurTriSNPBase & 0x03);
-				DiSNPCnts[DiSNPIdx] += 1;
-				}
-			if(NumReadsOverlapping >= m_MinSNPreads)
-				{
-				NumHaplotypes = 0;       // very simplistic - calling haplotype if at least 3 for any putative DiSNP and more than 5% of read depth
-				HaplotypeCntThres = max(3,NumReadsOverlapping / 20);
-				for(DiSNPIdx = 0; DiSNPIdx < 64; DiSNPIdx++) 
-					if(DiSNPCnts[DiSNPIdx] >= HaplotypeCntThres)
-						NumHaplotypes += 1;
-
-				TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx],"\"%s\",%d,%d,%d,%d,%d,%d",szChromName,FirstTriSNPLoci,PrevTriSNPLoci,CurTriSNPLoci,NumReadsOverlapping,NumReadsAntisense,NumHaplotypes);
-
-				for(DiSNPIdx = 0; DiSNPIdx < 64; DiSNPIdx++)
-					TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx],",%d",DiSNPCnts[DiSNPIdx]);	
-				TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx],"\n");
-
-				if((TriSNPBuffIdx + 500) > sizeof(szTriSNPs))
-					{
-					CUtility::SafeWrite(m_hTriSNPfile,szTriSNPs,TriSNPBuffIdx);
-					TriSNPBuffIdx  = 0;
-					}
-				}
-			}
-		PrevDiSNPLoci = CurDiSNPLoci;
-		FirstTriSNPLoci = PrevTriSNPLoci;
-		PrevTriSNPLoci = CurTriSNPLoci;
-		}
-#endif
-
+	// accepting as being a putative SNP
 	// if outputting as marker sequence then get SNP up/dnstream sequence and report
 	int MarkerStartLoci;
 	int MarkerSeqIdx;
@@ -7022,16 +6914,6 @@ if(m_hMarkerFile != -1 && LineLen)
 	LineLen = 0;
 	}
 
-if(m_hDiSNPfile != -1 && DiSNPBuffIdx > 0)
-	{
-	CUtility::SafeWrite(m_hDiSNPfile,szDiSNPs,DiSNPBuffIdx);
-	DiSNPBuffIdx  = 0;
-	}
-if(m_hTriSNPfile != -1 && TriSNPBuffIdx > 0)
-	{
-	CUtility::SafeWrite(m_hTriSNPfile,szTriSNPs,TriSNPBuffIdx);
-	DiSNPBuffIdx  = 0;
-	}
 
 if(m_NumLociPValues == 0)
 	return(eBSFSuccess);
@@ -7051,6 +6933,15 @@ m_NumLociPValues = NumSNPs;
 if(m_NumLociPValues > 1)
 	m_mtqsort.qsort(m_pLociPValues,m_NumLociPValues,sizeof(tsLociPValues),SortPValuesLoci);
 
+DiSNPBuffIdx = 0;
+TriSNPBuffIdx = 0;
+CurDiSNPLoci = 0;
+PrevDiSNPLoci = -1;
+CurTriSNPLoci = 0;
+PrevTriSNPLoci = -1;
+FirstTriSNPLoci = -1;
+TotNumDiSNPs = 0;
+TotNumTriSNPs = 0;
 LineLen = 0;
 pLociPValues = m_pLociPValues;
 for(Idx = 0; Idx < (int)m_NumLociPValues; Idx++,pLociPValues++)
@@ -7064,7 +6955,7 @@ for(Idx = 0; Idx < (int)m_NumLociPValues; Idx++,pLociPValues++)
 		}
 	else   // else could be either CSV or VCF
 		{
-		if(m_bSNPsVCF)
+		if (m_bSNPsVCF)
 			{
 			char szALTs[100];
 			char szAltFreq[100];
@@ -7073,56 +6964,401 @@ for(Idx = 0; Idx < (int)m_NumLociPValues; Idx++,pLociPValues++)
 			int AltFreqOfs;
 			int AltIdx;
 			UINT32 CntsThres;		// only reporting cnts which are at least 10% of the highest non-ref base counts. 
-                                    // otherwise too many noise cnt bases are reported 
+									// otherwise too many noise cnt bases are reported 
 
 			CntsThres = 0;
-			for(AltIdx = 0; AltIdx < eBaseN; AltIdx++)
+			for (AltIdx = 0; AltIdx < eBaseN; AltIdx++)
 				{
-				if(AltIdx == pLociPValues->SNPcnts.RefBase)
+				if (AltIdx == pLociPValues->SNPcnts.RefBase)
 					continue;
-				if(pLociPValues->SNPcnts.NonRefBaseCnts[AltIdx] > CntsThres)
+				if (pLociPValues->SNPcnts.NonRefBaseCnts[AltIdx] > CntsThres)
 					CntsThres = pLociPValues->SNPcnts.NonRefBaseCnts[AltIdx];
 				}
-			CntsThres = max((CntsThres+5)/10,1);
+			CntsThres = max((CntsThres + 5) / 10, 1);
 			AltOfs = 0;
 			AltFreqOfs = 0;
-			for(AltIdx = 0; AltIdx < eBaseN; AltIdx++)
+			for (AltIdx = 0; AltIdx < eBaseN; AltIdx++)
 				{
-				if(AltIdx == pLociPValues->SNPcnts.RefBase)
+				if (AltIdx == pLociPValues->SNPcnts.RefBase)
 					continue;
-				if(pLociPValues->SNPcnts.NonRefBaseCnts[AltIdx] >= CntsThres)
+				if (pLociPValues->SNPcnts.NonRefBaseCnts[AltIdx] >= CntsThres)
 					{
-					if(AltOfs > 0)
+					if (AltOfs > 0)
 						{
 						szALTs[AltOfs++] = ',';
 						szAltFreq[AltFreqOfs++] = ',';
 						}
 					szALTs[AltOfs++] = CSeqTrans::MapBase2Ascii(AltIdx);
 					szALTs[AltOfs] = '\0';
-					AltFreqOfs += sprintf(&szAltFreq[AltFreqOfs], "%1.4f",(double)pLociPValues->SNPcnts.NonRefBaseCnts[AltIdx]/pLociPValues->NumReads);
+					AltFreqOfs += sprintf(&szAltFreq[AltFreqOfs], "%1.4f", (double)pLociPValues->SNPcnts.NonRefBaseCnts[AltIdx] / pLociPValues->NumReads);
 					}
 				}
-			if(pLociPValues->PValue < 0.0000000001)
+			if (pLociPValues->PValue < 0.0000000001)
 				SNPPhred = 100;
 			else
-				SNPPhred = (int)(0.5 + (10.0*log10(1.0/pLociPValues->PValue)));
-			LineLen+=sprintf(&m_pszLineBuff[LineLen],"%s\t%u\tSNP%d\t%c\t%s\t%d\tPASS\tAF=%s;DP=%d\n",
-													szChromName,pLociPValues->Loci+1,m_TotNumSNPs,CSeqTrans::MapBase2Ascii(pLociPValues->SNPcnts.RefBase),
-													szALTs,SNPPhred,szAltFreq,pLociPValues->NumReads);
+				SNPPhred = (int)(0.5 + (10.0*log10(1.0 / pLociPValues->PValue)));
+			LineLen += sprintf(&m_pszLineBuff[LineLen], "%s\t%u\tSNP%d\t%c\t%s\t%d\tPASS\tAF=%s;DP=%d\n",
+				szChromName, pLociPValues->Loci + 1, m_TotNumSNPs, CSeqTrans::MapBase2Ascii(pLociPValues->SNPcnts.RefBase),
+				szALTs, SNPPhred, szAltFreq, pLociPValues->NumReads);
 			}
 		else
-			LineLen+=sprintf(&m_pszLineBuff[LineLen],"%d,\"SNP\",\"%s\",\"%s\",%d,%d,1,\"+\",%d,%f,%d,%d,\"%c\",%d,%d,%d,%d,%d,%f,%d,%d,%d,%d\n",
-					m_TotNumSNPs,m_szTargSpecies,szChromName,pLociPValues->Loci,pLociPValues->Loci,RelRank,pLociPValues->PValue,
-								pLociPValues->NumReads,pLociPValues->NumSubs,
-								CSeqTrans::MapBase2Ascii(pLociPValues->SNPcnts.RefBase),
-								pLociPValues->SNPcnts.NonRefBaseCnts[0],pLociPValues->SNPcnts.NonRefBaseCnts[1],pLociPValues->SNPcnts.NonRefBaseCnts[2],pLociPValues->SNPcnts.NonRefBaseCnts[3],pLociPValues->SNPcnts.NonRefBaseCnts[4],
-								pLociPValues->LocalBkGndSubRate,pLociPValues->LocalReads,pLociPValues->LocalSubs,pLociPValues->MarkerID,pLociPValues->NumPolymorphicSites);
+			{
+			// for consistency now including refbase counts as if nonref - totals accross all nonref bases will sum to be same as numreads covering the SNP loci
+			pLociPValues->SNPcnts.NonRefBaseCnts[pLociPValues->SNPcnts.RefBase] = pLociPValues->NumReads - pLociPValues->NumSubs;
+			LineLen += sprintf(&m_pszLineBuff[LineLen], "%d,\"SNP\",\"%s\",\"%s\",%d,%d,1,\"+\",%d,%f,%d,%d,\"%c\",%d,%d,%d,%d,%d,%f,%d,%d,%d,%d\n",
+				m_TotNumSNPs, m_szTargSpecies, szChromName, pLociPValues->Loci, pLociPValues->Loci, RelRank, pLociPValues->PValue,
+				pLociPValues->NumReads, pLociPValues->NumSubs,
+				CSeqTrans::MapBase2Ascii(pLociPValues->SNPcnts.RefBase),
+				pLociPValues->SNPcnts.NonRefBaseCnts[0], pLociPValues->SNPcnts.NonRefBaseCnts[1], pLociPValues->SNPcnts.NonRefBaseCnts[2], pLociPValues->SNPcnts.NonRefBaseCnts[3], pLociPValues->SNPcnts.NonRefBaseCnts[4],
+				pLociPValues->LocalBkGndSubRate, pLociPValues->LocalReads, pLociPValues->LocalSubs, pLociPValues->MarkerID, pLociPValues->NumPolymorphicSites);
+			}
 		}
 	if((LineLen + cMaxSeqLen + 1) > cAllocLineBuffSize)
 		{
 		CUtility::SafeWrite(m_hSNPfile,m_pszLineBuff,LineLen);
 		LineLen = 0;
 		}
+
+	if (gProcessingID > 0)
+		{
+		sMonoSNP.MonoSnpPID = m_TotNumSNPs;						// SNP instance, processing instance unique
+		strcpy(sMonoSNP.szElType, "SNP");						// SNP type
+		strcpy(sMonoSNP.szSpecies, m_szTargSpecies);			// SNP located for alignments againts this target/species assembly	
+		strcpy(sMonoSNP.szChrom, szChromName);					// SNP is on this chrom
+		sMonoSNP.StartLoci = pLociPValues->Loci;				// offset (0..N) at which SNP located
+		sMonoSNP.EndLoci = pLociPValues->Loci;					// offset (0..N) at which SNP located - allowing for future polymorphic varation covering multiple bases
+		sMonoSNP.Len = 1;										// polymorphic variation is of this length
+		sMonoSNP.szStrand[0] = '+'; sMonoSNP.szStrand[1] = '\0'; // SNP relative to this strand
+		sMonoSNP.Rank = RelRank;								// ranking confidence in thisSNP - min 0, max 1000
+		sMonoSNP.PValue = pLociPValues->PValue;					// probability of this SNP being a false positive
+		sMonoSNP.Bases = pLociPValues->NumReads;				// total number of bases aligning over the SNP loci
+		sMonoSNP.Mismatches = pLociPValues->NumSubs;			// aligned bases were aligning with this many mismatches
+		sMonoSNP.szRefBase[0] = CSeqTrans::MapBase2Ascii(pLociPValues->SNPcnts.RefBase); sMonoSNP.szRefBase[1] = '\0';			// target sequence base at the SNP locai
+		sMonoSNP.MMBaseA = pLociPValues->SNPcnts.NonRefBaseCnts[0];			// this many mismatched bases were A
+		sMonoSNP.MMBaseC = pLociPValues->SNPcnts.NonRefBaseCnts[1];			// this many mismatched bases were C
+		sMonoSNP.MMBaseG = pLociPValues->SNPcnts.NonRefBaseCnts[2];			// this many mismatched bases were G
+		sMonoSNP.MMBaseT = pLociPValues->SNPcnts.NonRefBaseCnts[3];			// this many mismatched bases were T
+		sMonoSNP.MMBaseN = pLociPValues->SNPcnts.NonRefBaseCnts[4];			// this many mismatched bases were N
+		sMonoSNP.BackgroundSubRate = pLociPValues->LocalBkGndSubRate;		// background substitution rate within a window centered at SNP loci
+		sMonoSNP.TotWinBases = pLociPValues->LocalReads;					// total number of bases within centeredwindow
+		sMonoSNP.TotWinMismatches = pLociPValues->LocalSubs;				// total number of mismatched bases within centered window
+		sMonoSNP.MarkerID = pLociPValues->MarkerID;							// marker identifier
+		sMonoSNP.NumPolymorphicSites = pLociPValues->NumPolymorphicSites;	// number of polymorphic sites within marker
+		gSQLiteSummaries.AddMonoSNP(gExperimentID, gProcessingID,&sMonoSNP);
+		}
+
+#ifdef _DISNPS_
+	if (!m_bIsSOLiD && m_hDiSNPfile != -1)
+		{
+		// try to find all reads which are overlapping this SNP plus the prev within 300bp SNP
+		tsReadHit *pCurOverlappingRead;
+		UINT8 PrevDiSNPBase;
+		UINT8 CurDiSNPBase;
+		UINT8 FirstTriSNPBase;
+		UINT8 PrevTriSNPBase;
+		UINT8 CurTriSNPBase;
+
+		int NumHaplotypes;
+		int HaplotypeCntThres;
+		int NumReadsOverlapping;
+		int NumReadsAntisense;
+		int DiSNPIdx;
+		int DiSNPCnts[64];
+
+		Loci = pLociPValues->Loci;
+		CurDiSNPLoci = Loci;
+		pSNP = &m_pChromSNPs->Cnts[Loci];
+		if (PrevDiSNPLoci != -1 && CurDiSNPLoci > 0 && ((CurDiSNPLoci - PrevDiSNPLoci) <= m_MaxDiSNPSep))
+			{
+			NumReadsOverlapping = 0;
+			NumReadsAntisense = 0;
+			memset(DiSNPCnts, 0, sizeof(DiSNPCnts));
+			memset(PrevSNPs, 0, sizeof(PrevSNPs));
+			PrevSNPs[0].RefBase = pSNP->RefBase;
+			PrevSNPs[1].RefBase = (&m_pChromSNPs->Cnts[PrevDiSNPLoci])->RefBase;
+
+			while ((pCurOverlappingRead = IterateReadsOverlapping(false, m_pChromSNPs, PrevDiSNPLoci, CurDiSNPLoci)) != NULL)
+				{
+				// get bases at both SNP loci for current overlapping read
+				PrevDiSNPBase = AdjAlignSNPBase(pCurOverlappingRead, m_pChromSNPs->ChromID, PrevDiSNPLoci);
+				if (PrevDiSNPBase > eBaseT)
+					continue;
+				CurDiSNPBase = AdjAlignSNPBase(pCurOverlappingRead, m_pChromSNPs->ChromID, CurDiSNPLoci);
+				if (CurDiSNPBase > eBaseT)
+					continue;
+				PrevSNPs[1].NonRefBaseCnts[PrevDiSNPBase] += 1;
+				PrevSNPs[0].NonRefBaseCnts[CurDiSNPBase] += 1;
+				if (PrevDiSNPBase == PrevSNPs[1].RefBase)
+					PrevSNPs[1].NumRefBases += 1;
+				else
+					PrevSNPs[1].NumNonRefBases += 1;
+				if (CurDiSNPBase == PrevSNPs[0].RefBase)
+					PrevSNPs[0].NumRefBases += 1;
+				else
+					PrevSNPs[0].NumNonRefBases += 1;
+				NumReadsOverlapping += 1;
+				if (pCurOverlappingRead->HitLoci.Hit.Seg[0].Strand == '-')
+					NumReadsAntisense += 1;
+				DiSNPIdx = ((PrevDiSNPBase & 0x03) << 2) | (CurDiSNPBase & 0x03);
+				DiSNPCnts[DiSNPIdx] += 1;
+				}
+			if (NumReadsOverlapping >= m_MinSNPreads)
+				{
+				NumHaplotypes = 0;       // very simplistic - calling haplotype if at least 3 for any putative DiSNP and more than 5% of read depth
+				HaplotypeCntThres = max(3, NumReadsOverlapping / 20);
+				for (DiSNPIdx = 0; DiSNPIdx < 16; DiSNPIdx++)
+					if (DiSNPCnts[DiSNPIdx] >= HaplotypeCntThres)
+						NumHaplotypes += 1;
+				TotNumDiSNPs += 1;
+				DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx], "%d,\"DiSNPs\",\"%s\",\"%s\",", TotNumDiSNPs, m_szTargSpecies, szChromName);
+
+				if (gProcessingID > 0)
+					{
+					sDiSNP.DiSnpPID = TotNumDiSNPs;		// SNP instance, processing instance unique
+					strcpy(sDiSNP.szElType, "DiSNPs");		// SNP type
+					strcpy(sDiSNP.szSpecies, m_szTargSpecies);		// SNP located for alignments againts this target/species assembly	
+					strcpy(sDiSNP.szChrom, szChromName);		// SNP is on this chrom
+					}
+
+				char SNPrefBases[2];
+				int RefBasesIdx;
+				for (RefBasesIdx = 0; RefBasesIdx < 2; RefBasesIdx++)
+					{
+					switch (PrevSNPs[RefBasesIdx].RefBase) {
+						case eBaseA:
+							SNPrefBases[RefBasesIdx] = 'a';
+							break;
+						case eBaseC:
+							SNPrefBases[RefBasesIdx] = 'c';
+							break;
+						case eBaseG:
+							SNPrefBases[RefBasesIdx] = 'g';
+							break;
+						case eBaseT:
+							SNPrefBases[RefBasesIdx] = 't';
+							break;
+						case eBaseN:
+							SNPrefBases[RefBasesIdx] = 'n';
+							break;
+						};
+					switch (RefBasesIdx) {
+						case 0:
+							DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx], "%d,", PrevDiSNPLoci);
+							if (gProcessingID > 0)
+							{
+								sDiSNP.SNP1Loci = PrevDiSNPLoci;
+								sDiSNP.szSNP1RefBase[0] = SNPrefBases[RefBasesIdx]; sDiSNP.szSNP1RefBase[1] = '\0';
+								sDiSNP.SNP1BaseAcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[0];
+								sDiSNP.SNP1BaseCcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[1];
+								sDiSNP.SNP1BaseGcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[2];
+								sDiSNP.SNP1BaseTcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[3];
+								sDiSNP.SNP1BaseNcnt = 0;
+							}
+							break;
+						case 1:
+							DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx], "%d,", CurDiSNPLoci);
+							if (gProcessingID > 0)
+								{
+								sDiSNP.SNP2Loci = CurDiSNPLoci;
+								sDiSNP.szSNP2RefBase[0] = SNPrefBases[RefBasesIdx]; sDiSNP.szSNP2RefBase[1] = '\0';
+								sDiSNP.SNP2BaseAcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[0];
+								sDiSNP.SNP2BaseCcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[1];
+								sDiSNP.SNP2BaseGcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[2];
+								sDiSNP.SNP2BaseTcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[3];
+								sDiSNP.SNP2BaseNcnt = 0;
+								}
+							break;
+						}
+
+					DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx], "\"%c\",%d,%d,%d,%d,0,", SNPrefBases[RefBasesIdx], PrevSNPs[RefBasesIdx].NonRefBaseCnts[0], PrevSNPs[RefBasesIdx].NonRefBaseCnts[1], PrevSNPs[RefBasesIdx].NonRefBaseCnts[2], PrevSNPs[RefBasesIdx].NonRefBaseCnts[3]);
+					}
+
+				DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx], "%d,%d,%d", NumReadsOverlapping, NumReadsAntisense, NumHaplotypes);
+				if (gProcessingID > 0)
+					{
+					sDiSNP.Depth = NumReadsOverlapping;
+					sDiSNP.Antisense = NumReadsAntisense;
+					sDiSNP.Haplotypes = NumHaplotypes;
+					}
+
+
+				for (DiSNPIdx = 0; DiSNPIdx < 16; DiSNPIdx++)
+					{
+					DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx], ",%d", DiSNPCnts[DiSNPIdx]);
+					if (gProcessingID > 0)
+						sDiSNP.HaplotypeCnts[DiSNPIdx] = DiSNPCnts[DiSNPIdx];
+					}
+				DiSNPBuffIdx += sprintf(&szDiSNPs[DiSNPBuffIdx], "\n");
+				if (gProcessingID > 0)
+					gSQLiteSummaries.AddDiSNP(gExperimentID, gProcessingID, &sDiSNP);
+
+				if ((DiSNPBuffIdx + 200) > sizeof(szDiSNPs))
+					{
+					CUtility::SafeWrite(m_hDiSNPfile, szDiSNPs, DiSNPBuffIdx);
+					DiSNPBuffIdx = 0;
+					}
+				}
+			}
+
+		CurTriSNPLoci = Loci;
+		if (FirstTriSNPLoci != -1 && PrevTriSNPLoci > 0 && CurTriSNPLoci > 0 && ((CurTriSNPLoci - FirstTriSNPLoci) <= m_MaxDiSNPSep))
+			{
+			NumReadsOverlapping = 0;
+			NumReadsAntisense = 0;
+			memset(DiSNPCnts, 0, sizeof(DiSNPCnts));
+
+			memset(PrevSNPs, 0, sizeof(PrevSNPs));
+			PrevSNPs[0].RefBase = pSNP->RefBase;
+			PrevSNPs[1].RefBase = (&m_pChromSNPs->Cnts[PrevTriSNPLoci])->RefBase;
+			PrevSNPs[2].RefBase = (&m_pChromSNPs->Cnts[FirstTriSNPLoci])->RefBase;
+
+			while ((pCurOverlappingRead = IterateReadsOverlapping(true, m_pChromSNPs, FirstTriSNPLoci, CurTriSNPLoci)) != NULL)
+				{
+				// get bases at all three SNP loci
+				FirstTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead, m_pChromSNPs->ChromID, FirstTriSNPLoci);
+				if (FirstTriSNPBase > eBaseT)
+					continue;
+				PrevTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead, m_pChromSNPs->ChromID, PrevTriSNPLoci);
+				if (PrevTriSNPBase > eBaseT)
+					continue;
+				CurTriSNPBase = AdjAlignSNPBase(pCurOverlappingRead, m_pChromSNPs->ChromID, CurTriSNPLoci);
+				if (CurTriSNPBase > eBaseT)
+					continue;
+
+				PrevSNPs[2].NonRefBaseCnts[FirstTriSNPBase] += 1;
+				PrevSNPs[1].NonRefBaseCnts[PrevTriSNPBase] += 1;
+				PrevSNPs[0].NonRefBaseCnts[CurTriSNPBase] += 1;
+				if (FirstTriSNPBase == PrevSNPs[2].RefBase)
+					PrevSNPs[2].NumRefBases += 1;
+				else
+					PrevSNPs[2].NumNonRefBases += 1;
+				if (PrevTriSNPBase == PrevSNPs[1].RefBase)
+					PrevSNPs[1].NumRefBases += 1;
+				else
+					PrevSNPs[1].NumNonRefBases += 1;
+				if (CurTriSNPBase == PrevSNPs[0].RefBase)
+					PrevSNPs[0].NumRefBases += 1;
+				else
+					PrevSNPs[0].NumNonRefBases += 1;
+
+				NumReadsOverlapping += 1;
+				if (pCurOverlappingRead->HitLoci.Hit.Seg[0].Strand == '-')
+					NumReadsAntisense += 1;
+				DiSNPIdx = ((FirstTriSNPBase & 0x03) << 4) | ((PrevTriSNPBase & 0x03) << 2) | (CurTriSNPBase & 0x03);
+				DiSNPCnts[DiSNPIdx] += 1;
+				}
+			if (NumReadsOverlapping >= m_MinSNPreads)
+				{
+				NumHaplotypes = 0;       // very simplistic - calling haplotype if at least 3 for any putative DiSNP and more than 5% of read depth
+				HaplotypeCntThres = max(3, NumReadsOverlapping / 20);
+				for (DiSNPIdx = 0; DiSNPIdx < 64; DiSNPIdx++)
+					if (DiSNPCnts[DiSNPIdx] >= HaplotypeCntThres)
+						NumHaplotypes += 1;
+				TotNumTriSNPs += 1;
+
+				TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], "%d,\"TriSNPs\",\"%s\",\"%s\",", TotNumTriSNPs, m_szTargSpecies, szChromName);
+				if (gProcessingID > 0)
+					{
+					sTriSNP.TriSnpPID = TotNumTriSNPs;		// SNP instance, processing instance unique
+					strcpy(sTriSNP.szElType, "TriSNPs");		// SNP type
+					strcpy(sTriSNP.szSpecies, m_szTargSpecies);		// SNP located for alignments againts this target/species assembly	
+					strcpy(sTriSNP.szChrom, szChromName);		// SNP is on this chrom
+					}
+				char SNPrefBases[3];
+				int RefBasesIdx;
+
+				for (RefBasesIdx = 0; RefBasesIdx < 3; RefBasesIdx++)
+					{
+					switch (PrevSNPs[RefBasesIdx].RefBase) {
+						case eBaseA:
+							SNPrefBases[RefBasesIdx] = 'a';
+							break;
+						case eBaseC:
+							SNPrefBases[RefBasesIdx] = 'c';
+							break;
+						case eBaseG:
+							SNPrefBases[RefBasesIdx] = 'g';
+							break;
+						case eBaseT:
+							SNPrefBases[RefBasesIdx] = 't';
+							break;
+						case eBaseN:
+							SNPrefBases[RefBasesIdx] = 'n';
+							break;
+						};
+					switch (RefBasesIdx) {
+						case 0:
+							TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], "%d,", FirstTriSNPLoci);
+							if (gProcessingID > 0)
+							{
+								sTriSNP.SNP1Loci = FirstTriSNPLoci;
+								sTriSNP.szSNP1RefBase[0] = SNPrefBases[RefBasesIdx]; sTriSNP.szSNP1RefBase[1] = '\0';
+								sTriSNP.SNP1BaseAcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[0];
+								sTriSNP.SNP1BaseCcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[1];
+								sTriSNP.SNP1BaseGcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[2];
+								sTriSNP.SNP1BaseTcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[3];
+								sTriSNP.SNP1BaseNcnt = 0;
+							}
+							break;
+						case 1:
+							TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], "%d,", PrevTriSNPLoci);
+							if (gProcessingID > 0)
+							{
+								sTriSNP.SNP2Loci = PrevTriSNPLoci;
+								sTriSNP.szSNP2RefBase[0] = SNPrefBases[RefBasesIdx]; sTriSNP.szSNP2RefBase[1] = '\0';
+								sTriSNP.SNP2BaseAcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[0];
+								sTriSNP.SNP2BaseCcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[1];
+								sTriSNP.SNP2BaseGcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[2];
+								sTriSNP.SNP2BaseTcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[3];
+								sTriSNP.SNP2BaseNcnt = 0;
+							}
+							break;
+						case 2:
+							TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], "%d,", CurTriSNPLoci);
+							if (gProcessingID > 0)
+							{
+								sTriSNP.SNP3Loci = CurTriSNPLoci;
+								sTriSNP.szSNP3RefBase[0] = SNPrefBases[RefBasesIdx]; sTriSNP.szSNP3RefBase[1] = '\0';
+								sTriSNP.SNP3BaseAcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[0];
+								sTriSNP.SNP3BaseCcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[1];
+								sTriSNP.SNP3BaseGcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[2];
+								sTriSNP.SNP3BaseTcnt = PrevSNPs[RefBasesIdx].NonRefBaseCnts[3];
+								sTriSNP.SNP3BaseNcnt = 0;
+							}
+							break;
+						}
+
+					TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], "\"%c\",%d,%d,%d,%d,0,", SNPrefBases[RefBasesIdx], PrevSNPs[RefBasesIdx].NonRefBaseCnts[0], PrevSNPs[RefBasesIdx].NonRefBaseCnts[1], PrevSNPs[RefBasesIdx].NonRefBaseCnts[2], PrevSNPs[RefBasesIdx].NonRefBaseCnts[3]);
+					}
+
+				TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], "%d,%d,%d", NumReadsOverlapping, NumReadsAntisense, NumHaplotypes);
+				if (gProcessingID > 0)
+					{
+					sTriSNP.Depth = NumReadsOverlapping;
+					sTriSNP.Antisense = NumReadsAntisense;
+					sTriSNP.Haplotypes = NumHaplotypes;
+					}
+				for (DiSNPIdx = 0; DiSNPIdx < 64; DiSNPIdx++)
+					{
+					TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], ",%d", DiSNPCnts[DiSNPIdx]);
+					if (gProcessingID > 0)
+						sTriSNP.HaplotypeCnts[DiSNPIdx] = DiSNPCnts[DiSNPIdx];
+					}
+				TriSNPBuffIdx += sprintf(&szTriSNPs[TriSNPBuffIdx], "\n");
+				if (gProcessingID > 0)
+					gSQLiteSummaries.AddTriSNP(gExperimentID, gProcessingID, &sTriSNP);
+				if ((TriSNPBuffIdx + 500) > sizeof(szTriSNPs))
+					{
+					CUtility::SafeWrite(m_hTriSNPfile, szTriSNPs, TriSNPBuffIdx);
+					TriSNPBuffIdx = 0;
+					}
+				}
+			}
+		PrevDiSNPLoci = CurDiSNPLoci;
+		FirstTriSNPLoci = PrevTriSNPLoci;
+		PrevTriSNPLoci = CurTriSNPLoci;
+		}
+#endif
 
 	if(m_hSNPCentsfile != -1)
 		{
@@ -7156,6 +7392,17 @@ for(Idx = 0; Idx < (int)m_NumLociPValues; Idx++,pLociPValues++)
 		}
 
 	}
+if (m_hDiSNPfile != -1 && DiSNPBuffIdx > 0)
+	{
+	CUtility::SafeWrite(m_hDiSNPfile, szDiSNPs, DiSNPBuffIdx);
+	DiSNPBuffIdx = 0;
+	}
+if (m_hTriSNPfile != -1 && TriSNPBuffIdx > 0)
+	{
+	CUtility::SafeWrite(m_hTriSNPfile, szTriSNPs, TriSNPBuffIdx);
+	DiSNPBuffIdx = 0;
+	}
+
 if(LineLen)
 	CUtility::SafeWrite(m_hSNPfile,m_pszLineBuff,LineLen);
 return(eBSFSuccess);
@@ -7211,7 +7458,7 @@ if(m_hDiSNPfile != -1)
 	{
 	int Idx;
 	char szDiSNPs[3];
-	LineLen = sprintf(m_pszLineBuff,"\"Chrom\",\"SNP1Loci\",\"SNP2Loci\",\"Depth\",\"Antisense\",\"Haplotypes\"");
+	LineLen = sprintf(m_pszLineBuff,"\"DiSNPs_ID\",\"ElType\",\"Species\",\"Chrom\",\"SNP1Loci\",\"SNP1RefBase\",\"SNP1BaseAcnt\",\"SNP1BaseCcnt\",\"SNP1BaseGcnt\",\"SNP1BaseTcnt\",\"SNP1BaseNcnt\",\"SNP2Loci\",\"SNP2RefBase\",\"SNP2BaseAcnt\",\"SNP2BaseCcnt\",\"SNP2BaseGcnt\",\"SNP2BaseTcnt\",\"SNP2BaseNcnt\",\"Depth\",\"Antisense\",\"Haplotypes\"");
 	for(Idx = 0; Idx < 16; Idx++)
 		{
 		switch(Idx & 0x03) {
@@ -7238,7 +7485,7 @@ if(m_hTriSNPfile != -1)
 	{
 	int Idx;
 	char szTriSNPs[4];
-	LineLen = sprintf(m_pszLineBuff,"\"Chrom\",\"SNP1Loci\",\"SNP2Loci\",\"SNP3Loci\",\"Depth\",\"Antisense\",\"Haplotypes\"");
+	LineLen = sprintf(m_pszLineBuff,"\"TriSNPs_ID\",\"ElType\",\"Species\",\"Chrom\",\"SNP1Loci\",\"SNP1RefBase\",\"SNP1BaseAcnt\",\"SNP1BaseCcnt\",\"SNP1BaseGcnt\",\"SNP1BaseTcnt\",\"SNP1BaseNcnt\",\"SNP2Loci\",\"SNP2RefBase\",\"SNP2BaseAcnt\",\"SNP2BaseCcnt\",\"SNP2BaseGcnt\",\"SNP2BaseTcnt\",\"SNP2BaseNcnt\",\"SNP3Loci\",\"SNP3RefBase\",\"SNP3BaseAcnt\",\"SNP3BaseCcnt\",\"SNP3BaseGcnt\",\"SNP3BaseTcnt\",\"SNP3BaseNcnt\",\"Depth\",\"Antisense\",\"Haplotypes\"");
 	for(Idx = 0; Idx < 64; Idx++)
 		{
 		switch(Idx & 0x03) {
