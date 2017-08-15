@@ -271,19 +271,19 @@ if (!argerrors)
 	if(gExperimentID > 0)
 		{
 		int ParamID;
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(PMode),"pmode",&PMode);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(PMode),"pmode",&PMode);
 		if(szSeqIDTerm[0] != '\0')
-			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szSeqIDTerm),"seqidtrim",szSeqIDTerm);
+			ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szSeqIDTerm),"seqidtrim",szSeqIDTerm);
 		else
-			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,3,"seqidtrim",(void *)"N/A");
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szInPE1File),"inpe1file",szInPE1File);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szInPE2File),"inpe2file",szInPE2File);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szOutFile),"outfile",szOutFile);
+			ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,3,"seqidtrim",(void *)"N/A");
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szInPE1File),"inpe1file",szInPE1File);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szInPE2File),"inpe2file",szInPE2File);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szOutFile),"outfile",szOutFile);
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szSQLiteDatabase),"sumrslts",szSQLiteDatabase);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szExperimentName),"experimentname",szExperimentName);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szExperimentDescr),"experimentdescr",szExperimentDescr);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szSQLiteDatabase),"sumrslts",szSQLiteDatabase);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szExperimentName),"experimentname",szExperimentName);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szExperimentDescr),"experimentdescr",szExperimentDescr);
 		}
 
 #ifdef _WIN32
@@ -296,7 +296,7 @@ if (!argerrors)
 	if(gExperimentID > 0)
 		{
 		if(gProcessingID)
-			gSQLiteSummaries.EndProcessing(gProcessingID,Rslt);
+			gSQLiteSummaries.EndProcessing(gExperimentID, gProcessingID,Rslt);
 		gSQLiteSummaries.EndExperiment(gExperimentID);
 		}
 	gStopWatch.Stop();

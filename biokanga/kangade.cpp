@@ -876,40 +876,40 @@ if (!argerrors)
 	if(gExperimentID > 0)
 		{
 		int ParamID;
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(PMode),"mode",&PMode);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTBool,sizeof(bFiltNonaligned),"nonalign",&bFiltNonaligned);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(LimitAligned),"limitaligned",&LimitAligned);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(AlignStrand),"alignstrand",&AlignStrand);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(FeatStrand),"featstrand",&FeatStrand);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(Region),"region",&Region);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(ArtifactCntsThres),"artifactthres",&ArtifactCntsThres);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(CoWinLen),"cowinlen",&CoWinLen);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(MinFeatCntThres),"minfeatcnts",&MinFeatCntThres);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(MinStartLociThres),"minfeatloci",&MinStartLociThres);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(NumBins),"numbins",&NumBins);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTDouble,sizeof(NormCntsScale),"normcnts",&NormCntsScale);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(FType),"filetype",&FType);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(NumThreads),"threads",&NumThreads);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szLogFile),"log",szLogFile);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(PMode),"mode",&PMode);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTBool,sizeof(bFiltNonaligned),"nonalign",&bFiltNonaligned);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(LimitAligned),"limitaligned",&LimitAligned);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(AlignStrand),"alignstrand",&AlignStrand);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(FeatStrand),"featstrand",&FeatStrand);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(Region),"region",&Region);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(ArtifactCntsThres),"artifactthres",&ArtifactCntsThres);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(CoWinLen),"cowinlen",&CoWinLen);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(MinFeatCntThres),"minfeatcnts",&MinFeatCntThres);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(MinStartLociThres),"minfeatloci",&MinStartLociThres);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(NumBins),"numbins",&NumBins);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTDouble,sizeof(NormCntsScale),"normcnts",&NormCntsScale);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(FType),"filetype",&FType);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(NumThreads),"threads",&NumThreads);
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(NumInputControlSpecs),"NumInputControlSpecs",&NumInputControlSpecs);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(NumInputControlSpecs),"NumInputControlSpecs",&NumInputControlSpecs);
 		for(Idx=0; Idx < NumInputControlSpecs; Idx++)
-			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszInControlFiles[Idx]),"control",pszInControlFiles[Idx]);
+			ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(pszInControlFiles[Idx]),"control",pszInControlFiles[Idx]);
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTInt32,sizeof(NumInputExperimentSpecs),"NumInputExperimentSpecs",&NumInputExperimentSpecs);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTInt32,sizeof(NumInputExperimentSpecs),"NumInputExperimentSpecs",&NumInputExperimentSpecs);
 		for(Idx=0; Idx < NumInputControlSpecs; Idx++)
-			ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(pszInExperimentFiles[Idx]),"experiment",pszInExperimentFiles[Idx]);
+			ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(pszInExperimentFiles[Idx]),"experiment",pszInExperimentFiles[Idx]);
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szInFeatFile),"ingene",szInFeatFile);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szOutfile),"out",szOutfile);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szInFeatFile),"ingene",szInFeatFile);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szOutfile),"out",szOutfile);
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szBinCountsFile),"bincounts",szBinCountsFile);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szFeatClassFile),"featclass",szFeatClassFile);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szExclZonesFile),"excludezones",szExclZonesFile);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szBinCountsFile),"bincounts",szBinCountsFile);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szFeatClassFile),"featclass",szFeatClassFile);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szExclZonesFile),"excludezones",szExclZonesFile);
 
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szSQLiteDatabase),"sumrslts",szSQLiteDatabase);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szExperimentName),"experimentname",szExperimentName);
-		ParamID = gSQLiteSummaries.AddParameter(gProcessingID,ePTText,(int)strlen(szExperimentDescr),"experimentdescr",szExperimentDescr);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szSQLiteDatabase),"sumrslts",szSQLiteDatabase);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szExperimentName),"experimentname",szExperimentName);
+		ParamID = gSQLiteSummaries.AddParameter(gExperimentID, gProcessingID,ePTText,(int)strlen(szExperimentDescr),"experimentdescr",szExperimentDescr);
 		}
 
 #ifdef _WIN32
@@ -943,7 +943,7 @@ if (!argerrors)
 	if(gExperimentID > 0)
 		{
 		if(gProcessingID)
-			gSQLiteSummaries.EndProcessing(gProcessingID,Rslt);
+			gSQLiteSummaries.EndProcessing(gExperimentID, gProcessingID,Rslt);
 		gSQLiteSummaries.EndExperiment(gExperimentID);
 		}
 	gStopWatch.Stop();
