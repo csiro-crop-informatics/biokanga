@@ -47,11 +47,13 @@
 
 //	TblProcessingLog
 //		ProcessingLogID INTEGER PRIMARY KEY ASC, -- Uniquely identifies this processing log instance
+//	    ExprID INTEGER,							-- processing in this experiment
 //		ProcessingID INTEGER,					-- identifies this processing instance
 //      LogText VARCHAR(2000)					-- log text
 
 // TblParams
 //		ParamID INTEGER PRIMARY KEY ASC,	-- Uniquely identifies this parameter instance
+//	    ExprID INTEGER,						-- processing in this experiment
 //		ProcessingID INTEGER,				-- identifies this processing instance
 //      ParamType INTEGER,					-- parameter value type - see teSQLliteSummParamTypes
 //		ParmName VARCHAR(50),				-- parameter name
@@ -59,6 +61,7 @@
 
 // TblResults
 //		ResultID INTEGER PRIMARY KEY ASC,	-- Uniquely identifies this result instance
+//	    ExprID INTEGER,						-- processing in this experiment
 //		ProcessingID INTEGER,				-- identifies this processing instance
 //      GroupAs VARCHAR(50),				-- result is part of this grouping
 //      ResultType INTEGER,					-- result value type - see teSQLliteSummParamTypes
@@ -67,6 +70,7 @@
 
 // TblXYResults
 //		ResultID INTEGER PRIMARY KEY ASC,	-- Uniquely identifies this result instance
+//	    ExprID INTEGER,							-- processing in this experiment
 //		ProcessingID INTEGER,				-- identifies this processing instance
 //      GroupAs VARCHAR(50),				-- result is part of this grouping
 //      ResultXType INTEGER,				-- result X value type - see teSQLliteSummParamTypes
@@ -76,7 +80,177 @@
 //		ResultYName VARCHAR(50),			-- result Y name
 //      ResultYValue VARCHAR(500),			-- result Y value
 
-tsSummStmSQL CSQLiteSummaries::m_StmSQL[7] = {
+// TblMonoSNPs
+
+//		MonoSnpID INTEGER PRIMARY KEY ASC,		-- Uniquely indentifies this SNP instance
+//	    ExprID INTEGER,							-- processing in this experiment
+//		ProcessingID INTEGER,				-- identifies this processing instance
+//		MonoSnpPID INTEGER,					-- identifies this SNP uniquely when combined with the processing instance
+//		ElType VARCHAR(50),
+//		Species VARCHAR(80),
+//		Chrom VARCHAR(80),
+//		StartLoci INTEGER,
+//		EndLoci INTEGER,
+//		Len INTEGER,
+//		Strand CHAR(1),
+//		Rank INTEGER,
+//		PValue REAL,
+//		Bases INTEGER,
+//		Mismatches INTEGER,
+//		RefBase CHAR(1),
+//		MMBaseA INTEGER,
+//		MMBaseC INTEGER,
+//		MMBaseG INTEGER,
+//		MMBaseT INTEGER,
+//		MMBaseN INTEGER,
+//		BackgroundSubRate REAL,
+//		TotWinBases INTEGER,
+//		TotWinMismatches INTEGER,
+//		MarkerID INTEGER,
+//		NumPolymorphicSites INTEGER
+//
+//
+// TblDiSNPs
+//		DiSnpID INTEGER PRIMARY KEY ASC,		-- Uniquely indentifies this DiSNP instance
+//	    ExprID INTEGER,							-- processing in this experiment
+//		ProcessingID INTEGER,				-- identifies this processing instance
+//		DiSnpPID INTEGER,					-- identifies this DiSNP as unique when combined with the processing instance
+//		ElType VARCHAR(50),
+//		Species VARCHAR(80),
+//		Chrom VARCHAR(80),
+//		SNP1Loci INTEGER,
+//		SNP1RefBase CHAR(1),
+//		SNP1BaseAcnt INTEGER,
+//		SNP1BaseCcnt INTEGER,
+//		SNP1BaseGcnt INTEGER,
+//		SNP1BaseTcnt INTEGER,
+//		SNP1BaseNcnt INTEGER,
+//		SNP2Loci INTEGER,
+//		SNP2RefBase CHAR(1),
+//		SNP2BaseAcnt INTEGER,
+//		SNP2BaseCcnt INTEGER,
+//		SNP2BaseGcnt INTEGER,
+//		SNP2BaseTcnt INTEGER,
+//		SNP2BaseNcnt INTEGER,
+//		Depth INTEGER,
+//		Antisense INTEGER,
+//		Haplotypes INTEGER,
+//		aa INTEGER,
+//		ac INTEGER,
+//		ag INTEGER,
+//		at INTEGER,
+//		ca INTEGER,
+//		cc INTEGER,
+//		cg INTEGER,
+//		ct INTEGER,
+//		ga INTEGER, 
+//		gc INTEGER,
+//		gg INTEGER,
+//		gt INTEGER,
+//		ta INTEGER,
+//		tc INTEGER,
+//		tg INTEGER,
+//		tt INTEGER
+
+
+// TblTriSNPs
+//		TriSnpID INTEGER PRIMARY KEY ASC,		-- Uniquely indentifies this TriSNP instance
+//	    ExprID INTEGER,							-- processing in this experiment
+//		ProcessingID INTEGER,				-- identifies this processing instance
+//		TriSnpPID INTEGER,					-- identifies this TriSNP as unique when combined with the processing instance
+//		ElType VARCHAR(50),
+//		Species VARCHAR(80),
+//		Chrom VARCHAR(80),
+//		SNP1Loci INTEGER,
+//		SNP1RefBase CHAR(1),
+//		SNP1BaseAcnt INTEGER,
+//		SNP1BaseCcnt INTEGER,
+//		SNP1BaseGcnt INTEGER,
+//		SNP1BaseTcnt INTEGER,
+//		SNP1BaseNcnt INTEGER,
+//		SNP2Loci INTEGER,
+//		SNP2RefBase CHAR(1),
+//		SNP2BaseAcnt INTEGER,
+//		SNP2BaseCcnt INTEGER,
+//		SNP2BaseGcnt INTEGER,
+//		SNP2BaseTcnt INTEGER,
+//		SNP2BaseNcnt INTEGER,
+//		SNP3Loci INTEGER,
+//		SNP3RefBase CHAR(1),
+//		SNP3BaseAcnt INTEGER,
+//		SNP3BaseCcnt INTEGER,
+//		SNP3BaseGcnt INTEGER,
+//		SNP3BaseTcnt INTEGER,
+//		SNP3BaseNcnt INTEGER,
+//		Depth INTEGER,
+//		Antisense INTEGER,
+//		Haplotypes INTEGER,
+//		aaa INTEGER,
+//		aac INTEGER,
+//		aag INTEGER,
+//		aat INTEGER,
+//		aca INTEGER,
+//		acc INTEGER,
+//		acg INTEGER,
+//		act INTEGER,
+//		aga INTEGER, 
+//		agc INTEGER,
+//		agg INTEGER,
+//		agt INTEGER,
+//		ata INTEGER,
+//		atc INTEGER,
+//		atg INTEGER,
+//		att INTEGER
+//		caa INTEGER,
+//		cac INTEGER,
+//		cag INTEGER,
+//		cat INTEGER,
+//		cca INTEGER,
+//		ccc INTEGER,
+//		ccg INTEGER,
+//		cct INTEGER,
+//		cga INTEGER, 
+//		cgc INTEGER,
+//		cgg INTEGER,
+//		cgt INTEGER,
+//		cta INTEGER,
+//		ctc INTEGER,
+//		ctg INTEGER,
+//		ctt INTEGER
+//		gaa INTEGER,
+//		gac INTEGER,
+//		gag INTEGER,
+//		gat INTEGER,
+//		gca INTEGER,
+//		gcc INTEGER,
+//		gcg INTEGER,
+//		gct INTEGER,
+//		gga INTEGER, 
+//		ggc INTEGER,
+//		ggg INTEGER,
+//		ggt INTEGER,
+//		gta INTEGER,
+//		gtc INTEGER,
+//		gtg INTEGER,
+//		gtt INTEGER
+//		taa INTEGER,
+//		tac INTEGER,
+//		tag INTEGER,
+//		tat INTEGER,
+//		tca INTEGER,
+//		tcc INTEGER,
+//		tcg INTEGER,
+//		tct INTEGER,
+//		tga INTEGER, 
+//		tgc INTEGER,
+//		tgg INTEGER,
+//		tgt INTEGER,
+//		tta INTEGER,
+//		ttc INTEGER,
+//		ttg INTEGER,
+//		ttt INTEGER
+
+tsSummStmSQL CSQLiteSummaries::m_StmSQL[10] = {
 	{(char *)"TblExprs",
 		(char *)"CREATE TABLE IF NOT EXISTS TblExprs (ExprID INTEGER PRIMARY KEY ASC,ExprName VARCHAR(50) UNIQUE, ExprTitle VARCHAR(50) UNIQUE,ExprDescr VARCHAR(1000) DEFAULT '')",
 		(char *)"INSERT INTO TblExprs (ExprName,ExprTitle,ExprName,ExprDescr) VALUES(?,?,?,?)",
@@ -99,34 +273,90 @@ tsSummStmSQL CSQLiteSummaries::m_StmSQL[7] = {
 		(char *)"CREATE INDEX IF NOT EXISTS 'TblProcessing_ExprIDProcessID' ON 'TblProcessing' ('ExprID' ASC,'ProcessID' ASC)",
 		NULL },
 	{ (char *)"TblProcessingLog",
-		(char *)"CREATE TABLE IF NOT EXISTS TblProcessingLog (ProcessingLogID INTEGER PRIMARY KEY ASC,ProcessingID INTEGER,Timestamp VARCHAR(24),LogText VARCHAR(2000))",
-		(char *)"INSERT INTO TblProcessingLog (ProcessingID,Timestamp,LogText) VALUES(?,?,?)",
+		(char *)"CREATE TABLE IF NOT EXISTS TblProcessingLog (ProcessingLogID INTEGER PRIMARY KEY ASC,ExprID INTEGER,ProcessingID INTEGER,Timestamp VARCHAR(24),LogText VARCHAR(2000))",
+		(char *)"INSERT INTO TblProcessingLog (ExprID,ProcessingID,Timestamp,LogText) VALUES(?,?,?,?)",
 		NULL,
 		(char *)"DROP INDEX IF EXISTS 'TblProcessingLog_ProcessingID'",
 		(char *)"CREATE INDEX IF NOT EXISTS 'TblProcessingLog_ProcessingID' ON 'TblProcessingLog' ('ProcessingID' ASC)",
 		NULL },
 
 	{ (char *)"TblParams",
-		(char *)"CREATE TABLE IF NOT EXISTS TblParams (ParamID INTEGER PRIMARY KEY ASC,ProcessingID INTEGER,ParamType INTEGER,ParmName VARCHAR(50),ParmValue VARCHAR(2000))",
-		(char *)"INSERT INTO TblParams (ProcessingID,ParamType,ParmName,ParmValue) VALUES(?,?,?,?)",
+		(char *)"CREATE TABLE IF NOT EXISTS TblParams (ParamID INTEGER PRIMARY KEY ASC,ExprID INTEGER,ProcessingID INTEGER,ParamType INTEGER,ParmName VARCHAR(50),ParmValue VARCHAR(2000))",
+		(char *)"INSERT INTO TblParams (ExprID,ProcessingID,ParamType,ParmName,ParmValue) VALUES(?,?,?,?,?)",
 		NULL,
 		(char *)"DROP INDEX IF EXISTS 'TblParams_ParmName'",
 		(char *)"CREATE INDEX IF NOT EXISTS 'TblParams_ParmName' ON 'TblParams' ('ParmName' ASC)",
 		NULL},
 
 	{ (char *)"TblResults",
-		(char *)"CREATE TABLE IF NOT EXISTS TblResults (ResultID INTEGER PRIMARY KEY ASC,ProcessingID INTEGER,GroupAs VARCHAR(50), ResultType INTEGER, ResultName VARCHAR(50),ResultValue VARCHAR(500))",
-		(char *)"INSERT INTO TblResults (ProcessingID,GroupAs,ResultType,ResultName,ResultValue) VALUES(?,?,?,?,?)",
+		(char *)"CREATE TABLE IF NOT EXISTS TblResults (ResultID INTEGER PRIMARY KEY ASC,ExprID INTEGER,ProcessingID INTEGER,GroupAs VARCHAR(50), ResultType INTEGER, ResultName VARCHAR(50),ResultValue VARCHAR(500))",
+		(char *)"INSERT INTO TblResults (ExprID,ProcessingID,GroupAs,ResultType,ResultName,ResultValue) VALUES(?,?,?,?,?,?)",
 		NULL,
 		(char *)"DROP INDEX IF EXISTS 'TblResults_ProcessingID'",
 		(char *)"CREATE INDEX IF NOT EXISTS 'TblResults_ProcessingID' ON 'TblResults' ('ProcessingID' ASC)",
 		NULL },
 	{ (char *)"TblXYResults",
-		(char *)"CREATE TABLE IF NOT EXISTS TblXYResults (ResultID INTEGER PRIMARY KEY ASC,ProcessingID INTEGER,GroupAs VARCHAR(50), ResultXType INTEGER, ResultXName VARCHAR(50),ResultXValue VARCHAR(500),ResultYType INTEGER, ResultYName VARCHAR(50),ResultYValue VARCHAR(500))",
-		(char *)"INSERT INTO TblXYResults (ProcessingID,GroupAs,ResultXType,ResultXName,ResultXValue,ResultYType,ResultYName,ResultYValue) VALUES(?,?,?,?,?,?,?,?)",
+		(char *)"CREATE TABLE IF NOT EXISTS TblXYResults (ResultID INTEGER PRIMARY KEY ASC,ExprID INTEGER,ProcessingID INTEGER,GroupAs VARCHAR(50), ResultXType INTEGER, ResultXName VARCHAR(50),ResultXValue VARCHAR(500),ResultYType INTEGER, ResultYName VARCHAR(50),ResultYValue VARCHAR(500))",
+		(char *)"INSERT INTO TblXYResults (ExprID,ProcessingID,GroupAs,ResultXType,ResultXName,ResultXValue,ResultYType,ResultYName,ResultYValue) VALUES(?,?,?,?,?,?,?,?,?)",
 		NULL,
 		(char *)"DROP INDEX IF EXISTS 'TblXYResults_ProcessingID'",
 		(char *)"CREATE INDEX IF NOT EXISTS 'TblXYResults_ProcessingID' ON 'TblXYResults' ('ProcessingID' ASC)",
+		NULL },
+
+
+	{ (char *)"TblMonoSNPs",
+		(char *)"CREATE TABLE IF NOT EXISTS TblMonoSNPs (MonoSnpID INTEGER PRIMARY KEY ASC,ExprID INTEGER,ProcessingID INTEGER, MonoSnpPID INTEGER, ElType VARCHAR(50), Species VARCHAR(80),Chrom VARCHAR(80),"
+							"StartLoci INTEGER,	EndLoci INTEGER, Len INTEGER, Strand CHAR(1), Rank INTEGER, PValue REAL, Bases INTEGER,	Mismatches INTEGER,"
+							"RefBase CHAR(1), MMBaseA INTEGER, MMBaseC INTEGER,	MMBaseG INTEGER, MMBaseT INTEGER, MMBaseN INTEGER,"
+							"BackgroundSubRate REAL, TotWinBases INTEGER, TotWinMismatches INTEGER, MarkerID INTEGER, NumPolymorphicSites INTEGER)",
+		(char *)"INSERT INTO TblMonoSNPs (ExprID,ProcessingID,MonoSnpPID,ElType,Species, Chrom,"
+							"StartLoci,	EndLoci, Len, Strand, Rank, PValue, Bases,	Mismatches,"
+							"RefBase, MMBaseA, MMBaseC,	MMBaseG, MMBaseT, MMBaseN,"
+							"BackgroundSubRate, TotWinBases, TotWinMismatches, MarkerID, NumPolymorphicSites) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		NULL,
+		(char *)"DROP INDEX IF EXISTS 'TblMonoSNPs_ProcessingID'",
+		(char *)"CREATE INDEX IF NOT EXISTS 'TblMonoSNPs_ProcessingID' ON 'TblMonoSNPs' ('ProcessingID' ASC)",
+		NULL },
+
+		{ (char *)"TblDiSNPs",
+		(char *)"CREATE TABLE IF NOT EXISTS TblDiSNPs (DiSnpID INTEGER PRIMARY KEY ASC,ExprID INTEGER,ProcessingID INTEGER, DiSnpPID INTEGER, ElType VARCHAR(50), Species VARCHAR(80), Chrom VARCHAR(80),"
+										"SNP1Loci INTEGER, SNP1RefBase CHAR(1),	SNP1BaseAcnt INTEGER, SNP1BaseCcnt INTEGER,	SNP1BaseGcnt INTEGER, SNP1BaseTcnt INTEGER,	SNP1BaseNcnt INTEGER,"
+										"SNP2Loci INTEGER, SNP2RefBase CHAR(1),	SNP2BaseAcnt INTEGER, SNP2BaseCcnt INTEGER,	SNP2BaseGcnt INTEGER, SNP2BaseTcnt INTEGER,	SNP2BaseNcnt INTEGER,"
+										"Depth INTEGER, Antisense INTEGER, Haplotypes INTEGER,"
+										"aa INTEGER,ac INTEGER,ag INTEGER,at INTEGER,ca INTEGER,cc INTEGER,cg INTEGER,ct INTEGER,ga INTEGER,gc INTEGER,gg INTEGER,gt INTEGER,ta INTEGER,tc INTEGER,tg INTEGER,tt INTEGER)",
+		(char *)"INSERT INTO TblDiSNPs (ExprID,ProcessingID,DiSnpPID,ElType,Species, Chrom,"
+										"SNP1Loci, SNP1RefBase,	SNP1BaseAcnt, SNP1BaseCcnt,	SNP1BaseGcnt, SNP1BaseTcnt,	SNP1BaseNcnt,"
+										"SNP2Loci, SNP2RefBase,	SNP2BaseAcnt, SNP2BaseCcnt,	SNP2BaseGcnt, SNP2BaseTcnt,	SNP2BaseNcnt,"
+										"Depth, Antisense, Haplotypes,"
+										"aa,ac,ag,at,ca,cc,cg,ct,ga,gc,gg,gt,ta,tc,tg,tt) "
+										" VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		NULL,
+		(char *)"DROP INDEX IF EXISTS 'TblDiSNPs_ProcessingID'",
+		(char *)"CREATE INDEX IF NOT EXISTS 'TblDiSNPs_ProcessingID' ON 'TblDiSNPs' ('ProcessingID' ASC)",
+		NULL },
+
+		{ (char *)"TblTriSNPs",
+		(char *)"CREATE TABLE IF NOT EXISTS TblTriSNPs (TriSnpID INTEGER PRIMARY KEY ASC,ExprID,ProcessingID INTEGER, TriSnpPID INTEGER, ElType VARCHAR(50), Species VARCHAR(80), Chrom VARCHAR(80),"
+										"SNP1Loci INTEGER, SNP1RefBase CHAR(1),	SNP1BaseAcnt INTEGER, SNP1BaseCcnt INTEGER,	SNP1BaseGcnt INTEGER, SNP1BaseTcnt INTEGER,	SNP1BaseNcnt INTEGER,"
+										"SNP2Loci INTEGER, SNP2RefBase CHAR(1),	SNP2BaseAcnt INTEGER, SNP2BaseCcnt INTEGER,	SNP2BaseGcnt INTEGER, SNP2BaseTcnt INTEGER,	SNP2BaseNcnt INTEGER,"
+										"SNP3Loci INTEGER, SNP3RefBase CHAR(1),	SNP3BaseAcnt INTEGER, SNP3BaseCcnt INTEGER,	SNP3BaseGcnt INTEGER, SNP3BaseTcnt INTEGER,	SNP3BaseNcnt INTEGER,"
+										"Depth INTEGER, Antisense INTEGER, Haplotypes INTEGER,"
+										"aaa INTEGER,aac INTEGER,aag INTEGER,aat INTEGER,aca INTEGER,acc INTEGER,acg INTEGER,act INTEGER,aga INTEGER,agc INTEGER,agg INTEGER,agt INTEGER,ata INTEGER,atc INTEGER,atg INTEGER,att INTEGER,"
+										"caa INTEGER,cac INTEGER,cag INTEGER,cat INTEGER,cca INTEGER,ccc INTEGER,ccg INTEGER,cct INTEGER,cga INTEGER,cgc INTEGER,cgg INTEGER,cgt INTEGER,cta INTEGER,ctc INTEGER,ctg INTEGER,ctt INTEGER,"
+										"gaa INTEGER,gac INTEGER,gag INTEGER,gat INTEGER,gca INTEGER,gcc INTEGER,gcg INTEGER,gct INTEGER,gga INTEGER,ggc INTEGER,ggg INTEGER,ggt INTEGER,gta INTEGER,gtc INTEGER,gtg INTEGER,gtt INTEGER,"
+										"taa INTEGER,tac INTEGER,tag INTEGER,tat INTEGER,tca INTEGER,tcc INTEGER,tcg INTEGER,tct INTEGER,tga INTEGER,tgc INTEGER,tgg INTEGER,tgt INTEGER,tta INTEGER,ttc INTEGER,ttg INTEGER,ttt INTEGER)",
+
+		(char *)"INSERT INTO TblTriSNPs (ExprID,ProcessingID,TriSnpPID,ElType,Species,Chrom,"
+										"SNP1Loci, SNP1RefBase,	SNP1BaseAcnt, SNP1BaseCcnt,	SNP1BaseGcnt, SNP1BaseTcnt,	SNP1BaseNcnt,"
+										"SNP2Loci, SNP2RefBase,	SNP2BaseAcnt, SNP2BaseCcnt,	SNP2BaseGcnt, SNP2BaseTcnt,	SNP2BaseNcnt,"
+										"SNP3Loci, SNP3RefBase,	SNP3BaseAcnt, SNP3BaseCcnt,	SNP3BaseGcnt, SNP3BaseTcnt,	SNP3BaseNcnt,"
+										"Depth, Antisense, Haplotypes,"
+										"aaa,aac,aag,aat,aca,acc,acg,act,aga,agc,agg,agt,ata,atc,atg,att,caa,cac,cag,cat,cca,ccc,ccg,cct,cga,cgc,cgg,cgt,cta,ctc,ctg,ctt,"
+										"gaa,gac,gag,gat,gca,gcc,gcg,gct,gga,ggc,ggg,ggt,gta,gtc,gtg,gtt,taa,tac,tag,tat,tca,tcc,tcg,tct,tga,tgc,tgg,tgt,tta,ttc,ttg,ttt) "
+										" VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+		NULL,
+		(char *)"DROP INDEX IF EXISTS 'TblTriSNPs_ProcessingID'",
+		(char *)"CREATE INDEX IF NOT EXISTS 'TblTriSNPs_ProcessingID' ON 'TblTriSNPs' ('ProcessingID' ASC)",
 		NULL },
 };
 
@@ -228,7 +458,7 @@ if((sqlite_error = sqlite3_open_v2(pszDatabase, &m_pDB,SQLITE_OPEN_READWRITE | S
 
 // create all tables which may not already exist
 pStms = m_StmSQL;
-for(TblIdx = 0; TblIdx < 7; TblIdx++,pStms++)
+for(TblIdx = 0; TblIdx < 10; TblIdx++,pStms++)
 	{
 	pStms->pPrepInsert = NULL;
 	if(pStms->pszCreateTbl == NULL)
@@ -246,7 +476,7 @@ for(TblIdx = 0; TblIdx < 7; TblIdx++,pStms++)
 
 
 pStms = m_StmSQL;
-for(TblIdx = 0; TblIdx < 7; TblIdx++,pStms++)
+for(TblIdx = 0; TblIdx < 10; TblIdx++,pStms++)
 	{
 	if(pStms->pszOpenCreateIndexes == NULL)
 		continue;
@@ -263,7 +493,7 @@ for(TblIdx = 0; TblIdx < 7; TblIdx++,pStms++)
 
 // prepare all insert statements
 pStms = m_StmSQL;
-for(TblIdx = 0; TblIdx < 7; TblIdx++,pStms++)
+for(TblIdx = 0; TblIdx < 10; TblIdx++,pStms++)
 	{
 	if(pStms->pszInsert == NULL)
 		{
@@ -300,7 +530,7 @@ tsSummStmSQL *pStms;
 pStms = m_StmSQL;
 if(m_pDB != NULL)
 	{
-	for(TblIdx = 0; TblIdx < 7; TblIdx++,pStms++)
+	for(TblIdx = 0; TblIdx < 10; TblIdx++,pStms++)
 		{
 		if(pStms->pPrepInsert == NULL)
 			continue;
@@ -589,7 +819,7 @@ return(LineLen);
 }
 
 int													// uiniqely identifies this starting experiment process instance
-CSQLiteSummaries::StartProcessing(int ExperimentID,	// identifier returned by StartExperiment()
+CSQLiteSummaries::StartProcessing(int ExprID,	// identifier returned by StartExperiment()
 						 int ProcessID,				// identifier as returned by AddProcess()
 						 char *pszProcessVersion)	// process version
 {
@@ -604,7 +834,7 @@ pStm = &m_StmSQL[2];
 SQLiteSerialise();
 char szTimestamp[cMaxNameLen];
 GetTimeStamp(szTimestamp);
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExperimentID))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -668,7 +898,8 @@ return(ProcessingID);
 }
 				
 int													// uiniqely identifies this starting experiment process log instance
-CSQLiteSummaries::AddLog(int ProcessingID,			// identifier returned by StartProcessing()
+CSQLiteSummaries::AddLog(int ExprID,	// identifier returned by StartExperiment()
+						int ProcessingID,			// identifier returned by StartProcessing()
 						 const char *pszFormat,...) // printf style format
 {
 va_list Args;
@@ -679,7 +910,7 @@ int ProcessingLogID;
 if(m_pDB == NULL)
 	return(eBSFerrInternal);
 
-pStm = &m_StmSQL[3];
+pStm = &m_StmSQL[4];
 va_start(Args, pszFormat );
 #ifdef _WIN32
 _vsnprintf(szLogText,cMaxDiagLen,pszFormat,Args);
@@ -692,7 +923,15 @@ SQLiteSerialise();
 char szTimestamp[cMaxNameLen];
 GetTimeStamp(szTimestamp);
 
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ProcessingID))!=SQLITE_OK)
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ProcessingID))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -700,7 +939,7 @@ if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ProcessingID))!=SQLITE
 	return(eBSFerrInternal);
 	}
 
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 2, szTimestamp,(int)strlen(szTimestamp)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 3, szTimestamp,(int)strlen(szTimestamp)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -708,7 +947,7 @@ if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 2, szTimestamp,(int)strl
 	return(eBSFerrInternal);
 	}
 
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 3, szLogText,(int)strlen(szLogText)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, szLogText,(int)strlen(szLogText)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -731,7 +970,8 @@ return(ProcessingLogID);
 }
 
 int
-CSQLiteSummaries::AddParameter(int ProcessingID,		// identifier returned by StartProcessing()
+CSQLiteSummaries::AddParameter(int ExprID,	// identifier returned by StartExperiment()
+							int ProcessingID,		// identifier returned by StartProcessing()
 						 teSQLliteSummParamTypes ParamType,	// parameter type
 						 int ValueSize,					// parameter value is of this byte length (if text then excludes terminating '\0')
 						 const char *pszParamName,			// parameter name
@@ -755,26 +995,33 @@ if(ParamType == ePTText && (pParmValue == NULL || ValueSize == 0 || *(char *)pPa
 	ValueSize = 3;
 	}
 
-pStm = &m_StmSQL[4];
+pStm = &m_StmSQL[5];
 if((Rslt = ValueToText(ParamType,ValueSize,pParmValue,sizeof(szParamValue)-1,szParamValue)))
    return(Rslt);
 SQLiteSerialise();
 
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ProcessingID))!=SQLITE_OK)
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1,ExprID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ProcessingID))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ParamType))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, ParamType))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 3, pszParamName,(int)strlen(pszParamName)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, pszParamName,(int)strlen(pszParamName)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -782,7 +1029,7 @@ if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 3, pszParamName,(int)str
 	return(eBSFerrInternal);
 	}
 
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, szParamValue,(int)strlen(szParamValue)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, szParamValue,(int)strlen(szParamValue)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -807,7 +1054,8 @@ return(ParameterID);
 
 
 int
-CSQLiteSummaries::AddResult(int ProcessingID,			// identifier returned by StartProcessing()
+CSQLiteSummaries::AddResult(int ExprID,	// identifier returned by StartExperiment()
+						int ProcessingID,			// identifier returned by StartProcessing()
 						 const char *GroupAs,			// result is part of this grouping
 						 teSQLliteSummParamTypes ParamType,	// result value type
 						 int ValueSize,					// result value is of this byte length
@@ -833,40 +1081,48 @@ if(ParamType == ePTText && (pResultValue == NULL || ValueSize == 0 || *(char *)p
 	ValueSize = 3;
 	}
 
-pStm = &m_StmSQL[5];
+pStm = &m_StmSQL[6];
 
 if((Rslt = ValueToText(ParamType,ValueSize,pResultValue,sizeof(szResultValue)-1,szResultValue)))
    return(Rslt);
 SQLiteSerialise();
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ProcessingID))!=SQLITE_OK)
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ProcessingID))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 2, GroupAs,(int)strlen(GroupAs)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 3, GroupAs,(int)strlen(GroupAs)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, ParamType))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 4, ParamType))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, pszResultName,(int)strlen(pszResultName)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, pszResultName,(int)strlen(pszResultName)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, szResultValue,(int)strlen(szResultValue)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 6, szResultValue,(int)strlen(szResultValue)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -886,9 +1142,664 @@ SQLiteRelease();
 return(ResultID);
 }
 
+int
+CSQLiteSummaries::AddMonoSNP(int ExprID,	// identifier returned by StartExperiment()
+							int ProcessingID,				// identifier returned by StartProcessing()
+							tsMonoSNP *pMonoSNP)		// add this MonoSNP to TblMonoSNPs table
+{
+int ResultID;
+int sqlite_error;
+tsSummStmSQL *pStm;
+SQLiteSerialise();
+
+pStm = &m_StmSQL[7];
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ProcessingID)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, pMonoSNP->MonoSnpPID)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, pMonoSNP->szElType,(int)strlen(pMonoSNP->szElType)+1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, pMonoSNP->szSpecies, (int)strlen(pMonoSNP->szSpecies) + 1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 6, pMonoSNP->szChrom, (int)strlen(pMonoSNP->szChrom) + 1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 7, pMonoSNP->StartLoci)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 8, pMonoSNP->EndLoci)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 9, pMonoSNP->Len)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 10, pMonoSNP->szStrand, (int)strlen(pMonoSNP->szStrand) + 1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 11, pMonoSNP->Rank)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_double(pStm->pPrepInsert, 12, pMonoSNP->PValue)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 13, pMonoSNP->Bases)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 14, pMonoSNP->Mismatches)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 15, pMonoSNP->szRefBase, (int)strlen(pMonoSNP->szRefBase) + 1, SQLITE_STATIC)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 16, pMonoSNP->MMBaseA)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 17, pMonoSNP->MMBaseC)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 18, pMonoSNP->MMBaseG)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 19, pMonoSNP->MMBaseT)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 20, pMonoSNP->MMBaseN)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+
+if ((sqlite_error = sqlite3_bind_double(pStm->pPrepInsert, 21, pMonoSNP->BackgroundSubRate)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 22, pMonoSNP->TotWinBases)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 23, pMonoSNP->TotWinMismatches)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 24, pMonoSNP->MarkerID)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 25, pMonoSNP->NumPolymorphicSites)) != SQLITE_OK)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+if ((sqlite_error = sqlite3_step(pStm->pPrepInsert)) != SQLITE_DONE)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - step prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+sqlite3_reset(pStm->pPrepInsert);
+ResultID = (int)sqlite3_last_insert_rowid(m_pDB);
+SQLiteRelease();
+return(ResultID);
+}
 
 int
-CSQLiteSummaries::AddResultXY(int ProcessingID,			// identifier returned by StartProcessing()
+CSQLiteSummaries::AddDiSNP(int ExprID,	// identifier returned by StartExperiment()
+			int ProcessingID,				// identifier returned by StartProcessing()
+			tsDiSNP *pDiSNP)		// add this DiSNP to TblDiSNPs table
+{
+int ResultID;
+int sqlite_error;
+tsSummStmSQL *pStm;
+SQLiteSerialise();
+
+pStm = &m_StmSQL[8];
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ProcessingID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, pDiSNP->DiSnpPID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, pDiSNP->szElType, (int)strlen(pDiSNP->szElType) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, pDiSNP->szSpecies,(int)strlen(pDiSNP->szSpecies) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 6, pDiSNP->szChrom, (int)strlen(pDiSNP->szChrom) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 7, pDiSNP->SNP1Loci)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 8, pDiSNP->szSNP1RefBase, (int)strlen(pDiSNP->szSNP1RefBase) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 9, pDiSNP->SNP1BaseAcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 10, pDiSNP->SNP1BaseCcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 11, pDiSNP->SNP1BaseGcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 12, pDiSNP->SNP1BaseTcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 13, pDiSNP->SNP1BaseNcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 14, pDiSNP->SNP2Loci)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 15, pDiSNP->szSNP2RefBase, (int)strlen(pDiSNP->szSNP2RefBase) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 16, pDiSNP->SNP2BaseAcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 17, pDiSNP->SNP2BaseCcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 18, pDiSNP->SNP2BaseGcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 19, pDiSNP->SNP2BaseTcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 20, pDiSNP->SNP2BaseNcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 21, pDiSNP->Depth)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 22, pDiSNP->Antisense)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 23, pDiSNP->Haplotypes)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+int HapIdx;
+for (HapIdx = 0; HapIdx < 16; HapIdx++)
+	{
+	if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 24+HapIdx, pDiSNP->HaplotypeCnts[HapIdx])) != SQLITE_OK)
+		{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+		CloseDatabase();
+		SQLiteRelease();
+		return(eBSFerrInternal);
+		}
+	}
+
+if ((sqlite_error = sqlite3_step(pStm->pPrepInsert)) != SQLITE_DONE)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - step prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+sqlite3_reset(pStm->pPrepInsert);
+ResultID = (int)sqlite3_last_insert_rowid(m_pDB);
+SQLiteRelease();
+return(ResultID);
+}
+
+int
+CSQLiteSummaries::AddTriSNP(int ExprID,	// identifier returned by StartExperiment()
+					int ProcessingID,				// identifier returned by StartProcessing()
+					tsTriSNP *pTriSNP)		// add this TriSNP to TblTriSNPs table
+{
+int ResultID;
+int sqlite_error;
+tsSummStmSQL *pStm;
+SQLiteSerialise();
+
+pStm = &m_StmSQL[9];
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ProcessingID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, pTriSNP->TriSnpPID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, pTriSNP->szElType, (int)strlen(pTriSNP->szElType) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, pTriSNP->szSpecies, (int)strlen(pTriSNP->szSpecies) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 6, pTriSNP->szChrom, (int)strlen(pTriSNP->szChrom) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 7, pTriSNP->SNP1Loci)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 8, pTriSNP->szSNP1RefBase, (int)strlen(pTriSNP->szSNP1RefBase) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 9, pTriSNP->SNP1BaseAcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 10, pTriSNP->SNP1BaseCcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 11, pTriSNP->SNP1BaseGcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 12, pTriSNP->SNP1BaseTcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 13, pTriSNP->SNP1BaseNcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 14, pTriSNP->SNP2Loci)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 15, pTriSNP->szSNP2RefBase, (int)strlen(pTriSNP->szSNP2RefBase) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 16, pTriSNP->SNP2BaseAcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 17, pTriSNP->SNP2BaseCcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 18, pTriSNP->SNP2BaseGcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 19, pTriSNP->SNP2BaseTcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 20, pTriSNP->SNP2BaseNcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 21, pTriSNP->SNP3Loci)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 22, pTriSNP->szSNP3RefBase, (int)strlen(pTriSNP->szSNP3RefBase) + 1, SQLITE_STATIC)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 23, pTriSNP->SNP3BaseAcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 24, pTriSNP->SNP3BaseCcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 25, pTriSNP->SNP3BaseGcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 26, pTriSNP->SNP3BaseTcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 27, pTriSNP->SNP3BaseNcnt)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 28, pTriSNP->Depth)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 29, pTriSNP->Antisense)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 30, pTriSNP->Haplotypes)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+
+int HapIdx;
+for (HapIdx = 0; HapIdx < 64; HapIdx++)
+{
+	if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 31 + HapIdx, pTriSNP->HaplotypeCnts[HapIdx])) != SQLITE_OK)
+	{
+		gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+		CloseDatabase();
+		SQLiteRelease();
+		return(eBSFerrInternal);
+	}
+}
+
+if ((sqlite_error = sqlite3_step(pStm->pPrepInsert)) != SQLITE_DONE)
+	{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - step prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+	}
+sqlite3_reset(pStm->pPrepInsert);
+ResultID = (int)sqlite3_last_insert_rowid(m_pDB);
+SQLiteRelease();
+return(ResultID);
+}
+
+int
+CSQLiteSummaries::AddResultXY(int ExprID,	// identifier returned by StartExperiment()
+						 int ProcessingID,			// identifier returned by StartProcessing()
 						 const char *GroupAs,			// result is part of this grouping
 						 teSQLliteSummParamTypes ParamXType,	// result value X type
 						 int ValueXSize,				// result value is of this byte length
@@ -935,56 +1846,63 @@ if((Rslt = ValueToText(ParamYType,ValueYSize,pResultYValue,sizeof(szResultYValue
    return(Rslt);
 
 SQLiteSerialise();
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ProcessingID))!=SQLITE_OK)
+if ((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 1, ExprID)) != SQLITE_OK)
+{
+	gDiagnostics.DiagOut(eDLFatal, gszProcName, "sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB));
+	CloseDatabase();
+	SQLiteRelease();
+	return(eBSFerrInternal);
+}
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 2, ProcessingID))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 2, GroupAs,(int)strlen(GroupAs)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 3, GroupAs,(int)strlen(GroupAs)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 3, ParamXType))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 4, ParamXType))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 4, pszResultXName,(int)strlen(pszResultXName)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, pszResultXName,(int)strlen(pszResultXName)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 5, szResultXValue,(int)strlen(szResultXValue)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 6, szResultXValue,(int)strlen(szResultXValue)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 6, ParamYType))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_int(pStm->pPrepInsert, 7, ParamYType))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 7, pszResultYName,(int)strlen(pszResultXName)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 8, pszResultYName,(int)strlen(pszResultXName)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
 	SQLiteRelease();
 	return(eBSFerrInternal);
 	}
-if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 8, szResultYValue,(int)strlen(szResultYValue)+1,SQLITE_STATIC))!=SQLITE_OK)
+if((sqlite_error = sqlite3_bind_text(pStm->pPrepInsert, 9, szResultYValue,(int)strlen(szResultYValue)+1,SQLITE_STATIC))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - bind prepared statement: %s", sqlite3_errmsg(m_pDB)); 
 	CloseDatabase();
@@ -1007,7 +1925,8 @@ return(ResultID);
 
 
 int					// returned process identifier
-CSQLiteSummaries::EndProcessing(int ProcessingID,	// identifier returned by StartProcessing()
+CSQLiteSummaries::EndProcessing(int ExprID,	// identifier returned by StartExperiment()
+							int ProcessingID,	// identifier returned by StartProcessing()
 						  int ResultCode)			// processing completed result code
 {
 char szUpdate[cMaxSQLStatement];
@@ -1017,7 +1936,7 @@ if(m_pDB == NULL)
 SQLiteSerialise();
 char szTimestamp[cMaxNameLen];
 GetTimeStamp(szTimestamp);
-sprintf(szUpdate,"UPDATE TblProcessing SET ResultCode = %d, Finish = \"%s\" WHERE ProcessingID = %d",ResultCode,szTimestamp,ProcessingID);
+sprintf(szUpdate,"UPDATE TblProcessing SET ExprID = %d, ResultCode = %d, Finish = \"%s\" WHERE ProcessingID = %d",ExprID,ResultCode,szTimestamp,ProcessingID);
 if((sqlite_error = sqlite3_exec(m_pDB,szUpdate,NULL,NULL,NULL))!=SQLITE_OK)
 	{
 	gDiagnostics.DiagOut(eDLFatal,gszProcName,"sqlite - can't update processing result code: %s", sqlite3_errmsg(m_pDB)); 
@@ -1030,7 +1949,7 @@ return(ProcessingID);
 }
 
 int
-CSQLiteSummaries::EndExperiment(int ExperimentID)			// identifier returned by StartExperiment()
+CSQLiteSummaries::EndExperiment(int ExprID)			// identifier returned by StartExperiment()
 {
 int Rslt;
 int sqlite_error;
@@ -1051,7 +1970,7 @@ if((sqlite_error = sqlite3_exec(m_pDB,pszEndTransaction,NULL,NULL,NULL))!=SQLITE
 tsSummStmSQL *pStms;
 pStms = m_StmSQL;
 int TblIdx;
-for(TblIdx = 0; TblIdx < 6; TblIdx++,pStms++)
+for(TblIdx = 0; TblIdx < 10; TblIdx++,pStms++)
 	{
 	if(pStms->pszCreateIndexes == NULL)
 		continue;

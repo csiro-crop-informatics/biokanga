@@ -833,10 +833,10 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed - K-Mers processed: %lld, Cu
 
 if(gProcessingID > 0)
 	{
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Kmers",ePTInt64,sizeof(NumKMers),"Processed",&NumKMers);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Kmers",ePTUint32,sizeof(NumPutativeKMers),"Cultivar",&NumPutativeKMers);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Kmers",ePTUint32,sizeof(NumAcceptedKMers),"HammingRetained",&NumAcceptedKMers);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Kmers",ePTUint32,sizeof(NumAcceptedExtdKMers),"Accepted",&NumAcceptedExtdKMers);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Kmers",ePTInt64,sizeof(NumKMers),"Processed",&NumKMers);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Kmers",ePTUint32,sizeof(NumPutativeKMers),"Cultivar",&NumPutativeKMers);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Kmers",ePTUint32,sizeof(NumAcceptedKMers),"HammingRetained",&NumAcceptedKMers);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Kmers",ePTUint32,sizeof(NumAcceptedExtdKMers),"Accepted",&NumAcceptedExtdKMers);
 	}
 
 if(m_hOutFile != -1)
@@ -863,7 +863,7 @@ if(m_MarkerID)
 			{
 			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Length: %d Count: %u",Idx,m_pMarkerLenDist[Idx-1]);
 			if(gProcessingID)
-				gSQLiteSummaries.AddResultXY(gProcessingID,(char *)"Markers",ePTInt32,sizeof(Idx),"Length",&Idx,ePTInt32,sizeof(m_pMarkerLenDist[Idx-1]),"Cnt",&m_pMarkerLenDist[Idx-1]);
+				gSQLiteSummaries.AddResultXY(gExperimentID, gProcessingID,(char *)"Markers",ePTInt32,sizeof(Idx),"Length",&Idx,ePTInt32,sizeof(m_pMarkerLenDist[Idx-1]),"Cnt",&m_pMarkerLenDist[Idx-1]);
 			}
 	else
 		gDiagnostics.DiagOut(eDLInfo,gszProcName,"Length: %d Count: 0",m_KMerLen);
@@ -940,7 +940,7 @@ if(m_bKMerReads)
 				{
 				gDiagnostics.DiagOut(eDLInfo,gszProcName,"Length: %d Count: %u",Idx,m_pMarkerLenDist[Idx-1]);
 				if(gProcessingID)
-					gSQLiteSummaries.AddResultXY(gProcessingID,(char *)"MarkerReads",ePTInt32,sizeof(Idx),"Length",&Idx,ePTInt32,sizeof(m_pMarkerLenDist[Idx-1]),"Cnt",&m_pMarkerLenDist[Idx-1]);
+					gSQLiteSummaries.AddResultXY(gExperimentID, gProcessingID,(char *)"MarkerReads",ePTInt32,sizeof(Idx),"Length",&Idx,ePTInt32,sizeof(m_pMarkerLenDist[Idx-1]),"Cnt",&m_pMarkerLenDist[Idx-1]);
 				}
 		else
 			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Length: %d Count: 0",m_KMerLen);
