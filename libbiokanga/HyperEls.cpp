@@ -1162,13 +1162,13 @@ CSAMfile BAMfile;
 
 // open SAM for reading
 if(pszFile == NULL || *pszFile == '\0')
-	return(eBSFerrParams);
+return(eBSFerrParams);
 
 if((Rslt = (teBSFrsltCodes)BAMfile.Open(pszFile)) != eBSFSuccess)
-	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"ParseSAMFileElements: Unable to open SAM format file %s",pszFile);
+{
+	gDiagnostics.DiagOut(eDLInfo, gszProcName, "ParseSAMFileElements: Unable to open SAM format file %s", pszFile);
 	return((teBSFrsltCodes)Rslt);
-	}
+}
 
 NumParsedElLines = 0;
 NumAcceptedEls = 0;
@@ -1176,114 +1176,116 @@ NumUnmappedEls = 0;
 time_t Then = time(NULL);
 time_t Now;
 while((LineLen = BAMfile.GetNxtSAMline(szLine)) > 0)
-	{
+{
 	NumParsedElLines += 1;
 	if(!(NumParsedElLines % 100000) || NumParsedElLines == 1) // too expensive to check if time for a progress report every parsed line!
-		{
+	{
 		Now = time(NULL);
 		if((Now - Then) >= 60)
-			{
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Parsed %d element lines",NumParsedElLines);
+		{
+			gDiagnostics.DiagOut(eDLInfo, gszProcName, "Parsed %d element lines", NumParsedElLines);
 			Then += 60;
-			}
 		}
+	}
 
-	szLine[sizeof(szLine)-1] = '\0';
+	szLine[sizeof(szLine) - 1] = '\0';
 	pTxt = TrimWhitespace(szLine);
-	if(*pTxt=='\0' || *pTxt=='@')	// simply slough lines which were just whitespace or start with '@'
+	if(*pTxt == '\0' || *pTxt == '@')	// simply slough lines which were just whitespace or start with '@'
 		continue;
-	
+
 	// expecting to parse as "%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t", szDescriptor, Flags, m_szSAMTargChromName, StartLoci+1,MAPQ,szCigar,pszRNext,PNext,TLen);
 	// interest is in the chromname, startloci, length, and optionally the sequence
 
 	if(bRetainSeq)
-		{
-		sscanf(szLine,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%16383s\t",szDescriptor, &Flags, szChrom, &StartLoci,&MAPQ,szCigar,szRNext,&PNext,&TLen,szSeqBases);
+	{
+		sscanf(szLine, "%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%16383s\t", szDescriptor, &Flags, szChrom, &StartLoci, &MAPQ, szCigar, szRNext, &PNext, &TLen, szSeqBases);
 		SeqLenz = 0;
 		SeqOfs = 0;
 		SeqLenz = (int)strlen(szSeqBases);
-		CSeqTrans::MapAscii2Sense(szSeqBases,0,SeqBases);
+		CSeqTrans::MapAscii2Sense(szSeqBases, 0, SeqBases);
 		SeqBases[SeqLenz] = eBaseEOS;
-		}
+	}
 	else
-		{
-		sscanf(szLine,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t",szDescriptor, &Flags, szChrom, &StartLoci,&MAPQ,szCigar,szRNext,&PNext,&TLen);
+	{
+		sscanf(szLine, "%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t", szDescriptor, &Flags, szChrom, &StartLoci, &MAPQ, szCigar, szRNext, &PNext, &TLen);
 		SeqLenz = 0;
 		szSeqBases[0] = '\0';
 		SeqBases[0] = eBaseEOS;
-		}
+	}
 
-		// check if element has been mapped, if not then slough ...
+	// check if element has been mapped, if not then slough ...
 	if(StartLoci == 0 || Flags & 0x04 || szCigar[0] == '*')	// set if unmapped or Cigar is unknown
-		{
+	{
 		NumUnmappedEls += 1;
-	    continue;
-		}
+		continue;
+	}
 
-	// need to estimate  alignment length  from the Cigar string ...
+// need to estimate  alignment length  from the Cigar string ...
 	StartLoci -= 1;
 
 	char *pCgr;
 	char Cgr;
+	char *pLACgr;
+	char LACgr;
 	int SegLen;
-	int SeqLen;
 
 	SeqOfs = 0;
 	SegLen = 0;
-	SeqLen = 0;
 	pCgr = szCigar;
 	Rslt = (teBSFrsltCodes)1;
 	while(Rslt >= 1 && (Cgr = *pCgr++) != '\0')
-		{
+	{
 		if(Cgr >= '0' && Cgr <= '9')
-			{
+		{
 			SegLen *= 10;
 			SegLen += Cgr - '0';
 			continue;
-			}
+		}
 		switch(Cgr) {
 			case 'm': case 'M': case '=': case 'x': case 'X':	// match or mismatches
-				SeqLen += SegLen;
-				continue;
+				// look ahead; a sequence segment consists of one or more contiguous multiple match or mismatch subsequence
+				pLACgr = pCgr;
+				while((LACgr = *pLACgr++) != '\0')
+					if(!(LACgr >= '0' && LACgr <= '9'))
+						break;
+				if(LACgr == 'm' || LACgr == 'M' || LACgr == '=' || LACgr == 'x' || LACgr == 'X')
+					continue;
 
-			case 'i': case 'I':				// insertion to the reference
-			case 'n': case 'N':				// mRNA to DNA alignment intron, or skipped target region?
-				if(SeqLen >=  MinLength && SeqLen <=  MaxLength)
+				if(SegLen > 0 && SegLen >= MinLength && SegLen <= MaxLength)
 					{
 					NumAcceptedEls += 1;
-					Rslt = (teBSFrsltCodes)AddElCore(NumAcceptedEls,(char *)"feat",(char *)"NoSpecies",(char *)"NoSpecies",szChrom,StartLoci,SeqLen,0,Flags & 0x010 ? '-' : '+',0,0,SeqBases[0] == eBaseEOS ? NULL : &SeqBases[SeqOfs]);
+					Rslt = (teBSFrsltCodes)AddElCore(NumParsedElLines, (char *)"feat", (char *)"NoSpecies", (char *)"NoSpecies", szChrom, StartLoci, SegLen, 0, Flags & 0x010 ? '-' : '+', 0, 0, SeqBases[0] == eBaseEOS ? NULL : &SeqBases[SeqOfs]);
 					if(Rslt < 1)
 						{
-						gDiagnostics.DiagOut(eDLFatal,gszProcName,"ParseSAMFileElements:AddElCore failed");
+						gDiagnostics.DiagOut(eDLFatal, gszProcName, "ParseSAMFileElements:AddElCore failed");
 						BAMfile.Close();
 						return(Rslt);
 						}
 					}
-				else
-					NumUnmappedEls += 1;
-				SeqOfs += (SeqLen + SegLen);
-				StartLoci += (SeqLen + SegLen);
+
+				SeqOfs += SegLen;
+				StartLoci += SegLen;
 				SegLen = 0;
-				SeqLen = 0;
 				continue;
 
-			default:
+			case 's': case 'S':				// soft trimming or masking?
+				SeqOfs += SegLen;
+				StartLoci += SegLen;
 				SegLen = 0;
-				SeqLen = 0;
 				continue;
-			}
-		}
-	if(Rslt >= 1)
-		{
-		if(SeqLen >=  MinLength && SeqLen <=  MaxLength)
-			{
-			NumAcceptedEls += 1;
-			Rslt = (teBSFrsltCodes)AddElCore(NumAcceptedEls,(char *)"feat",(char *)"NoSpecies",(char *)"NoSpecies",szChrom,StartLoci,SeqLen,0,Flags & 0x010 ? '-' : '+',0,0,SeqBases[0] == eBaseEOS ? NULL : &SeqBases[SeqOfs]);
-			}
-		else
-			{
-			NumUnmappedEls += 1;
-			continue;
+
+			case 'i': case 'I':				// insertion to the reference
+				SeqOfs += SegLen;
+				SegLen = 0;
+				continue;
+
+			case 'n': case 'N':				// mRNA to DNA alignment intron, or skipped target region?
+				StartLoci += SegLen;
+				SegLen = 0;
+				continue;
+
+			default:						// currently just sloughing any unrecognised CIGAR char 
+				continue;
 			}
 		}
 
@@ -1295,7 +1297,7 @@ while((LineLen = BAMfile.GetNxtSAMline(szLine)) > 0)
 	}
 
 m_NumElsParsed = NumAcceptedEls;
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Parsed %d element lines, unmapped %d, accepted %d, ",NumParsedElLines,NumUnmappedEls,NumAcceptedEls);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Parsed %d source lines, unmapped %d, accepted %d elements, ",NumParsedElLines,NumUnmappedEls,NumAcceptedEls);
 BAMfile.Close();
 return(Rslt >= 0 ? NumAcceptedEls : Rslt);
 }

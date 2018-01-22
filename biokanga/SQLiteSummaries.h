@@ -10,7 +10,7 @@
 const int cMaxTextBuff = 4000;			// buffer upto this length results values text
 const int cMaxNameLen = 50;				// maximum experiment/process/groupas name length
 const int cMaxDescrText = 1000;			// max length descriptive text
-const int cMaxSQLStatement = 500;		// allow for this length SQL statements
+const int cMaxSQLStatement = 1000;		// allow for this length SQL statements
 
 typedef enum eSQLliteSummParamTypes {
 	 ePTBool = 0,
@@ -32,11 +32,106 @@ typedef struct TAG_sSummStmsSQL {
 	char *pszDropIndexes;			// SQL statement used to drop indexes on this table
 } tsSummStmSQL;
 
+typedef struct TAG_sMonoSNP {
+	int ExprID;				// SNPs identified within this experiment
+	int ProcessingID;		// identifies processing instance
+	int MonoSnpPID;			// SNP instance, processing instance unique
+	char szElType[51];		// SNP type
+	char szSpecies[81];		// SNP located for alignments againts this target/species assembly	
+	char szChrom[81];		// SNP is on this chrom
+	UINT32 StartLoci;		// offset (0..N) at which SNP located
+	UINT32 EndLoci;			// offset (0..N) at which SNP located - allowing for future polymorphic varation covering multiple bases
+	UINT32 Len;				// polymorphic variation is of this length
+	char szStrand[2];		// SNP relative to this strand
+	UINT32 Rank;			// ranking confidence in thisSNP - min 0, max 1000
+	double PValue;			// probability of this SNP being a false positive
+	UINT32 Bases;			// total number of bases aligning over the SNP loci
+	UINT32 Mismatches;		// aligned bases were aligning with this many mismatches
+	char szRefBase[2];			// target sequence base at the SNP locai
+	UINT32 MMBaseA;			// this many mismatched bases were A
+	UINT32 MMBaseC;			// this many mismatched bases were C
+	UINT32 MMBaseG;			// this many mismatched bases were G
+	UINT32 MMBaseT;			// this many mismatched bases were T
+	UINT32 MMBaseN;			// this many mismatched bases were N
+	double BackgroundSubRate; // background substitution rate within a window centered at SNP loci
+	UINT32 TotWinBases;		// total number of bases within centeredwindow
+	UINT32 TotWinMismatches;		// total number of mismatched bases within centered window
+	UINT32	MarkerID;			// marker identifier
+	UINT32 NumPolymorphicSites;	// number of polymorphic sites within marker
+} tsMonoSNP;
+
+typedef struct TAG_sDiSNP {
+	int ExprID;				// SNPs identified within this experiment
+	int ProcessingID;		// identifies processing instance
+	UINT32 DiSnpPID;		// DiSNP instance, processing instance unique
+	char szElType[51];		// SNP type
+	char szSpecies[81];		// DiSNP located for alignments againts this target/species assembly	
+	char szChrom[81];		// DiSNP is on this chrom
+	UINT32 SNP1Loci;		// offset (0..N) at which 1st SNP located
+	char szSNP1RefBase[2];		// target sequence base at the 1st SNP loci
+	UINT32 SNP1BaseAcnt;	// this many bases at SNP1 were A
+	UINT32 SNP1BaseCcnt;	// this many bases at SNP1 were C
+	UINT32 SNP1BaseGcnt;	// this many bases at SNP1 were G
+	UINT32 SNP1BaseTcnt;	// this many bases at SNP1 were T
+	UINT32 SNP1BaseNcnt;	// this many bases at SNP1 were N
+
+	UINT32 SNP2Loci;		// offset (0..N) at which 2nd SNP located
+	char szSNP2RefBase[2];		// target sequence base at the 2nd SNP loci
+	UINT32 SNP2BaseAcnt;	// this many bases at SNP2 were A
+	UINT32 SNP2BaseCcnt;	// this many bases at SNP2 were C
+	UINT32 SNP2BaseGcnt;	// this many bases at SNP2 were G
+	UINT32 SNP2BaseTcnt;	// this many bases at SNP2 were T
+	UINT32 SNP2BaseNcnt;	// this many bases at SNP2 were N
+
+	UINT32 Depth;			// coverage depth of reads covering both SNP1 and SNP2
+	UINT32 Antisense;		// non-zero if reads were all antisense to target
+	UINT32 Haplotypes;		// minimum number of haplotypes
+	UINT32 HaplotypeCnts[16];	// number of instances of each (aa..tt) localised DiSNP haplotype
+} tsDiSNP;
+
+typedef struct TAG_sTriSNP {
+	int ExprID;				// SNPs identified within this experiment
+	int ProcessingID;		// identifies processing instance
+	UINT32 TriSnpPID;		// DiSNP instance, processing instance unique
+	char szElType[51];		// SNP type
+	char szSpecies[81];		// DiSNP located for alignments againts this target/species assembly	
+	char szChrom[81];		// DiSNP is on this chrom
+	UINT32 SNP1Loci;		// offset (0..N) at which 1st SNP located
+	char szSNP1RefBase[2];		// target sequence base at the 1st SNP loci
+	UINT32 SNP1BaseAcnt;	// this many bases at SNP1 were A
+	UINT32 SNP1BaseCcnt;	// this many bases at SNP1 were C
+	UINT32 SNP1BaseGcnt;	// this many bases at SNP1 were G
+	UINT32 SNP1BaseTcnt;	// this many bases at SNP1 were T
+	UINT32 SNP1BaseNcnt;	// this many bases at SNP1 were N
+
+	UINT32 SNP2Loci;		// offset (0..N) at which 2nd SNP located
+	char szSNP2RefBase[2];		// target sequence base at the 2nd SNP loci
+	UINT32 SNP2BaseAcnt;	// this many bases at SNP2 were A
+	UINT32 SNP2BaseCcnt;	// this many bases at SNP2 were C
+	UINT32 SNP2BaseGcnt;	// this many bases at SNP2 were G
+	UINT32 SNP2BaseTcnt;	// this many bases at SNP2 were T
+	UINT32 SNP2BaseNcnt;	// this many bases at SNP2 were N
+
+	UINT32 SNP3Loci;		// offset (0..N) at which 3rd SNP located
+	char szSNP3RefBase[2];		// target sequence base at the 3rd SNP loci
+	UINT32 SNP3BaseAcnt;	// this many bases at SNP3 were A
+	UINT32 SNP3BaseCcnt;	// this many bases at SNP3 were C
+	UINT32 SNP3BaseGcnt;	// this many bases at SNP3 were G
+	UINT32 SNP3BaseTcnt;	// this many bases at SNP3 were T
+	UINT32 SNP3BaseNcnt;	// this many bases at SNP3 were N
+
+	UINT32 Depth;			// coverage depth of reads covering both SNP1 and SNP2
+	UINT32 Antisense;		// non-zero if reads were all antisense to target
+	UINT32 Haplotypes;		// minimum number of haplotypes
+	UINT32 HaplotypeCnts[64];	// number of instances of each (aaa..ttt) localised TriSNP haplotype
+} tsTriSNP;
+
+
 class CSQLiteSummaries
 {
 	bool m_bInitialised;				// set true after successful initialisation during class construction
 	sqlite3 *m_pDB;						// pts to instance of SQLite
-	static tsSummStmSQL m_StmSQL[7];	// SQLite table and index statements
+	static tsSummStmSQL m_StmSQL[10];	// SQLite table and index statements
 
 	
 	char *RemoveQuotes(char *pszRawText);	// remove quotes which may be a risk for aql injection attacks...
@@ -89,22 +184,40 @@ public:
 
 
 	int													// uiniqely identifies this starting experiment process instance
-		    StartProcessing(int ExperimentID,			// identifier returned by StartExperiment()
+		    StartProcessing(int ExprID,			// identifier returned by StartExperiment()
 						 int ProcessID,					// identifier as returned by AddProcess()
 						char *pszProcessVersion);		// process version
 
 	int													// uiniqely identifies this added log text
-			AddLog(int ProcessingID,					// identifier returned by StartProcessing()
+			AddLog(int ExprID,			// identifier returned by StartExperiment()
+					int ProcessingID,					// identifier returned by StartProcessing()
 						 const char *pszFormat,...);	// printf style format
 	int
-			AddParameter(int ProcessingID,		// identifier returned by StartProcessing()
+			AddParameter(int ExprID,			// identifier returned by StartExperiment()
+						int ProcessingID,		// identifier returned by StartProcessing()
 						 teSQLliteSummParamTypes ParamType,	// parameter type
 						 int ValueSize,					// parameter value is of this byte length
 						 const char *pszParamName,		// parameter name
 						 void *pParmValue);				// parameter value
+	
+	int
+		AddMonoSNP(int ExprID,			// identifier returned by StartExperiment()
+					int ProcessingID,			// identifier returned by StartProcessing()
+					tsMonoSNP *pMonoSNP);		// add this MonoSNP to TblMonoSNPs table
 
 	int
-			AddResult(int ProcessingID,		// identifier returned by StartProcessing()
+		AddDiSNP(int ExprID,			// identifier returned by StartExperiment()
+				int ProcessingID,				// identifier returned by StartProcessing()
+					tsDiSNP *pDiSNP);		// add this DiSNP to TblDiSNPs table
+
+	int
+		AddTriSNP(int ExprID,			// identifier returned by StartExperiment()
+					int ProcessingID,				// identifier returned by StartProcessing()
+					tsTriSNP *pTriSNP);		// add this TriSNP to TblTriSNPs table
+
+	int
+			AddResult(int ExprID,			// identifier returned by StartExperiment()
+						int ProcessingID,		// identifier returned by StartProcessing()
 						const char *GroupAs,			// result is part of this grouping
 						 teSQLliteSummParamTypes ParamType,	// result value type
 						 int ValueSize,					// result value is of this byte length
@@ -112,7 +225,8 @@ public:
 						 void *pResultValue);			// result value
 
 	int
-			AddResultXY(int ProcessingID,			// identifier returned by StartProcessing()
+			AddResultXY(int ExprID,			// identifier returned by StartExperiment()
+						int ProcessingID,			// identifier returned by StartProcessing()
 						 const char *GroupAs,			// result is part of this grouping
 						 teSQLliteSummParamTypes ParamXType,	// result value X type
 						 int ValueXSize,				// result value is of this byte length
@@ -124,10 +238,11 @@ public:
 						 void *pResultYValue);			// result Y value
 
 	int					// returned process identifier
-			EndProcessing(int ProcessingID,					// identifier returned by StartProcessing()
-						  int ResultCode);					// processing result code
+			EndProcessing(int ExprID,			// identifier returned by StartExperiment()
+						  int ProcessingID,		// identifier returned by StartProcessing()
+						  int ResultCode);		// processing result code
 
 	int
-			EndExperiment(int ExperimentID);			// identifier returned by StartExperiment()
+			EndExperiment(int ExprID);			// identifier returned by StartExperiment()
 };
 
