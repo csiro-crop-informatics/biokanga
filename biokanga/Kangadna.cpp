@@ -9227,21 +9227,21 @@ if(gProcessingID > 0)
 	else
 		pszEnd = (char *)"PE1ReadsAccepted";
 	MeanLen = TotFastaPE1SeqLen/(double)NumFastaPE1Seqs;
-	gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint32,sizeof(NumFastaPE1Seqs),"Cnt",&NumFastaPE1Seqs);
-	gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE1MinLen),"MinLen",&FastaPE1MinLen);
-	gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE1MaxLen),"MaxLen",&FastaPE1MaxLen);
-	gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint64,sizeof(TotFastaPE1SeqLen),"TotLen",&TotFastaPE1SeqLen);
-	gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTDouble,sizeof(MeanLen),"MeanLen",&MeanLen);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint32,sizeof(NumFastaPE1Seqs),"Cnt",&NumFastaPE1Seqs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE1MinLen),"MinLen",&FastaPE1MinLen);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE1MaxLen),"MaxLen",&FastaPE1MaxLen);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint64,sizeof(TotFastaPE1SeqLen),"TotLen",&TotFastaPE1SeqLen);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTDouble,sizeof(MeanLen),"MeanLen",&MeanLen);
 
 	if(m_Sequences.bPESeqs)
 		{
 		MeanLen = TotFastaPE2SeqLen/(double)NumFastaPE2Seqs;
 		pszEnd = (char *)"PE2ReadsAccepted";
-		gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint32,sizeof(NumFastaPE2Seqs),"Cnt",&NumFastaPE2Seqs);
-		gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE2MinLen),"MinLen",&FastaPE2MinLen);
-		gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE2MaxLen),"MaxLen",&FastaPE2MaxLen);
-		gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTUint64,sizeof(TotFastaPE2SeqLen),"SeqLen",&TotFastaPE2SeqLen);
-		gSQLiteSummaries.AddResult(gProcessingID,pszEnd,ePTDouble,sizeof(MeanLen),"MeanLen",&MeanLen);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint32,sizeof(NumFastaPE2Seqs),"Cnt",&NumFastaPE2Seqs);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE2MinLen),"MinLen",&FastaPE2MinLen);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint32,sizeof(FastaPE2MaxLen),"MaxLen",&FastaPE2MaxLen);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTUint64,sizeof(TotFastaPE2SeqLen),"SeqLen",&TotFastaPE2SeqLen);
+		gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,pszEnd,ePTDouble,sizeof(MeanLen),"MeanLen",&MeanLen);
 		}
 	}
 return(eBSFSuccess);

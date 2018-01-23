@@ -157,10 +157,12 @@ typedef struct TAG_sQualTarg {
 const UINT32 cAllocSfxEntries = 500000;		// alloc/realloc for sequence entries in this many increments
 const UINT32 cMaxSfxEntries = 100000000;		// can handle upto this number of sequence entries
 const UINT32 cMaxAllowSeqLen = 0xfff00000;  // maximum length (nearly 4G) of any individual sequence allowed 
+const UINT32 cMinAllowInMemSeqLen = 0x04;		// minimum allowed length of any individual sequence allowed when constructing in-memory suffix array
+const UINT32 cMaxAllowInMemSeqLen = (cMaxAllowSeqLen/2);		// maximum allowed length of any individual sequence allowed when constructing in-memory suffix array
 const UINT64 cMaxAllowConcatSeqLen = 1000000000000; // max supported concatenation length of all sequences (must fit within 40bits)
 const UINT32 cReallocBlockEls = cMaxAllowSeqLen/10;  // minimum realloc for sfxblock elements
 const UINT64 cThres8ByteSfxEls = 4000000000;  // if concatenated sequence length >= this threshold then use 5bytes per suffix element instead of 4 when creating suffix index
-
+const UINT32 cMaxMemSfxSeqAlloc = 0x03fffffff;  // when constructing in memory suffix array then defaulting max length sequence to this length, will be realloc'd to larger if required
 const int cMaxCultivars = 100;	// can handle at most this many different cultivars
 const int cMinCultivarPreSufLen = 5;	// prefix or suffix length must be at least this many bases
 const int cMaxCultivarPreSufLen = 200;  // prefix or suffix length must be no longer than this many bases
@@ -497,7 +499,16 @@ public:
 	int Open(bool bBisulfite = false,				// if true then bisulfite processing
 					bool bColorspace = false);		// if true then colorspace (SOLiD) processing
 
-
+	// Fasta2InMemSfxArray
+	// Parse input fasta format file into an in-memory suffix array
+	// Suffix array can then be accessed as if read from a pre-generated suffix array file
+	int
+		Fasta2InMemSfxArray(char *pszFile,	// generate in-memory suffix array from this fasta file
+			UINT32 MinSeqLen = cMinAllowInMemSeqLen,	// skipping sequences which are less than this length
+			UINT32 MaxSeqLen = cMaxAllowInMemSeqLen,	// skipping sequences which are longer than this length
+			bool bBisulfite = false,	// true if Bisulfite
+			bool bColorspace = false);	// true if colorspace
+			
 	int Close(bool bFlush = true);			// closes opened file
 
     // obtain a copy of the header for external diagnostics
