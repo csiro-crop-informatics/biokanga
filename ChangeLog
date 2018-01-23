@@ -28,3 +28,11 @@ Release 4.3.2  PacBioKanga toolkit for processing PacBio reads forms part of thi
                Copyright (c) 2017, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230. 
                Conditions of this license are contained in the accompanying LICENSE file
 Release 4.3.6  LICENSE was updated. genbioseq functionality was added
+Release 4.3.9  A single SQLite database can now contain the results of
+multiple experiments. Each table contains an additional column with
+identifiers unique to the experiment from which each row was derived.
+		In memory suffix arrays can now be generated without the need
+		to use intermediate files.
+		SAM/BAM file CIGAR operations are now fully supported when
+		processing these files with 'biokanga maploci' or other
+		modules processing pre-generated SAM/BAM files.

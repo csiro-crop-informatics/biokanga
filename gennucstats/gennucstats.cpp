@@ -730,7 +730,7 @@ do	{
 			AIdx++;
 			continue;
 			}
-	// same chromsome..
+	// same chromosome..
 	if(pBDyad->Loci > (pADyad->Loci + WindDyad))
 		{
 		pADyad++;
