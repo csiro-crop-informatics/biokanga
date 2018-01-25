@@ -504,9 +504,9 @@ if(m_pSfxArray != NULL)						// releases memory!
 
 if(gProcessingID > 0)
 	{
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Kmers",ePTInt64,sizeof(m_NumPutMarkers),"NumPutMarkers",&m_NumPutMarkers);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Kmers",ePTInt64,sizeof(m_TotSenseCnts),"TotSenseCnts",&m_TotSenseCnts);
-	gSQLiteSummaries.AddResult(gProcessingID,(char *)"Kmers",ePTInt64,sizeof(m_TotAntisenseCnts),"TotAntisenseCnts",&m_TotAntisenseCnts);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Kmers",ePTInt64,sizeof(m_NumPutMarkers),"NumPutMarkers",&m_NumPutMarkers);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Kmers",ePTInt64,sizeof(m_TotSenseCnts),"TotSenseCnts",&m_TotSenseCnts);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"Kmers",ePTInt64,sizeof(m_TotAntisenseCnts),"TotAntisenseCnts",&m_TotAntisenseCnts);
 	}
 
 if(m_NumPutMarkers == 0 || m_NumPutMarkers > 0x07fffffff)
