@@ -1,6 +1,8 @@
 // genGenomeFromAGP.cpp : Defines the entry point for the console application.
 // This program uses a AGP file and source contig files to build a genome fasta file containing entries for each chromosome/region defined in the AGP file
 // Initially to be used with contstruction of the assemblies for fusarium oxy genome ready for import into the UCSC browser
+// Updated 25/05/2018 (ver 1.2.0) to accept files formatted to AGP 2.0 specification, also
+// if gap size known then reports as lowercase 'n', if gap size unknown and using a default size then reports as uppercase 'N'
 
 #include "stdafx.h"
 
@@ -20,7 +22,7 @@
 #include "Contigs.h"
 #include "AGPs.h"
 
-const char *cpszProgVer = "1.1.0";		// increment with each release
+const char *cpszProgVer = "1.2.0";		// increment with each release
 
 // processing modes
 typedef enum TAG_ePMode {
@@ -92,10 +94,10 @@ struct arg_lit  *version = arg_lit0("v","version,ver",			"print version informat
 struct arg_int *FileLogLevel=arg_int0("f", "FileLogLevel",		"<int>","Level of diagnostics written to screen and logfile 0=fatal,1=errors,2=info,3=diagnostics,4=debug");
 struct arg_file *LogFile = arg_file0("F","log","<file>",		"diagnostics log file");
 
-struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - standard, 1 - generate supercontig to chrom mappings");
+struct arg_int *pmode = arg_int0("m","mode","<int>",		    "processing mode: 0 - standard with output as multifasta assembly, 1 - generate supercontig to chrom mappings with output as CSV");
 struct arg_file *contigfile = arg_file1("i","in","<file>",		"input from these multifasta (wildcards allowed) contig files, or supercontig AGP file in mode 1");
 struct arg_file *agpfile = arg_file1("I","in","<file>",			"input from this AGP file");
-struct arg_file *assembfile = arg_file1("o","out","<file>",		"output to this multifasta assembly file");
+struct arg_file *assembfile = arg_file1("o","out","<file>",		"output to this multifasta assembly file if processing mode 0, output as CSV in mode 1");
 
 struct arg_end *end = arg_end(20);
 
@@ -289,7 +291,7 @@ Reset();
 }
 
 bool
-OutputNs(int Ncnt)
+OutputNs(int Ncnt, bool bIsGapSizeUnknown) // if gap size known then reports as lowercase 'n', if gap size unknown and using a default size then reports as uppercase 'N'
 {
 if(Ncnt <= 0 || m_hAssembFile == -1)
 	return(false);
@@ -306,7 +308,7 @@ while(Ncnt--)
 		m_ColPsn = 0;
 		}
 	
-	m_OutputBuff[m_BuffOfs++] = 'N';
+	m_OutputBuff[m_BuffOfs++] = bIsGapSizeUnknown ? 'N' : 'n';
 	m_ColPsn += 1;
 	}
 return(true);
@@ -439,14 +441,14 @@ while((pAGPentry = m_pAGPs->Next(pAGPentry))!=NULL)
 		if(pAGPentry->Start > Start)
 			{
 			NbaseCnt = pAGPentry->Start - Start;
-			OutputNs(NbaseCnt);			
+			OutputNs(NbaseCnt, false);			
 			Start = pAGPentry->Start;
 			}
 		}
-	if(pAGPentry->Type == eAGPSSN)
+	if(pAGPentry->Type == eAGPSSN || pAGPentry->Type == eAGPSSU)
 		{
 		NbaseCnt = 1 + pAGPentry->End - pAGPentry->Start;
-		OutputNs(NbaseCnt);			
+		OutputNs(NbaseCnt, pAGPentry->Type == eAGPSSU);
 		Start = pAGPentry->End + 1;
 		}
 	else
@@ -533,7 +535,7 @@ while((pAGPentry = m_pAGPs->Next(pAGPentry))!=NULL)
 	{
 	if(szCurObject[0] == '\0' || stricmp(pAGPentry->szObjIdent,szCurObject))
 		strcpy(szCurObject,pAGPentry->szObjIdent);				// new chrom starting
-	if(pAGPentry->Type == eAGPSSN)
+	if(pAGPentry->Type == eAGPSSN || pAGPentry->Type == eAGPSSU)
 		continue;
 	else
 		{
