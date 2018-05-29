@@ -1,6 +1,7 @@
 #pragma once
 
 const int cMaxOjCompLen = cMaxGeneNameLen;
+const int cMaxLinkageEvidence = 101;			// allowing upto this length of linkage evidence
 const int cAllocAGPentries = 10000;				// alloc/realloc for AGP entries in this many increments
 
 // The sequencing status of the component. These typically correspond to keywords in the International Sequence Database (GenBank/EMBL/DDBJ) submission
@@ -25,7 +26,9 @@ typedef enum TAG_eAGPgapType {
 	AGPshort_arm,		  // a gap inserted at the start of an acrocentric chromosome.
 	AGPheterochromatin,	  // a gap inserted for an especially large region of heterochromatic sequence (may also include the centromere).
 	AGPtelomere,		  // a gap inserted for the telomere.
-	AGPrepeat			  // an unresolvable repeat.
+	AGPrepeat,			  // an unresolvable repeat.
+	AGPscaffold,		  // a gap between two sequence contigs in a scaffold (superscaffold or ultra-scaffold)
+	AGPGapUndefined,	  // gap type is unknown - a catchall for types not defined in the AGP 1.1 and 2.0 specification
 	} teAGPgapType;
 
 typedef enum TAG_eAGPcompOrient {
@@ -39,6 +42,7 @@ typedef struct TAG_sAGPgap {
 		UINT32 GapLen;		// gap length 
 		teAGPgapType GapType;		// gap type
 		bool bLinkage;		// true if there is evidence of linkage between the adjacent lines
+		char szEvidence[cMaxLinkageEvidence];	// evidence of linkage
 } tsAGPgap;
 
 typedef struct TAG_sAGPcomp {
@@ -57,8 +61,8 @@ typedef struct TAG_sAGPentry {
 	UINT32 PartNum;			// identifies this entry line for object (1..n)
 	teAGPseqStatus Type;		// component type - A,D,F,G,N,O,P,U,W
 	union {
-		tsAGPgap Gap;		// if Type is N
-		tsAGPcomp Comp;		// if Type is not N
+		tsAGPgap Gap;		// if Type is N or U
+		tsAGPcomp Comp;		// if Type is not N or U
 		};	
 } tsAGPentry;
 
