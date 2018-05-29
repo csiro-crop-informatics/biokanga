@@ -36,3 +36,5 @@ identifiers unique to the experiment from which each row was derived.
 		SAM/BAM file CIGAR operations are now fully supported when
 		processing these files with 'biokanga maploci' or other
 		modules processing pre-generated SAM/BAM files.
+Release 4.3.10 Bug fix for SQLite localised haplotypes table saves
+		Enhanced to now transparently handle AGP 1.1 and AGP 2.0 formats
