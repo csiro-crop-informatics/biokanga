@@ -87,9 +87,10 @@ int scannxt;
 char *pTxt;
 char szLineBuff[cLineBuffLen];
 char cEntryType;
-char szGapType[30];
-char szLinkage[10];
-char szOrientation[10];
+char szGapType[31];
+char szLinkage[11];
+char szEvidence[101];
+char szOrientation[11];
 tsAGPentry Entry;
 tsAGPentry *pEntry;
 size_t memreq;
@@ -144,7 +145,7 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 		}
 	switch(tolower(cEntryType)) {
 		case 'a':
-			Entry.Type = eAGPSSA;			// Active Finishing
+			Entry.Type = eAGPSSA;		// Active Finishing
 			break;
 		case 'd':
 			Entry.Type = eAGPSSD;		// Draft HTG (often phase1 and phase2 are called Draft, whether or not they have the draft keyword).
@@ -156,7 +157,7 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 			Entry.Type = eAGPSSG;		// Whole Genome Finishing
 			break;
 		case 'n':
-			Entry.Type = eAGPSSN;		// gap with specified size
+			Entry.Type = eAGPSSN;		// gap with specified size - will report as lowercase 'n' in generated assembly
 			break;
 		case 'o':
 			Entry.Type = eAGPSSO;		// Other sequence (typically means no HTG keyword)
@@ -165,7 +166,7 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 			Entry.Type = eAGPSSP;		// Pre Draft
 			break;
 		case 'u':
-			Entry.Type = eAGPSSU;		// gap of unknown size, typically defaulting to predefined values.
+			Entry.Type = eAGPSSU;		// gap of unknown size, typically defaulting to predefined values - will report as uppercase 'N' in generated assembly
 			break;
 		case 'w':
 			Entry.Type = eAGPSSW;		// WGS contig
@@ -178,10 +179,11 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 	if(Rslt != eBSFSuccess)
 		break;
 
-	if(Entry.Type == eAGPSSN)		// gap?
+	szEvidence[0] = '\0';
+	if(Entry.Type == eAGPSSN || Entry.Type == eAGPSSU)		// gap?
 		{
-		Cnt = sscanf(&pTxt[scannxt],"%d %30s %10s", &Entry.Gap.GapLen, szGapType, szLinkage);
-		if(Cnt != 3)
+		Cnt = sscanf(&pTxt[scannxt],"%d %30s %10s %100s", &Entry.Gap.GapLen, szGapType, szLinkage, szEvidence);
+		if(Cnt < 3 || Cnt > 4)		// evidence will be missing in AGP 1.1 but linkage is in both AGP 1.1 and 2.0
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst parsing line '%s' - %s",pTxt, pszAGPFile);
 			Rslt = eBSFerrParse; // if at least one feature processed then treat rubbish as error
@@ -198,6 +200,10 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 				Rslt = eBSFerrParse; // if at least one feature processed then treat rubbish as error
 				break;
 				}
+		if(Cnt == 4)			// linkage evidence was provided - AGP 2.0
+			strncpy(Entry.Gap.szEvidence, szEvidence,cMaxLinkageEvidence);
+		else
+			Entry.Gap.szEvidence[0] = '\0';
 
 
 		if(!stricmp(szGapType,"fragment"))
@@ -212,7 +218,7 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 					if(!stricmp(szGapType,"centromere"))
 						Entry.Gap.GapType = AGPcentromere;
 					else
-						if(!stricmp(szGapType,"hort_arm"))
+						if(!stricmp(szGapType,"short_arm"))
 							Entry.Gap.GapType = AGPshort_arm;
 						else
 							if(!stricmp(szGapType,"heterochromatin"))
@@ -224,12 +230,10 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 									if(!stricmp(szGapType,"repeat"))
 										Entry.Gap.GapType = AGPrepeat;
 									else
-										{
-										gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst parsing gap type in line '%s' - %s",pTxt,pszAGPFile);
-										Rslt = eBSFerrParse; // if at least one feature processed then treat rubbish as error
-										break;
-										}
-
+										if (!stricmp(szGapType, "scaffold"))
+											Entry.Gap.GapType = AGPscaffold;
+									else
+										Entry.Gap.GapType = AGPGapUndefined; // try to be robust, gap type is not currently utilised in this release of genGenomeFromAGP 
 		}
 	else
 		{
@@ -246,18 +250,10 @@ while(fgets(szLineBuff,sizeof(szLineBuff),pAGPStream)!= NULL)
 			if(!stricmp(szOrientation,"-"))
 				Entry.Comp.Orientation = eAGPOminus;
 		else
-			if(!stricmp(szOrientation,"0"))
-				Entry.Comp.Orientation = eAGPOunknown;
-		else
 			if(!stricmp(szOrientation,"na"))
 				Entry.Comp.Orientation = eAGPna;
 			else
-				{
-				gDiagnostics.DiagOut(eDLFatal,gszProcName,"Errors whilst parsing orientation in line '%s' - %s",pTxt,pszAGPFile);
-				Rslt = eBSFerrParse; // if at least one feature processed then treat rubbish as error
-				break;
-				}
-
+				Entry.Comp.Orientation = eAGPOunknown; // try to be robust, treating '?', '0', or any undefined orientation as being unknown in this release of genGenomeFromAGP 
 		}
 	if(m_NumAGPentries == m_AllocAGPentries)
 		{
@@ -305,7 +301,7 @@ if(!m_NumAGPentries || pszCompID == NULL || pszCompID[0] == '\0')
 	return(NULL);
 for(Idx = 0; Idx < m_NumAGPentries; Idx++, pEntry++)
 	{
-	if(pEntry->Type != eAGPSSN && !stricmp(pszCompID,pEntry->Comp.szCompID))
+	if(!(pEntry->Type == eAGPSSN || pEntry->Type == eAGPSSU) && !stricmp(pszCompID,pEntry->Comp.szCompID))
 		return(pEntry);
 	}
 return(NULL);

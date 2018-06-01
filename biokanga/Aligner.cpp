@@ -7761,10 +7761,15 @@ while((pReadHit = IterSortedReads(pReadHit))!=NULL)
 			}
 		}
 	}
-if((Rslt=OutputSNPs())!=eBSFSuccess)
+
+if(m_pChromSNPs != NULL)
 	{
-	Reset(false);
-	return(Rslt);
+	m_pChromSNPs->MeanReadLen = (UINT32)(((m_pChromSNPs->TotReadLen + m_pChromSNPs->NumReads - 1) / m_pChromSNPs->NumReads));
+	if((Rslt=OutputSNPs())!=eBSFSuccess)
+		{
+		Reset(false);
+		return(Rslt);
+		}
 	}
 if(m_hSNPfile != -1)
 	{
