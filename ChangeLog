@@ -38,3 +38,4 @@ identifiers unique to the experiment from which each row was derived.
 		modules processing pre-generated SAM/BAM files.
 Release 4.3.10 Bug fix for SQLite localised haplotypes table saves
 		Enhanced to now transparently handle AGP 1.1 and AGP 2.0 formats
+Release 4.3.11 Bug fix for error code not being propagated up to exit() on realloc failure 

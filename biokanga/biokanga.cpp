@@ -27,10 +27,10 @@
 
 // when required to static compile
 #ifdef _LINKSTATIC_
-const char *cpszProgVer = "4.3.10S";		// increment with each release
+const char *cpszProgVer = "4.3.11S";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset - Static Linked";
 #else
-const char *cpszProgVer = "4.3.10";		// increment with each release
+const char *cpszProgVer = "4.3.11";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset";
 #endif
 
