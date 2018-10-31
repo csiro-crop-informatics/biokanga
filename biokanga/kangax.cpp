@@ -919,8 +919,9 @@ else
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: sorting suffix array...");
 if((Rslt = m_pSfxFile->Finalise()) < eBSFSuccess)
-       Rslt = m_pSfxFile->Close();
+	Rslt = m_pSfxFile->Close();
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"CreateBioseqSuffixFile: completed...");
 Reset();
 return(Rslt);
 }
+

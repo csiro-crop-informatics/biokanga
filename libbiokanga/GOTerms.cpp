@@ -1298,7 +1298,7 @@ while(*pszTxt && isspace(*pszTxt))
 	pszTxt++;
 	NumChrs++;
 	}
-if(pszTxt == '\0')
+if(pszTxt[0] == '\0')
 	return(NumChrs);
 
 pChr = pszTagValue;
@@ -1640,7 +1640,7 @@ tsGOTerm *pTerm;
 int *pID;
 int Terms2Alloc;
 
-if(pszGOID == NULL || pszGOID == '\0' || 
+if(pszGOID == NULL || pszGOID[0] == '\0' || 
    NumGOIDAltIDs < 0 || (NumGOIDAltIDs > 0 && (pszGOIDAltIDs == NULL || *pszGOIDAltIDs == '\0')) ||
    NumParentGOIDs < 0 || (NumParentGOIDs > 0 && (pszParentGOIDs == NULL || *pszParentGOIDs == '\0')))
 	return(eBSFerrParams);

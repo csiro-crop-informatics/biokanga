@@ -7,7 +7,7 @@
 
 #pragma once
 
-const int cMinCoreLen = 5;			// minimum allowed core or seed length
+const int cMinCoreLen = 4;			// minimum allowed core or seed length
 const int cDfltCoreLen = 20;		// default core or seed length
 const int cMaxCoreLen = 50;			// max allowed core or seed length
 

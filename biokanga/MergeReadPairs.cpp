@@ -579,13 +579,13 @@ for(WellIdx = 0; WellIdx < NumPlateWells; WellIdx++,pWell++)
 	{
 	if(bNoMerge)
 		{
-		sprintf(pWell->WellFile[1].szOutFile, "%s.Well%d.PE2.%s", m_szMergeOutFile, WellIdx + 1, m_OFormat == eOFfasta ? "fasta" : "fastq");
+		sprintf(pWell->WellFile[1].szOutFile, "%.200s.Well%d.PE2.%s", m_szMergeOutFile, WellIdx + 1, m_OFormat == eOFfasta ? "fasta" : "fastq");
 		if ((pWell->WellFile[1].pOutBuffer = new char[cAllocOutBuffLen]) == NULL)
 			return(eBSFerrMem);
 		pWell->WellFile[1].AllocdOutBuff = cAllocOutBuffLen;
 		}
 
-	sprintf(pWell->WellFile[0].szOutFile,"%s.Well%d.%s.%s",m_szMergeOutFile,WellIdx+1, bNoMerge == true ? "PE1" : "SE",m_OFormat == eOFfasta ? "fasta" : "fastq");
+	sprintf(pWell->WellFile[0].szOutFile,"%.220s.Well%d.%s.%s",m_szMergeOutFile,WellIdx+1, bNoMerge == true ? "PE1" : "SE",m_OFormat == eOFfasta ? "fasta" : "fastq");
 	pWell->WellFile[0].hOutFile = -1;
 	pWell->WellFile[1].hOutFile = -1;
 	if((pWell->WellFile[0].pOutBuffer = new char [cAllocOutBuffLen]) == NULL)
