@@ -184,7 +184,7 @@ if (!argerrors)
 	if(sepunique->count)
 		{
 		strncpy(szSepUnique,sepunique->sval[0],cMaxSepLen);
-		sepunique->sval[cMaxSepLen] = '\0';
+		szSepUnique[cMaxSepLen] = '\0';
 		CUtility::TrimQuotedWhitespcExtd(szSepUnique);
 		if(szSepUnique[0] == '\0')
 			{

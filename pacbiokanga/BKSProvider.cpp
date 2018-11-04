@@ -1492,7 +1492,7 @@ if (m_BKSConnection.TxdRxd.pTxdBuff == NULL)
 
 
 
-if (pszService == NULL || pszService == '\0')	// use default port if not specified by caller
+if (pszService == NULL || pszService[0] == '\0')	// use default port if not specified by caller
 	pszService = (char *)cDfltServerPort;
 
 Then = (UINT32)time(NULL);

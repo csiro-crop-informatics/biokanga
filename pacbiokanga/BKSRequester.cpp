@@ -2665,7 +2665,7 @@ if (m_ListenerSock != -1)
 m_ListenerSock = -1;
 #endif
 
-if (pszService == NULL || pszService == '\0')	// use default port if not specified by caller
+if (pszService == NULL || pszService[0] == '\0')	// use default port if not specified by caller
 	pszService = (char *)cDfltListenerPort;
 strncpy(m_szServiceName,pszService,sizeof(m_szServiceName));
 m_szServiceName[sizeof(m_szServiceName)-1] = '\0';

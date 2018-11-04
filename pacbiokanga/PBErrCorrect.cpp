@@ -981,7 +981,7 @@ if (!argerrors)
 		strncpy(pszPacBioFiles[NumPacBioFiles],pacbiofiles->filename[0],_MAX_PATH);
 		pszPacBioFiles[0][_MAX_PATH-1] = '\0';
 		CUtility::TrimQuotedWhitespcExtd(pszPacBioFiles[0]);
-		if(pszPacBioFiles[0] == '\0')
+		if(pszPacBioFiles[0][0] == '\0')
 			{
 			gDiagnostics.DiagOut(eDLFatal,gszProcName,"Error: After removal of whitespace, no input mutltialignment file must be specified with '-i<inputfile>'\n");
 			exit(1);

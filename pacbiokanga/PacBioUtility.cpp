@@ -471,7 +471,7 @@ for(FileIdx = 0; FileIdx < m_NumInputFiles; FileIdx++)
 				// fasta descriptor line starts with some form of unique identifier.
 				// Use this identifier as the entry name.
 				if(sscanf(szDescription," %s[ ,]",szName)!=1)
-					sprintf(szName,"%s.%d",m_szAsyncReadsFile,++SeqID);
+					sprintf(szName,"%.240s.%d",m_szAsyncReadsFile,++SeqID);
 
 				bFirstEntry = false;
 				bEntryCreated = true;
@@ -483,7 +483,7 @@ for(FileIdx = 0; FileIdx < m_NumInputFiles; FileIdx++)
 				if(bFirstEntry)	// if there was no descriptor then dummy up one...
 					{
 					SeqID++;
-					sprintf(szName,"%s.%d",m_szAsyncReadsFile,SeqID);
+					sprintf(szName,"%.240s.%d",m_szAsyncReadsFile,SeqID);
 					strcpy(szDescription,"No Description provided");
 					bFirstEntry = false;
 					bEntryCreated = true;

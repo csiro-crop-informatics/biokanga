@@ -649,6 +649,18 @@ public:
 						 UINT32 MaxExtdLen,			// attempt to extend exact match of ProbeLen out to MaxExtdLen and report extended match length in *pHitExtdLen
 						int *pHitExtdLen);			// was able to extend core out to this length
 
+			 INT64						// returned hit index (1..n) or 0 if no hits
+				 IterateExactsRange(etSeqBase *pProbeSeq,	// probe sequence
+					 UINT32 ProbeLen,		// probe length
+					 INT64 PrevHitIdx,		// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
+					 UINT32 TargEntryID,	// accepted hits must be onto this target suffix entry (chromosome)
+					 UINT32 StartLoci,		// accepted hit loci must be in the range StartLoci ... EndLoci inclusive
+					 UINT32 EndLoci,		// accepted hit loci must be in the range StartLoci ... EndLoci inclusive					 UINT32 *pTargEntryID,	// if match then where to return suffix entry (chromosome) matched on
+					 UINT32 *pHitLoci,		// if match then where to return loci
+					 UINT32 *pTargSeqLen,	// optionally update with the matched target sequence length
+					 etSeqBase **ppTargSeq);// optionally update with ptr to start of the target sequence, exact match will have started at &ppTargSeq[*pHitLoci]
+
+
 			int											// number of target sequences which were prequalified
 				PreQualTargs(UINT32 ProbeEntryID,		// probe sequence entry identifier used to detect self hit which are sloughed
 						int ProbeSeqLen,				// probe sequence length
@@ -843,8 +855,14 @@ public:
 					int MinDistance,	  // expecting partner to align at least this distance away from accepted aligned read (inclusive of read lengths)
 					int MaxDistance,	  // but no more than this distance away (inclusive of read lengths)
 					int MaxAllowedMM,	  // any accepted alignment can have at most this many mismatches
-					int MinHamming,		  // and must be at least this Hamming away from the next best putative alignment 
+					int MinHamming,		  // and must be at least this Hamming away from the next best putative alignment
 					int ReadLen,		  // length of read excluding any eBaseEOS
+
+					int MinChimericLen,		// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+					int CoreLen,			// core window length, 0 to disable
+					int CoreDelta,			// core window offset increment (1..n)
+					int MaxNumCoreSlides,	// max number of times to slide core
+
 					etSeqBase *pRead,	  // pts to 5' start of read sequence
 					tsHitLoci *pAlign);	  // where to return any paired read alignment loci	
 
