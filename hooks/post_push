@@ -2,11 +2,11 @@
 
 set -e
 
-# Parse image name for repo name
-tagStart=$(expr index "$IMAGE_NAME" :)
+# Parse image name
+tagStart=$(expr index "${IMAGE_NAME}" :)
 #repoName=${IMAGE_NAME:0:tagStart-1}
 
-echo "Post-push processing image: ${IMAGE_NAME}. Tag: ${CACHE_TAG} , ${IMAGE_NAME:tagStart}"
+echo "Post-push processing image: ${IMAGE_NAME}. Tag: ${IMAGE_NAME:tagStart}" ## For some reason ${CACHE_TAG} is not available
 
 # Tag and push image for each additional tag if the original tag does not look like a version tag as these are triggered separately
 [[ "${IMAGE_NAME:tagStart}" =~ ^v?([0-9]+\.)?([0-9]+\.)?(\*|[0-9]+)$ ]] \
