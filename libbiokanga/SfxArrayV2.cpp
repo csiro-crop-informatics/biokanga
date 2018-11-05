@@ -3299,7 +3299,7 @@ return(0);		// no more hits
 }
 
 
-INT64						// returned hit idex (1..n) or 0 if no hits
+INT64						// returned hit index (1..n) or 0 if no hits
 CSfxArrayV3::IterateExacts(etSeqBase *pProbeSeq,// probe
  						 UINT32 ProbeLen,		// probe length
 						 INT64 PrevHitIdx,		// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
@@ -3377,6 +3377,102 @@ if(!Cmp)
 
 return(0);		// no more hits
 }
+
+INT64						// returned hit index (1..n) or 0 if no hits
+CSfxArrayV3::IterateExactsRange(etSeqBase *pProbeSeq,	// probe sequence
+				UINT32 ProbeLen,		// probe length
+				INT64 PrevHitIdx,		// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
+				UINT32 TargEntryID,		// accepted hits must be onto this target suffix entry (chromosome)
+				UINT32 StartLoci,		// accepted hit loci must be in the range StartLoci ... EndLoci inclusive
+				UINT32 EndLoci,			// accepted hit loci must be in the range StartLoci ... EndLoci inclusive
+				UINT32 *pHitLoci,		// if match then where to return loci
+				UINT32 *pTargSeqLen,	// optionally update with the matched target sequence length
+				etSeqBase **ppTargSeq)	// optionally update with ptr to start of the target sequence, exact match will have started at &ppTargSeq[*pHitLoci]
+{
+	int Cmp;
+
+	INT64 TargPsn;
+	UINT32 HitLoci;
+	tsSfxEntry *pEntry;
+	etSeqBase *pEl1;
+	etSeqBase *pEl2;
+
+	etSeqBase *pTarg;			// target sequence
+	void *pSfxArray;			// target sequence suffix array
+	INT64 SfxLen;				// number of suffixs in pSfxArray
+	*pHitLoci = 0;
+
+	if (pTargSeqLen != NULL)
+		*pTargSeqLen = 0;
+	if (ppTargSeq != NULL)
+		*ppTargSeq = NULL;
+
+	if(TargEntryID == 0)
+		return(0);
+
+	// ensure suffix loaded for iteration and prev hit was not the last!
+	if (m_pSfxBlock == NULL || (UINT64)PrevHitIdx >= m_pSfxBlock->ConcatSeqLen)
+		return(0);
+
+	pTarg = (etSeqBase *)&m_pSfxBlock->SeqSuffix[0];
+	pSfxArray = (void *)&m_pSfxBlock->SeqSuffix[m_pSfxBlock->ConcatSeqLen];
+	SfxLen = m_pSfxBlock->ConcatSeqLen;
+
+	if (!PrevHitIdx)
+		{
+		// locate first exact match
+		if ((TargPsn = LocateFirstExact(pProbeSeq, ProbeLen, pTarg, m_pSfxBlock->SfxElSize, pSfxArray, 0, 0, SfxLen - 1)) == 0)
+			return(0);	// no match
+		TargPsn -= 1;
+		pEntry = MapChunkHit2Entry(SfxOfsToLoci(m_pSfxBlock->SfxElSize, pSfxArray, TargPsn));
+		if(pEntry->EntryID == TargEntryID)
+			{
+			HitLoci = (UINT32)(SfxOfsToLoci(m_pSfxBlock->SfxElSize, pSfxArray, TargPsn) - pEntry->StartOfs);
+			if(HitLoci >= StartLoci && HitLoci <= EndLoci)
+				{
+				*pHitLoci = HitLoci;
+				if (pTargSeqLen != NULL)
+					*pTargSeqLen = pEntry->SeqLen;
+				if (ppTargSeq != NULL)
+					*ppTargSeq = &pTarg[pEntry->StartOfs];
+				return(TargPsn + 1);
+				}
+			}
+		PrevHitIdx = TargPsn + 1;
+		}
+
+do {
+	// check if probe matches next suffix
+	pEl2 = &pTarg[SfxOfsToLoci(m_pSfxBlock->SfxElSize, pSfxArray, PrevHitIdx)];
+	pEl1 = pProbeSeq;
+
+	if (m_bBisulfite)
+		Cmp = BSCmpProbeTarg(pEl1, pEl2, ProbeLen);
+	else
+		Cmp = CmpProbeTarg(pEl1, pEl2, ProbeLen);
+	if (!Cmp)
+		{
+		pEntry = MapChunkHit2Entry(SfxOfsToLoci(m_pSfxBlock->SfxElSize, pSfxArray, PrevHitIdx));
+		if (pEntry->EntryID == TargEntryID)
+			{
+			HitLoci = (UINT32)(SfxOfsToLoci(m_pSfxBlock->SfxElSize, pSfxArray, PrevHitIdx) - pEntry->StartOfs);
+			if (HitLoci >= StartLoci && HitLoci <= EndLoci)
+				{
+				*pHitLoci = HitLoci;
+				if (pTargSeqLen != NULL)
+					*pTargSeqLen = pEntry->SeqLen;
+				if (ppTargSeq != NULL)
+					*ppTargSeq = &pTarg[pEntry->StartOfs];
+				return(PrevHitIdx + 1);
+				}
+			}
+		PrevHitIdx += 1;
+		}
+	}
+while(!Cmp);
+return(0);		// no more hits
+}
+
 
 int											// number of target sequences which were prequalified
 CSfxArrayV3::PreQualTargs(UINT32 ProbeEntryID,	// probe sequence entry identifier used to determine if a self hit to be sloughed
@@ -8154,25 +8250,34 @@ CSfxArrayV3::AlignPairedRead(bool b3primeExtend,	// if false extend towards 5' o
 			UINT32 StartLoci,	  // accepted aligned read started at this loci
 			UINT32 EndLoci,		  // and ending at this loci
 			int MinDistance,	  // expecting partner to align at least this distance away from accepted aligned read (inclusive of read lengths)
-			int MaxDistance,	  // but no more than this distance away (inclusive of read lengths)
+			int MaxDistance,	  // but no more than this distance away (inclusive of read length)
 			int MaxAllowedMM,	  // any accepted alignment can have at most this many mismatches
 			int MinHamming,		  // and must be at least this Hamming away from the next best putative alignment
 			int ReadLen,		  // length of read excluding any eBaseEOS
+			int MinChimericLen,		// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+			int CoreLen,			// core window length, 0 to disable
+			int CoreDelta,			// core window offset increment (1..n)
+			int MaxNumCoreSlides,	// max number of times to slide core
 		    etSeqBase *pRead,	  // pts to 5' start of read sequence
 		    tsHitLoci *pAlign)	  // where to return any paired read alignment loci
 {
-UINT32 Idx;
+
 etSeqBase *pTarg;
-etSeqBase *pP,*pT;
-etSeqBase ProbeBase,TargBase;
-int CurNumMM;
 int LowestNumMM;
-int NextLowestNumMM;
 int LowestMMcnt;
-int Ofs;
 int TargLoci;
 int AlignLoci;
-int PutAlignLoci;
+UINT32 PutChromLen;
+etSeqBase *pPutChromSeq;
+UINT32 PutHitLoci;
+UINT32 PutCoreOfs;
+INT64 PutHitIdx;
+INT64 NxtPutHitIdx;
+UINT32 StartPutTargLoci;
+UINT32 EndPutTargLoci;
+
+UINT32 MinPutLen;
+
 UINT32 TargSeqLen;
 etSeqBase ReadSeq[cMaxReadLen+1];
 
@@ -8216,110 +8321,112 @@ LowestNumMM = MaxAllowedMM+2;
 LowestMMcnt = 0;
 AlignLoci = TargLoci;
 
-if(b3primeExtend)	// looking for pair alignment downstream towards 3' end of chrom?
+if(MinChimericLen  > 0)
+	MinPutLen = ((ReadLen * MinChimericLen) + 50) / 100;
+else
+	MinPutLen = ReadLen;
+if (b3primeExtend)
 	{
-	for(Ofs = 0; Ofs < (MinDistance - ReadLen); Ofs++,pTarg++,AlignLoci++)
-		if((*pTarg & 0x07) > eBaseN)
-			return(0);
-	PutAlignLoci = AlignLoci;
-	for(; Ofs < MaxDistance && ((UINT32)(PutAlignLoci + ReadLen) <= TargSeqLen); Ofs++,pTarg++,PutAlignLoci++)
-		{
-		pT = pTarg;
-		pP = pRead;
-		CurNumMM = 0;
-		for(Idx = 0; Idx < (UINT32)ReadLen && CurNumMM <= MaxAllowedMM; Idx++,pT+=1,pP+=1)
-			{
-			ProbeBase = *pP & 0x07;
-			TargBase = *pT & 0x07;
-			if(TargBase > eBaseN || ProbeBase > eBaseN)	// treat as no match any EOS
-				break;
-
-			if(ProbeBase == TargBase && ProbeBase <= eBaseT)
-				continue;
-
-			// have a mismatch
-			CurNumMM += 1;
-			}
-
-		if(Idx == ReadLen)
-			{
-			// record lowest number of mismatches and the offset
-			if(CurNumMM < LowestNumMM)
-				{
-				NextLowestNumMM = LowestNumMM;
-				LowestNumMM = CurNumMM;
-				AlignLoci = PutAlignLoci;
-				LowestMMcnt = 1;
-				}
-			else
-				if(CurNumMM == LowestNumMM)
-					{
-					NextLowestNumMM = LowestNumMM;
-					LowestMMcnt += 1;
-					}
-			}
-		}
-	}
-else	// else looking for pair alignment upstream towards 5' end of chrom
-	{
-	AlignLoci -= ReadLen - 1;
-	if(AlignLoci < 0)
+	StartPutTargLoci = TargLoci + MinDistance;
+	if((StartPutTargLoci + (UINT32)MinPutLen) >= TargSeqLen)
 		return(0);
-	for(Ofs = 0; Ofs < (MinDistance - ReadLen); Ofs++,pTarg--,AlignLoci--)
-		if((*pTarg & 0x07) > eBaseN || AlignLoci < 0)
-			return(0);
-	PutAlignLoci = AlignLoci;
-	for(; Ofs < MaxDistance && PutAlignLoci >= 0; Ofs++,pTarg--,PutAlignLoci--)
-		{
-		pT = pTarg;
-		pP = &pRead[ReadLen-1];
-		CurNumMM = 0;
-		for(Idx = 0; Idx < (UINT32)ReadLen && CurNumMM <= MaxAllowedMM; Idx++,pT-=1,pP-=1)
-			{
-			ProbeBase = *pP & 0x07;
-			TargBase = *pT & 0x07;
-			if(TargBase > eBaseN || ProbeBase > eBaseN)	// treat as no match any EOS
-				break;
+	EndPutTargLoci = (UINT32)(TargLoci + MaxDistance);
+	}
+else
+	{
+	if(EndLoci < (UINT32)MaxDistance)
+		StartPutTargLoci = 0;
+	else
+		StartPutTargLoci = EndLoci - (UINT32)MaxDistance;
+	EndPutTargLoci = EndLoci - MinDistance;
+	}
+int Rslt;
+UINT32 TrimSeqLen;
+UINT32 Trim5Flank;
+UINT32 Trim3Flank;
+UINT32 MaxChimericMMs;
 
-			if(ProbeBase == TargBase && ProbeBase <= eBaseT)
+UINT32 PrevBestMaxChimericMMs = MaxAllowedMM + 1;
+if((EndPutTargLoci - StartPutTargLoci) >= 1000)		// if a relatively large insert size (likely with WGS RNA alignments) then use suffix array to locate exactly match cores which can serve as loci for adaptive trimming the read against
+	{
+	for(PutCoreOfs = 0; ((int)PutCoreOfs + CoreLen) <= ReadLen; PutCoreOfs += (UINT32)CoreDelta)
+		{
+		PutHitIdx = 0;
+		NxtPutHitIdx = 0;
+		while ((NxtPutHitIdx = IterateExactsRange(&ReadSeq[PutCoreOfs],CoreLen, PutHitIdx,ChromID, StartPutTargLoci, EndPutTargLoci,&PutHitLoci,&PutChromLen,&pPutChromSeq)) > 0)
+			{
+			if(PutCoreOfs > PutHitLoci || (PutHitLoci + ReadLen - PutCoreOfs) >= TargSeqLen)
 				continue;
 
-			// have a mismatch
-			CurNumMM += 1;
-			}
-		if(Idx == ReadLen)
-			{
-			// record lowest number of mismatches and the offset
-			if(CurNumMM < LowestNumMM)
+			Rslt = AdaptiveTrim(ReadLen,ReadSeq,&pPutChromSeq[PutHitLoci - PutCoreOfs], MinPutLen, MaxAllowedMM,3,&TrimSeqLen,&Trim5Flank,&Trim3Flank,&MaxChimericMMs);
+			if(Rslt > (int)MinPutLen || (Rslt == (int)MinPutLen && MaxChimericMMs < PrevBestMaxChimericMMs))
 				{
-				NextLowestNumMM = LowestNumMM;
-				LowestNumMM = CurNumMM;
-				AlignLoci = PutAlignLoci;
-				LowestMMcnt = 1;
-				}
-			else
-				if(CurNumMM == LowestNumMM)
+				 PrevBestMaxChimericMMs = MaxChimericMMs;
+				 MinPutLen = Rslt;
+				 AlignLoci = PutHitLoci - PutCoreOfs;
+				 pAlign->FlgChimeric = MinPutLen == ReadLen ? 0 : 1;
+				 pAlign->FlgInDel = 0;
+				 pAlign->FlgInsert = 0;
+				 pAlign->FlgSplice = 0;
+				 pAlign->FlgNonOrphan = 0;
+				 pAlign->Seg[0].Strand = bAntisense ? '-' : '+';
+				 if (!bAntisense)
 					{
-					NextLowestNumMM = LowestNumMM;
-					LowestMMcnt += 1;
+					 pAlign->Seg[0].TrimLeft = Trim5Flank;
+					 pAlign->Seg[0].TrimRight = Trim3Flank;
 					}
+				 else
+					{
+					 pAlign->Seg[0].TrimLeft = Trim3Flank;
+					 pAlign->Seg[0].TrimRight = Trim5Flank;
+					}
+				 pAlign->Seg[0].ChromID = ChromID;
+				 pAlign->Seg[0].ReadOfs = 0;
+				 pAlign->Seg[0].MatchLoci = (UINT32)(PutHitLoci - PutCoreOfs);
+				 pAlign->Seg[0].MatchLen = ReadLen;
+				 pAlign->Seg[0].Mismatches = MaxChimericMMs;
+				 pAlign->Seg[0].TrimMismatches = MaxChimericMMs;
+				}
+			PutHitIdx = NxtPutHitIdx;
 			}
 		}
 	}
-
-// check if any putative alignment was within the requested max mismatches and Hamming
-if(LowestNumMM > MaxAllowedMM || LowestMMcnt != 1 || (NextLowestNumMM - LowestMMcnt) < MinHamming)
-	return(0);
-
-// have an accepted alignment
-pAlign->Seg[0].ChromID = ChromID;
-pAlign->Seg[0].MatchLen = ReadLen;
-pAlign->Seg[0].MatchLoci = AlignLoci;
-pAlign->Seg[0].Mismatches = LowestNumMM;
-pAlign->Seg[0].TrimMismatches = LowestNumMM;
-pAlign->Seg[0].ReadOfs = 0;
-pAlign->Seg[0].Strand = bAntisense ? '-' : '+';
-return(1);	// let user know have accepted the alignment
+else  // else if relatively small maximum insert size ( < 1000bp ) as is likely with WGS DNA then quicker to do a linear scan for target loci against which the read can be matched
+	{
+	for(PutHitLoci = StartPutTargLoci; PutHitLoci <= EndPutTargLoci; PutHitLoci++)
+		{
+		Rslt = AdaptiveTrim(ReadLen, ReadSeq, &pPutChromSeq[PutHitLoci], MinPutLen, MaxAllowedMM, 3, &TrimSeqLen, &Trim5Flank, &Trim3Flank, &MaxChimericMMs);
+		if (Rslt > (int)MinPutLen || (Rslt == (int)MinPutLen && MaxChimericMMs < PrevBestMaxChimericMMs))
+			{
+			PrevBestMaxChimericMMs = MaxChimericMMs;
+			MinPutLen = Rslt;
+			AlignLoci = PutHitLoci;
+			pAlign->FlgChimeric = MinPutLen == ReadLen ? 0 : 1;
+			pAlign->FlgInDel = 0;
+			pAlign->FlgInsert = 0;
+			pAlign->FlgSplice = 0;
+			pAlign->FlgNonOrphan = 0;
+			pAlign->Seg[0].Strand = bAntisense ? '-' : '+';
+			if (!bAntisense)
+			{
+				pAlign->Seg[0].TrimLeft = Trim5Flank;
+				pAlign->Seg[0].TrimRight = Trim3Flank;
+			}
+			else
+			{
+				pAlign->Seg[0].TrimLeft = Trim3Flank;
+				pAlign->Seg[0].TrimRight = Trim5Flank;
+			}
+			pAlign->Seg[0].ChromID = ChromID;
+			pAlign->Seg[0].ReadOfs = 0;
+			pAlign->Seg[0].MatchLoci = PutHitLoci;
+			pAlign->Seg[0].MatchLen = ReadLen;
+			pAlign->Seg[0].Mismatches = MaxChimericMMs;
+			pAlign->Seg[0].TrimMismatches = MaxChimericMMs;
+			}
+		}
+	}
+return(PrevBestMaxChimericMMs <= (UINT32)MaxAllowedMM ? 1 : 0);
 }
 
 

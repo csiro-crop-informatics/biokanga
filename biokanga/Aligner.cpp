@@ -206,6 +206,7 @@ m_bLocateBestMatches = bLocateBestMatches;
 m_MLMode = MLMode;
 m_MaxNs = MaxNs;
 m_MaxSubs = MaxSubs;
+m_MinEditDist = MinEditDist;
 if(PCRPrimerCorrect > 0)
 	m_InitalAlignSubs = min(MaxSubs + PCRPrimerCorrect,cMaxAllowedSubs);
 else
@@ -2848,6 +2849,25 @@ if(SeqFragLen > PairMaxLen)
 return(SeqFragLen);
 }
 
+#ifdef _WIN32
+unsigned __stdcall ProcessPairedEndsThread(void * pThreadPars)
+#else
+void *ProcessPairedEndsThread(void * pThreadPars)
+#endif
+{
+	int Rslt;
+	tsPEThreadPars *pPars = (tsPEThreadPars *)pThreadPars;			// makes it easier not having to deal with casts!
+	CAligner *pAligner = (CAligner *)pPars->pThis;
+	Rslt = pAligner->ProcessPairedEnds(pPars);
+	pPars->Rslt = Rslt;
+#ifdef _WIN32
+	_endthreadex(0);
+	return(eBSFSuccess);
+#else
+	pthread_exit(NULL);
+#endif
+}
+
 //ProcessPairedEnds
 // Matches read pairs and if one read is aligned but partner is not due to muiltihit loci then
 // attempts to find a unique loci for that multihit read within the expected approximate pair distance range
@@ -2861,23 +2881,11 @@ CAligner::ProcessPairedEnds(etPEproc PEproc, // paired reads alignment processin
 				  int MaxSubs)	   // aligned reads can have at most this many subs per 100bp
 {
 int Rslt;
-UINT32 PrevChromID;
-int SeqFragLen;
 UINT32 PairReadIdx;
-tsReadHit *pFwdReadHit;
-tsReadHit *pRevReadHit;
 
-UINT32 OrphStartLoci;
-UINT32 OrphEndLoci;
-
-int NumPaired = 0;
-int NegPairs = 0;
 int UnderLenPairs = 0;
 int OverLenPairs = 0;
-int LongestSeqFragLen = 0;
-int OverPairMaxLen = 0;
 
-bool bPartnerPaired;
 int PartnerUnpaired = 0;
 int PartnerPaired = 0;
 int UnalignedPairs = 0;
@@ -2887,12 +2895,10 @@ int NumFilteredByChrom = 0;
 int AcceptedNumPaired = 0;
 int AcceptedNumSE = 0;
 
-UINT8 ReadSeq[cMaxSeqLen+1];
-
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Generating paired reads index over %d paired reads", m_NumReadsLoaded/2);
 SortReadHits(eRSMPairReadID,false,true);
 
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Iterating putative paired reads ...");
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Starting to associate Paired End reads to be within insert size range ...");
 
 if(m_pLenDist != NULL)
 	{
@@ -2908,64 +2914,248 @@ if((m_pLenDist = new int[cPairMaxLen+1])==NULL)
 	}
 memset(m_pLenDist,0,sizeof(int) * (cPairMaxLen+1));
 
-tsHitLoci HitLoci;
-UINT8 *pHitSeq;
-UINT8 *pSeq;
-UINT32 SeqIdx;
-bool b3primeExtend;
-bool bAntisense;
-
-m_szLineBuffIdx = 0;
-PrevChromID = -1;
-m_PrevSAMTargEntry = 0;
 time_t Started = time(0);
 UINT32 PrevPairReadIdx = 0;
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed putative 0 pairs, accepted 0");
-for(PairReadIdx=0; PairReadIdx < m_NumReadsLoaded;PairReadIdx+=2)
+
+// split number of pairs to be processed amongst number of worker threads
+
+
+int ThreadIdx;
+int NumThreadsUsed;
+tsPEThreadPars WorkerThreads[cMaxWorkerThreads];
+memset(WorkerThreads, 0, sizeof(WorkerThreads));
+UINT32 NumPairsThisThread;
+PairReadIdx = 0;
+NumThreadsUsed = 0;
+for (ThreadIdx = 0; ThreadIdx < m_NumThreads; ThreadIdx++, NumThreadsUsed += 1)
 	{
-	// is it time to let user know progress
-	if(PairReadIdx > (PrevPairReadIdx + 50000))
+	WorkerThreads[ThreadIdx].ThreadIdx = ThreadIdx + 1;
+	WorkerThreads[ThreadIdx].pThis = this;
+	WorkerThreads[ThreadIdx].bPairStrand = bPairStrand;
+	WorkerThreads[ThreadIdx].MaxSubs = MaxSubs;
+	WorkerThreads[ThreadIdx].MinEditDist = MinEditDist;
+	WorkerThreads[ThreadIdx].StartPairIdx = PairReadIdx;
+	NumPairsThisThread = ((m_NumReadsLoaded / 2)- PairReadIdx) / (m_NumThreads - ThreadIdx);
+	WorkerThreads[ThreadIdx].NumPairsToProcess = NumPairsThisThread;
+	PairReadIdx += NumPairsThisThread;
+	WorkerThreads[ThreadIdx].PairMaxLen = PairMaxLen;
+	WorkerThreads[ThreadIdx].PairMinLen = PairMinLen;
+	WorkerThreads[ThreadIdx].PEproc = PEproc;
+#ifdef _WIN32
+	WorkerThreads[ThreadIdx].threadHandle = (HANDLE)_beginthreadex(NULL, 0x0fffff, ProcessPairedEndsThread, &WorkerThreads[ThreadIdx], 0, &WorkerThreads[ThreadIdx].threadID);
+#else
+	WorkerThreads[ThreadIdx].threadRslt = pthread_create(&WorkerThreads[ThreadIdx].threadID, NULL, ProcessPairedEndsThread, &WorkerThreads[ThreadIdx]);
+#endif
+	if((WorkerThreads[ThreadIdx].StartPairIdx + WorkerThreads[ThreadIdx].NumPairsToProcess) == m_NumReadsLoaded / 2)
 		{
-		time_t Now = time(0);
-		unsigned long ElapsedSecs = (unsigned long) (Now - Started);
-		if(ElapsedSecs >= (60 * 10))
-			{
-			gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed putative %u pairs, accepted %u",PairReadIdx/2,AcceptedNumPaired);
-			Started = Now;
-			}
-		PrevPairReadIdx = PairReadIdx;
+		NumThreadsUsed = ThreadIdx + 1;
+		break;
+		}
+	}
+
+// allow threads a few seconds to startup
+#ifdef _WIN32
+Sleep(5000);
+#else
+sleep(5);
+#endif
+
+UINT32 ReportProgressSecs;
+ReportProgressSecs = 60;
+
+// wait for all threads to have completed
+for (ThreadIdx = 0; ThreadIdx < NumThreadsUsed; ThreadIdx++)
+	{
+#ifdef _WIN32
+	while (WAIT_TIMEOUT == WaitForSingleObject(WorkerThreads[ThreadIdx].threadHandle, (DWORD)ReportProgressSecs * 1000))
+		{
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Progress: Still associating Paired Ends ...");
+		}
+	CloseHandle(WorkerThreads[ThreadIdx].threadHandle);
+#else
+	struct timespec ts;
+	int JoinRlt;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += ReportProgressSecs;
+	while ((JoinRlt = pthread_timedjoin_np(WorkerThreads[ThreadIdx].threadID, NULL, &ts)) != 0)
+		{
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Progress: Still associating Paired Ends ...");
+		ts.tv_sec += ReportProgressSecs;
 		}
 
-	pFwdReadHit = m_ppReadHitsIdx[PairReadIdx];
-	pRevReadHit = m_ppReadHitsIdx[PairReadIdx+1];
-	pFwdReadHit->FlgPEAligned = 0;
-	pRevReadHit->FlgPEAligned = 0;
+#endif
+	AcceptedNumPaired += WorkerThreads[ThreadIdx].AcceptedNumPaired;
+	PartnerPaired += WorkerThreads[ThreadIdx].PartnerPaired;
+	PartnerUnpaired += WorkerThreads[ThreadIdx].PartnerUnpaired;
 
-	// at least one of the ends must have been accepted as being aligned in order to process as PE
-	if(!(pFwdReadHit->NAR <= eNARAccepted || pRevReadHit->NAR == eNARAccepted))
-		{
-		UnalignedPairs += 1;
-		continue;
-		}
+	UnderLenPairs += WorkerThreads[ThreadIdx].UnderLenPairs;
+	OverLenPairs += WorkerThreads[ThreadIdx].OverLenPairs;
+	NumFilteredByChrom += WorkerThreads[ThreadIdx].NumFilteredByChrom;
+	UnalignedPairs += WorkerThreads[ThreadIdx].UnalignedPairs;
+	AcceptedNumSE += WorkerThreads[ThreadIdx].AcceptedNumSE;
+	PartnerUnpaired += WorkerThreads[ThreadIdx].PartnerUnpaired;
+	}
 
-	// even if both ends have been accepted as aligned it could be that these alignments can't be accepted as a PE - may be to different chroms, or overlength etc
-	if(pFwdReadHit->NAR == eNARAccepted && pRevReadHit->NAR == eNARAccepted)
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Completed association of Paired End reads from %u pairs, accepted %u pairs", m_NumReadsLoaded /2,AcceptedNumPaired);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"From %d Paired End pairs there were %d accepted (of which %d pairs were from recovered orphans)",
+			m_NumReadsLoaded / 2,AcceptedNumPaired,PartnerPaired);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d Paired End pairs unrecoverable as still orphan partnered",PartnerUnpaired - PartnerPaired);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d Paired End pairs were under length, %d over length, not accepted as being paired",UnderLenPairs,OverLenPairs);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d Paired End aligned pairs were filtered out by chromosome",NumFilteredByChrom);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d Paired End pairs have neither end uniquely aligned",UnalignedPairs);
+if(PEproc == ePEuniqueSE || PEproc == ePEorphanSE)
+	gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d Paired End reads were unable to be associated with partner read and accepted as if SE aligned",AcceptedNumSE);
+
+if(gProcessingID > 0)
+	{
+	UINT32 NumPairsLoaded;
+	NumPairsLoaded = m_NumReadsLoaded/2;
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumPairsLoaded),"Loaded",&NumPairsLoaded);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumPaired),"Accepted",&AcceptedNumPaired);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(PartnerPaired),"RecoveredOrphans",&PartnerPaired);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnderLenPairs),"UnderInsertSize",&UnderLenPairs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(OverLenPairs),"OverInsertSize",&OverLenPairs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumFilteredByChrom),"FilteredByChrom",&NumFilteredByChrom);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnalignedPairs),"NonUniqueEnds",&UnalignedPairs);
+	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumSE),"AcceptedNumSE",&AcceptedNumSE);
+	}
+
+if(m_hStatsFile != -1)
+	{
+	char szLineBuff[cMaxReadLen*2];
+	int BuffIdx = 0;
+	for(PairReadIdx = 0; PairReadIdx <= (UINT32)cPairMaxLen; PairReadIdx++)
 		{
-		// both ends were accepted as being aligned but can these be accepted as PE within allowed insert size range ...
-		SeqFragLen = AcceptProvPE(PairMinLen,PairMaxLen,bPairStrand,pFwdReadHit,pRevReadHit);	
-		if(SeqFragLen > 0)
+		BuffIdx += sprintf(&szLineBuff[BuffIdx],"%d,%d\n",PairReadIdx,m_pLenDist[PairReadIdx]);
+		if(BuffIdx + 100 > sizeof(szLineBuff))
 			{
-			// this paired end alignment has been accepted
-			pFwdReadHit->FlgPEAligned = 1;
-			pRevReadHit->FlgPEAligned = 1;
-			LongestSeqFragLen = max(LongestSeqFragLen,SeqFragLen);
-			m_pLenDist[SeqFragLen] += 1;
-			AcceptedNumPaired += 1;
-			continue;	// onto next pair
+			CUtility::SafeWrite(m_hStatsFile,szLineBuff,BuffIdx);
+			BuffIdx = 0;
+			}
+		}
+	if(BuffIdx)
+		{
+		CUtility::SafeWrite(m_hStatsFile,szLineBuff,BuffIdx);
+		BuffIdx = 0;
+		}
+	}
+if((Rslt=SortReadHits(eRSMHitMatch,false,true)) < eBSFSuccess)
+	{
+	Reset(false);
+	return(Rslt);
+	}
+return(eBSFSuccess);
+}
+
+
+
+
+int
+CAligner::ProcessPairedEnds(tsPEThreadPars *pPars)	   // paired reads parameters
+{
+	int Rslt;
+	UINT32 PrevChromID;
+	int SeqFragLen;
+	UINT32 PairReadIdx;
+	tsReadHit *pFwdReadHit;
+	tsReadHit *pRevReadHit;
+
+	UINT32 OrphStartLoci;
+	UINT32 OrphEndLoci;
+
+	bool bFwdUnaligned;
+	bool bRevUnaligned;
+
+	int ProbeLen;
+	int MatchLen;
+	int MaxTotMM;
+	int CoreLen;
+	int MaxNumSlides;
+	int CoreDelta;
+
+	int NumPaired = 0;
+	int NegPairs = 0;
+	int UnderLenPairs = 0;
+	int OverLenPairs = 0;
+	int LongestSeqFragLen = 0;
+	int OverPairMaxLen = 0;
+
+	bool bPartnerPaired;
+	int PartnerUnpaired = 0;
+	int PartnerPaired = 0;
+	int UnalignedPairs = 0;
+	int UniquePairCnt = 0;
+	int NumFilteredByChrom = 0;
+
+	int AcceptedNumPaired = 0;
+	int AcceptedNumSE = 0;
+
+	UINT32 CurPairIdx;
+
+	UINT8 ReadSeq[cMaxSeqLen + 1];
+
+	tsHitLoci HitLoci;
+	UINT8 *pHitSeq;
+	UINT8 *pSeq;
+	UINT32 SeqIdx;
+	bool b3primeExtend;
+	bool bAntisense;
+	PrevChromID = -1;
+
+	UINT32 PrevPairReadIdx = 0;
+	for (CurPairIdx = pPars->StartPairIdx; CurPairIdx < (pPars->StartPairIdx + pPars->NumPairsToProcess); CurPairIdx += 1)
+		{
+		PairReadIdx = CurPairIdx * 2;
+		pFwdReadHit = m_ppReadHitsIdx[PairReadIdx];
+		pRevReadHit = m_ppReadHitsIdx[PairReadIdx + 1];
+		pFwdReadHit->FlgPEAligned = 0;
+		pRevReadHit->FlgPEAligned = 0;
+		bFwdUnaligned = (pFwdReadHit->NAR == eNARNs || pFwdReadHit->NAR == eNARNoHit || pFwdReadHit->NAR == eNARUnaligned);
+		bRevUnaligned = (pRevReadHit->NAR == eNARNs || pRevReadHit->NAR == eNARNoHit || pRevReadHit->NAR == eNARUnaligned);
+		// at least one of the ends must have been accepted as being aligned in order to process as PE
+		if (!(pFwdReadHit->NAR == eNARAccepted || pRevReadHit->NAR == eNARAccepted))
+			{
+			UnalignedPairs += 1;
+			continue;
 			}
 
-		// although ends aligned, am unable to accept as a PE alignment
-		switch(SeqFragLen) {
+		// at least one end had a unique hit accepted, but if other end had no potential hits at all then
+		// can't recover into an aligned PE with both ends aligned
+		if (pPars->PEproc == ePEunique && (bFwdUnaligned || bRevUnaligned))
+		{
+			pFwdReadHit->NumHits = 0;
+			pRevReadHit->NumHits = 0;
+			pFwdReadHit->LowHitInstances = 0;
+			pRevReadHit->LowHitInstances = 0;
+			if (pFwdReadHit->NAR == eNARAccepted)
+				pFwdReadHit->NAR = eNARPENoHit;
+			if (pRevReadHit->NAR == eNARAccepted)
+				pRevReadHit->NAR = eNARPENoHit;
+			PartnerUnpaired += 1;
+			continue;
+		}
+
+		// even if both ends have been accepted as aligned it could be that these alignments can't be accepted as a PE - may be to different chroms, or overlength etc
+		if (pFwdReadHit->NAR == eNARAccepted && pRevReadHit->NAR == eNARAccepted)
+			{
+			// both ends were accepted as being aligned but can these be accepted as PE within allowed insert size range ...
+			SeqFragLen = AcceptProvPE(pPars->PairMinLen, pPars->PairMaxLen, pPars->bPairStrand, pFwdReadHit, pRevReadHit);
+			if (SeqFragLen > 0)
+				{
+				// this paired end alignment has been accepted
+				pFwdReadHit->FlgPEAligned = 1;
+				pRevReadHit->FlgPEAligned = 1;
+				LongestSeqFragLen = max(LongestSeqFragLen, SeqFragLen);
+				AcquireSerialise();
+				m_pLenDist[SeqFragLen] += 1;
+				ReleaseSerialise();
+				AcceptedNumPaired += 1;
+				continue;	// onto next pair
+				}
+
+			// although ends aligned, am unable to accept as a PE alignment
+			switch (SeqFragLen) {
 			case -1:			// alignment strands not consistent
 				pFwdReadHit->NAR = eNARPEStrand;
 				pRevReadHit->NAR = eNARPEStrand;
@@ -2982,8 +3172,8 @@ for(PairReadIdx=0; PairReadIdx < m_NumReadsLoaded;PairReadIdx+=2)
 				pRevReadHit->NumHits = 0;
 				pFwdReadHit->LowHitInstances = 0;
 				pRevReadHit->LowHitInstances = 0;
-				pFwdReadHit->NAR = eNARChromFilt;	
-				pRevReadHit->NAR = eNARChromFilt;	
+				pFwdReadHit->NAR = eNARChromFilt;
+				pRevReadHit->NAR = eNARChromFilt;
 				continue;	// try next pair
 
 			case -4:		// 5' end to filtered chrom so can't be used as an anchor
@@ -3009,289 +3199,293 @@ for(PairReadIdx=0; PairReadIdx < m_NumReadsLoaded;PairReadIdx+=2)
 				break;
 			}
 
-		// if not allowed to orphan recover or treat as SE alignments then try next pair of reads
-		if(PEproc == ePEunique)
+			// if not allowed to orphan recover or treat as SE alignments then try next pair of reads
+			if (pPars->PEproc == ePEunique)
 			{
-			pFwdReadHit->NumHits = 0;
-			pRevReadHit->NumHits = 0;
-			pFwdReadHit->LowHitInstances = 0;
-			pRevReadHit->LowHitInstances = 0;
-			if(pFwdReadHit->NAR == eNARAccepted)
-				pFwdReadHit->NAR = eNARPENoHit;
-			if(pRevReadHit->NAR == eNARAccepted)
-				pRevReadHit->NAR = eNARPENoHit;
-			PartnerUnpaired += 1;
-			continue;
+				pFwdReadHit->NumHits = 0;
+				pRevReadHit->NumHits = 0;
+				pFwdReadHit->LowHitInstances = 0;
+				pRevReadHit->LowHitInstances = 0;
+				if (pFwdReadHit->NAR == eNARAccepted)
+					pFwdReadHit->NAR = eNARPENoHit;
+				if (pRevReadHit->NAR == eNARAccepted)
+					pRevReadHit->NAR = eNARPENoHit;
+				PartnerUnpaired += 1;
+				continue;
 			}
 		}
 
-	// at least one end was uniquely aligning although not accepted as a PE
-	PartnerUnpaired += 1;
-	if(PEproc == ePEorphan || PEproc == ePEorphanSE)		// allowed to try and recover?
+		// at least one end was uniquely aligning although not accepted as a PE
+		PartnerUnpaired += 1;
+		if (pPars->PEproc == ePEorphan || pPars->PEproc == ePEorphanSE)		// allowed to try and recover?
 		{
-		if(pFwdReadHit->NumHits == 1 && pRevReadHit->NAR != eNARNs)
+			if (pFwdReadHit->NumHits == 1 && !bRevUnaligned)
 			{
-			if(AcceptThisChromID(pFwdReadHit->HitLoci.Hit.Seg[0].ChromID))
+				if (AcceptThisChromID(pFwdReadHit->HitLoci.Hit.Seg[0].ChromID))
 				{
-				// first try using the 5' alignment as an anchor, if that doesn't provide a pair then will later try using the 3' as the anchor
-				bPartnerPaired = false;
-				pHitSeq = &pRevReadHit->Read[pRevReadHit->DescrLen+1];
-				pSeq = ReadSeq;
-				for(SeqIdx = 0; SeqIdx < pRevReadHit->ReadLen; SeqIdx++)
-					*pSeq++ = *pHitSeq++ & 0x07;
+					// first try using the 5' alignment as an anchor, if that doesn't provide a pair then will later try using the 3' as the anchor
+					bPartnerPaired = false;
+					pHitSeq = &pRevReadHit->Read[pRevReadHit->DescrLen + 1];
+					pSeq = ReadSeq;
+					for (SeqIdx = 0; SeqIdx < pRevReadHit->ReadLen; SeqIdx++)
+						*pSeq++ = *pHitSeq++ & 0x07;
 
-				// AlignPartnerRead
-				// Have been able to unquely align one read out of a pair, now need to align the other read
-				// if not bPairStrand
-				//		if PE1 was to sense strand then expect PE2 on the antisense strand downstream towards the 3' end of targeted chrom:		b3primeExtend=true,bAntisense=true
-				//		if PE1 was to antisense strand then expect PE2 on the sense strand upstream towards the 5' end of targeted chrom:		b3primeExtend=false,bAntisense=false
-				// if bPairStrand
-				//		if PE1 was to sense strand then expect PE2 on the sense strand downstream towards the 3' end of targeted chrom:			b3primeExtend=true,bAntisense=false
-				//		if PE1 was to antisense strand then expect PE2 on the antisense strand upstream towards the 5' end of targeted chrom:	b3primeExtend=false,bAntisense=true
-				b3primeExtend = pFwdReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
-				if(bPairStrand)
-					bAntisense = pFwdReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? false : true;
+					// AlignPartnerRead
+					// Have been able to unquely align one read out of a pair, now need to align the other read
+					// if not bPairStrand
+					//		if PE1 was to sense strand then expect PE2 on the antisense strand downstream towards the 3' end of targeted chrom:		b3primeExtend=true,bAntisense=true
+					//		if PE1 was to antisense strand then expect PE2 on the sense strand upstream towards the 5' end of targeted chrom:		b3primeExtend=false,bAntisense=false
+					// if bPairStrand
+					//		if PE1 was to sense strand then expect PE2 on the sense strand downstream towards the 3' end of targeted chrom:			b3primeExtend=true,bAntisense=false
+					//		if PE1 was to antisense strand then expect PE2 on the antisense strand upstream towards the 5' end of targeted chrom:	b3primeExtend=false,bAntisense=true
+					b3primeExtend = pFwdReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
+					if (pPars->bPairStrand)
+						bAntisense = pFwdReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? false : true;
+					else
+						bAntisense = pFwdReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
+					if (m_bPEcircularised)
+						b3primeExtend = !b3primeExtend;
+
+					OrphStartLoci = AdjStartLoci(&pFwdReadHit->HitLoci.Hit.Seg[0]);
+					OrphEndLoci = AdjEndLoci(&pFwdReadHit->HitLoci.Hit.Seg[0]);
+
+					// note: MaxSubs is specified by user as being per 100bp of read length, e.g. if user specified '-s5' and a read is 200bp then 
+					// 10 mismatches will be allowed for that specific read
+					ProbeLen = pRevReadHit->ReadLen;
+					MatchLen = ProbeLen - 1;
+					MaxTotMM = m_MaxSubs == 0 ? 0 : max(1, (int)(0.5 + (MatchLen * m_MaxSubs) / 100.0));
+
+					if (MaxTotMM > cMaxTotAllowedSubs)		// irrespective of length allow at most this many subs
+						MaxTotMM = cMaxTotAllowedSubs;
+
+					// The window core length is set to be read length / (subs+1) for minimum Hamming difference of 1, and
+					// to be read length / (subs+2) for minimum Hamming difference of 2
+					// The window core length is clamped to be at least m_MinCoreLen
+					CoreLen = max(m_MinCoreLen, pRevReadHit->ReadLen / (m_MinEditDist == 1 ? MaxTotMM + 1 : MaxTotMM + 2));
+					MaxNumSlides = max(1, ((m_MaxNumSlides * ProbeLen) + 99) / 100);
+					CoreDelta = max(ProbeLen / m_MaxNumSlides - 1, CoreLen);
+
+
+					Rslt = m_pSfxArray->AlignPairedRead(b3primeExtend, bAntisense,
+						pFwdReadHit->HitLoci.Hit.Seg[0].ChromID,	  // accepted aligned read was on this chromosome
+						OrphStartLoci,			// accepted aligned read started at this loci
+						OrphEndLoci,			// and ending at this loci
+						pPars->PairMinLen,				// expecting partner to align at least this distance away from accepted aligned read
+						pPars->PairMaxLen,				// but no more than this distance away
+						pPars->MaxSubs,				// any accepted alignment can have at most this many mismatches
+						pPars->MinEditDist,			// and must be at least this Hamming away from the next best putative alignment
+						ProbeLen,		  // length of read excluding any eBaseEOS
+						m_MinChimericLen,	// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+						CoreLen,			// core window length, 0 to disable
+						CoreDelta,			// core window offset increment (1..n)
+						MaxNumSlides,		// max number of times to slide core
+						ReadSeq,			// pts to 5' start of read sequence
+						&HitLoci);			// where to return any paired read alignment loci
+
+					if (Rslt == 1)
+					{
+						SeqFragLen = PEInsertSize(pPars->PairMinLen, pPars->PairMaxLen, pPars->bPairStrand, pFwdReadHit->HitLoci.Hit.Seg[0].Strand, OrphStartLoci, OrphEndLoci, HitLoci.Seg[0].Strand, AdjStartLoci(&HitLoci.Seg[0]), AdjEndLoci(&HitLoci.Seg[0]));
+						if (SeqFragLen <= 0)
+							Rslt = 0;
+					}
+
+					if (Rslt == 1)
+					{
+						// with 5' anchor was able to find an alignment within the min/max insert size and it is known chrom accepted
+						pRevReadHit->HitLoci.Hit = HitLoci;
+						pRevReadHit->NumHits = 1;
+						pRevReadHit->LowMMCnt = HitLoci.Seg[0].Mismatches;
+						pRevReadHit->LowHitInstances = 1;
+						// this paired end alignment has been accepted
+						pFwdReadHit->FlgPEAligned = 1;
+						pRevReadHit->FlgPEAligned = 1;
+						pFwdReadHit->NAR = eNARAccepted;
+						pRevReadHit->NAR = eNARAccepted;
+						LongestSeqFragLen = max(LongestSeqFragLen, SeqFragLen);
+						m_pLenDist[SeqFragLen] += 1;
+						AcceptedNumPaired += 1;
+						PartnerPaired += 1;
+						continue;	// try next pair
+					}
+				}
 				else
-					bAntisense = pFwdReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
-				if(m_bPEcircularised)
-					b3primeExtend = !b3primeExtend;
-
-				OrphStartLoci = AdjStartLoci(&pFwdReadHit->HitLoci.Hit.Seg[0]);
-				OrphEndLoci = AdjEndLoci(&pFwdReadHit->HitLoci.Hit.Seg[0]);
-
-				Rslt = m_pSfxArray->AlignPairedRead(b3primeExtend,bAntisense,
-							pFwdReadHit->HitLoci.Hit.Seg[0].ChromID,	  // accepted aligned read was on this chromosome
-							OrphStartLoci,			// accepted aligned read started at this loci
-							OrphEndLoci,			// and ending at this loci
-							PairMinLen,			// expecting partner to align at least this distance away from accepted aligned read
-							PairMaxLen,			// but no more than this distance away
-							MaxSubs == 0 ? 0 : max(1,(pRevReadHit->ReadLen * MaxSubs)/100),		// any accepted alignment can have at most this many mismatches
-							MinEditDist,					// and must be at least this Hamming away from the next best putative alignment
-							pRevReadHit->ReadLen,		  // length of read excluding any eBaseEOS
-							ReadSeq,	  // pts to 5' start of read sequence
-							&HitLoci);	  // where to return any paired read alignment loci
-
-				if(Rslt == 1)
+					if (pFwdReadHit->NAR == eNARAccepted)
 					{
-					SeqFragLen = PEInsertSize(PairMinLen,PairMaxLen,bPairStrand,pFwdReadHit->HitLoci.Hit.Seg[0].Strand,OrphStartLoci,OrphEndLoci,HitLoci.Seg[0].Strand,AdjStartLoci(&HitLoci.Seg[0]),AdjEndLoci(&HitLoci.Seg[0]));
-					if(SeqFragLen <= 0)
-						Rslt = 0;
-					}
-
-				if(Rslt == 1)	
-					{
-					// with 5' anchor was able to find an alignment within the min/max insert size and it is known chrom accepted
-					pRevReadHit->HitLoci.Hit = HitLoci;
-					pRevReadHit->NumHits = 1;
-					pRevReadHit->LowMMCnt = HitLoci.Seg[0].Mismatches;
-					pRevReadHit->LowHitInstances = 1;
-					// this paired end alignment has been accepted
-					pFwdReadHit->FlgPEAligned = 1;
-					pRevReadHit->FlgPEAligned = 1;
-					pFwdReadHit->NAR = eNARAccepted;
-					pRevReadHit->NAR = eNARAccepted;
-					LongestSeqFragLen = max(LongestSeqFragLen,SeqFragLen);
-					m_pLenDist[SeqFragLen] += 1;
-					AcceptedNumPaired += 1;
-					PartnerPaired += 1;
-					continue;	// try next pair
-					}
-				}
-			else
-				if(pFwdReadHit->NAR == eNARAccepted)
-					{
-					pFwdReadHit->NumHits = 0;
-					pFwdReadHit->LowHitInstances = 0;
-					pFwdReadHit->NAR = eNARChromFilt;
+						pFwdReadHit->NumHits = 0;
+						pFwdReadHit->LowHitInstances = 0;
+						pFwdReadHit->NAR = eNARChromFilt;
 					}
 			}
 
 
-		if(pRevReadHit->NumHits == 1  && pFwdReadHit->NAR != eNARNs)
+			if (pRevReadHit->NumHits == 1 && !bFwdUnaligned)
 			{
-			if(AcceptThisChromID(pRevReadHit->HitLoci.Hit.Seg[0].ChromID))
+				if (AcceptThisChromID(pRevReadHit->HitLoci.Hit.Seg[0].ChromID))
 				{
-				pHitSeq = &pFwdReadHit->Read[pFwdReadHit->DescrLen+1];
-				pSeq = ReadSeq;
-				for(SeqIdx = 0; SeqIdx < pFwdReadHit->ReadLen; SeqIdx++)
-					*pSeq++ = *pHitSeq++ & 0x07;
-				// AlignPartnerRead
-				// Have been able to unquely align one read out of a pair, now need to align the other read
-				// if not bPairStrand
-				//		if PE2 was to sense strand then expect PE1 on the antisense strand downstream towards the 3' end of targeted chrom:		b3primeExtend=true,bAntisense=true
-				//		if PE2 was to antisense strand then expect PE1 on the sense strand upstream towards the 5' end of targeted chrom:		b3primeExtend=false,bAntisense=false
-				// if bPairStrand
-				//		if PE2 was to sense strand then expect PE1 on the sense strand upstream towards the 5' end of targeted chrom:			b3primeExtend=false,bAntisense=false
-				//		if PE2 was to antisense strand then expect PE2 on the antisense strand downstream towards the 3' end of targeted chrom:	b3primeExtend=true,bAntisense=true
-				b3primeExtend = pRevReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
-				bAntisense = pRevReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
-				if(bPairStrand)
+					pHitSeq = &pFwdReadHit->Read[pFwdReadHit->DescrLen + 1];
+					pSeq = ReadSeq;
+					for (SeqIdx = 0; SeqIdx < pFwdReadHit->ReadLen; SeqIdx++)
+						*pSeq++ = *pHitSeq++ & 0x07;
+					// AlignPartnerRead
+					// Have been able to unquely align one read out of a pair, now need to align the other read
+					// if not bPairStrand
+					//		if PE2 was to sense strand then expect PE1 on the antisense strand downstream towards the 3' end of targeted chrom:		b3primeExtend=true,bAntisense=true
+					//		if PE2 was to antisense strand then expect PE1 on the sense strand upstream towards the 5' end of targeted chrom:		b3primeExtend=false,bAntisense=false
+					// if bPairStrand
+					//		if PE2 was to sense strand then expect PE1 on the sense strand upstream towards the 5' end of targeted chrom:			b3primeExtend=false,bAntisense=false
+					//		if PE2 was to antisense strand then expect PE2 on the antisense strand downstream towards the 3' end of targeted chrom:	b3primeExtend=true,bAntisense=true
+					b3primeExtend = pRevReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
+					bAntisense = pRevReadHit->HitLoci.Hit.Seg[0].Strand == '+' ? true : false;
+					if (pPars->bPairStrand)
 					{
-					b3primeExtend = !b3primeExtend;
-					bAntisense = !bAntisense;
+						b3primeExtend = !b3primeExtend;
+						bAntisense = !bAntisense;
 					}
-				if(m_bPEcircularised)
-					b3primeExtend = !b3primeExtend;
+					if (m_bPEcircularised)
+						b3primeExtend = !b3primeExtend;
 
-				OrphStartLoci = AdjStartLoci(&pRevReadHit->HitLoci.Hit.Seg[0]);
-				OrphEndLoci = AdjEndLoci(&pRevReadHit->HitLoci.Hit.Seg[0]);
+					OrphStartLoci = AdjStartLoci(&pRevReadHit->HitLoci.Hit.Seg[0]);
+					OrphEndLoci = AdjEndLoci(&pRevReadHit->HitLoci.Hit.Seg[0]);
 
-				Rslt = m_pSfxArray->AlignPairedRead(b3primeExtend,bAntisense,
-							pRevReadHit->HitLoci.Hit.Seg[0].ChromID,	  // accepted aligned read was on this chromosome
-							OrphStartLoci,			// accepted aligned read started at this loci
-							OrphEndLoci,		  // and ending at this loci
-							PairMinLen,			// expecting partner to align at least this distance away from accepted aligned read
-							PairMaxLen,		// but no more than this distance away
-							MaxSubs == 0 ? 0 : max(1,(pFwdReadHit->ReadLen * MaxSubs)/100), // any accepted alignment can have at most this many mismatches
-							MinEditDist,					// and must be at least this Hamming away from the next best putative alignment
-							pFwdReadHit->ReadLen,			// length of read excluding any eBaseEOS
-							ReadSeq,	  // pts to 5' start of read sequence
-							&HitLoci);	  // where to return any paired read alignment loci
+					// note: MaxSubs is specified by user as being per 100bp of read length, e.g. if user specified '-s5' and a read is 200bp then 
+					// 10 mismatches will be allowed for that specific read
+					ProbeLen = pFwdReadHit->ReadLen;
+					MatchLen = ProbeLen - 1;
+					MaxTotMM = m_MaxSubs == 0 ? 0 : max(1, (int)(0.5 + (MatchLen * m_MaxSubs) / 100.0));
 
-				if(Rslt == 1)
+					if (MaxTotMM > cMaxTotAllowedSubs)		// irrespective of length allow at most this many subs
+						MaxTotMM = cMaxTotAllowedSubs;
+
+					// The window core length is set to be read length / (subs+1) for minimum Hamming difference of 1, and
+					// to be read length / (subs+2) for minimum Hamming difference of 2
+					// The window core length is clamped to be at least m_MinCoreLen
+					CoreLen = max(m_MinCoreLen, pFwdReadHit->ReadLen / (m_MinEditDist == 1 ? MaxTotMM + 1 : MaxTotMM + 2));
+					MaxNumSlides = max(1, ((m_MaxNumSlides * ProbeLen) + 99) / 100);
+					CoreDelta = max(ProbeLen / m_MaxNumSlides - 1, CoreLen);
+
+
+					Rslt = m_pSfxArray->AlignPairedRead(b3primeExtend, bAntisense,
+						pRevReadHit->HitLoci.Hit.Seg[0].ChromID,	  // accepted aligned read was on this chromosome
+						OrphStartLoci,			// accepted aligned read started at this loci
+						OrphEndLoci,		  // and ending at this loci
+						pPars->PairMinLen,			// expecting partner to align at least this distance away from accepted aligned read
+						pPars->PairMaxLen,		// but no more than this distance away
+						pPars->MaxSubs,				// any accepted alignment can have at most this many mismatches
+						pPars->MinEditDist,			// and must be at least this Hamming away from the next best putative alignment
+						ProbeLen,		  // length of read excluding any eBaseEOS
+						m_MinChimericLen,	// minimum chimeric length as a percentage (0 to disable, otherwise 50..99) of probe sequence
+						CoreLen,			// core window length, 0 to disable
+						CoreDelta,			// core window offset increment (1..n)
+						MaxNumSlides,		// max number of times to slide core
+						ReadSeq,	  // pts to 5' start of read sequence
+						&HitLoci);	  // where to return any paired read alignment loci
+
+					if (Rslt == 1)
 					{
-					SeqFragLen = PEInsertSize(PairMinLen,PairMaxLen,bPairStrand,HitLoci.Seg[0].Strand,AdjStartLoci(&HitLoci.Seg[0]),AdjEndLoci(&HitLoci.Seg[0]),pRevReadHit->HitLoci.Hit.Seg[0].Strand,OrphStartLoci,OrphEndLoci);
-					if(SeqFragLen <= 0)
-						Rslt = 0;
+						SeqFragLen = PEInsertSize(pPars->PairMinLen, pPars->PairMaxLen, pPars->bPairStrand, HitLoci.Seg[0].Strand, AdjStartLoci(&HitLoci.Seg[0]), AdjEndLoci(&HitLoci.Seg[0]), pRevReadHit->HitLoci.Hit.Seg[0].Strand, OrphStartLoci, OrphEndLoci);
+						if (SeqFragLen <= 0)
+							Rslt = 0;
 					}
 
-				if(Rslt == 1)
+					if (Rslt == 1)
 					{
-					// with 3' anchor was able to find an alignment within the min/max insert size
-					pFwdReadHit->HitLoci.Hit = HitLoci;
-					pFwdReadHit->LowMMCnt = HitLoci.Seg[0].Mismatches;
-					pFwdReadHit->NumHits = 1;
-					pFwdReadHit->LowHitInstances = 1;
-					// this paired end alignment has been accepted
-					pFwdReadHit->FlgPEAligned = 1;
-					pRevReadHit->FlgPEAligned = 1;
-					pFwdReadHit->NAR = eNARAccepted;
-					pRevReadHit->NAR = eNARAccepted;
-					LongestSeqFragLen = max(LongestSeqFragLen,SeqFragLen);
-					m_pLenDist[SeqFragLen] += 1;
-					AcceptedNumPaired += 1;
-					PartnerPaired += 1;
-					continue;	// try next pair
+						// with 3' anchor was able to find an alignment within the min/max insert size
+						pFwdReadHit->HitLoci.Hit = HitLoci;
+						pFwdReadHit->LowMMCnt = HitLoci.Seg[0].Mismatches;
+						pFwdReadHit->NumHits = 1;
+						pFwdReadHit->LowHitInstances = 1;
+						// this paired end alignment has been accepted
+						pFwdReadHit->FlgPEAligned = 1;
+						pRevReadHit->FlgPEAligned = 1;
+						pFwdReadHit->NAR = eNARAccepted;
+						pRevReadHit->NAR = eNARAccepted;
+						LongestSeqFragLen = max(LongestSeqFragLen, SeqFragLen);
+						AcquireSerialise();
+						m_pLenDist[SeqFragLen] += 1;
+						ReleaseSerialise();
+						AcceptedNumPaired += 1;
+						PartnerPaired += 1;
+						continue;	// try next pair
 					}
 				}
-			else
-				if(pRevReadHit->NAR == eNARAccepted)
+				else
+					if (pRevReadHit->NAR == eNARAccepted)
 					{
-					pFwdReadHit->NumHits = 0;
-					pFwdReadHit->LowHitInstances = 0;
-					pFwdReadHit->NAR = eNARChromFilt;
+						pFwdReadHit->NumHits = 0;
+						pFwdReadHit->LowHitInstances = 0;
+						pFwdReadHit->NAR = eNARChromFilt;
 					}
 			}
 		}
 
-	// unable to accept as PE
-	if(pFwdReadHit->NAR == eNARChromFilt || pRevReadHit->NAR == eNARChromFilt)
-		NumFilteredByChrom += 1;
-	if(pFwdReadHit->NAR == eNARPEInsertMin || pRevReadHit->NAR == eNARPEInsertMin)
-		UnderLenPairs += 1;
-	if(pFwdReadHit->NAR == eNARPEInsertMax || pRevReadHit->NAR == eNARPEInsertMax)
-		OverLenPairs += 1;
+		// unable to accept as PE
+		if (pFwdReadHit->NAR == eNARChromFilt || pRevReadHit->NAR == eNARChromFilt)
+			NumFilteredByChrom += 1;
+		if (pFwdReadHit->NAR == eNARPEInsertMin || pRevReadHit->NAR == eNARPEInsertMin)
+			UnderLenPairs += 1;
+		if (pFwdReadHit->NAR == eNARPEInsertMax || pRevReadHit->NAR == eNARPEInsertMax)
+			OverLenPairs += 1;
 
-	if(!(PEproc == ePEorphanSE || PEproc == ePEuniqueSE))		
+		if (!(pPars->PEproc == ePEorphanSE || pPars->PEproc == ePEuniqueSE))
 		{
-		pFwdReadHit->NumHits = 0;
-		pFwdReadHit->LowHitInstances = 0;
-		pRevReadHit->NumHits = 0;
-		pRevReadHit->LowHitInstances = 0;
-		if(pFwdReadHit->NAR == eNARAccepted)
-			pFwdReadHit->NAR = eNARPENoHit;
-		if(pRevReadHit->NAR == eNARAccepted)
-			pRevReadHit->NAR = eNARPENoHit;
-		continue;
+			pFwdReadHit->NumHits = 0;
+			pFwdReadHit->LowHitInstances = 0;
+			pRevReadHit->NumHits = 0;
+			pRevReadHit->LowHitInstances = 0;
+			if (pFwdReadHit->NAR == eNARAccepted)
+				pFwdReadHit->NAR = eNARPENoHit;
+			if (pRevReadHit->NAR == eNARAccepted)
+				pRevReadHit->NAR = eNARPENoHit;
+			continue;
 		}
 
-	// allowed to accept as being SE if was able to uniquely align
-	bool bChromFilt;
-	if(pFwdReadHit->NumHits == 1)
-		bChromFilt = AcceptThisChromID(pFwdReadHit->HitLoci.Hit.Seg[0].ChromID); 
-	else 
-		bChromFilt = false;
-	if(pFwdReadHit->NumHits != 1 || !bChromFilt)
+		// allowed to accept as being SE if was able to uniquely align
+		bool bChromFilt;
+		if (pFwdReadHit->NumHits == 1)
+			bChromFilt = AcceptThisChromID(pFwdReadHit->HitLoci.Hit.Seg[0].ChromID);
+		else
+			bChromFilt = false;
+		if (pFwdReadHit->NumHits != 1 || !bChromFilt)
 		{
-		pFwdReadHit->NumHits = 0;
-		pFwdReadHit->LowHitInstances = 0;
-		if(pFwdReadHit->NAR == eNARAccepted)
-			pFwdReadHit->NAR = bChromFilt ? eNARChromFilt : eNARPEUnalign;
+			pFwdReadHit->NumHits = 0;
+			pFwdReadHit->LowHitInstances = 0;
+			if (pFwdReadHit->NAR == eNARAccepted)
+				pFwdReadHit->NAR = bChromFilt ? eNARChromFilt : eNARPEUnalign;
 		}
-	else
+		else
 		{
-		pFwdReadHit->NAR = eNARAccepted;
-		AcceptedNumSE += 1;
+			pFwdReadHit->NAR = eNARAccepted;
+			AcceptedNumSE += 1;
 		}
 
-	if(pRevReadHit->NumHits == 1)
-		bChromFilt = AcceptThisChromID(pRevReadHit->HitLoci.Hit.Seg[0].ChromID);
-	else 
-		bChromFilt = false;
+		if (pRevReadHit->NumHits == 1)
+			bChromFilt = AcceptThisChromID(pRevReadHit->HitLoci.Hit.Seg[0].ChromID);
+		else
+			bChromFilt = false;
 
-	if(pRevReadHit->NumHits != 1 || !bChromFilt)
+		if (pRevReadHit->NumHits != 1 || !bChromFilt)
 		{
-		pRevReadHit->NumHits = 0;
-		pRevReadHit->LowHitInstances = 0;
-		if(pRevReadHit->NAR == eNARAccepted)
-			pRevReadHit->NAR = bChromFilt ? eNARChromFilt : eNARPEUnalign;
+			pRevReadHit->NumHits = 0;
+			pRevReadHit->LowHitInstances = 0;
+			if (pRevReadHit->NAR == eNARAccepted)
+				pRevReadHit->NAR = bChromFilt ? eNARChromFilt : eNARPEUnalign;
 		}
-	else
+		else
 		{
-		pRevReadHit->NAR = eNARAccepted;
-		AcceptedNumSE += 1;
-		}
-	}
-
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"Processed putative %u pairs, accepted %u",PairReadIdx/2,AcceptedNumPaired);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"From %d putative pairs there were %d accepted (%d from recovered orphans)",
-					 PairReadIdx/2,AcceptedNumPaired,PartnerPaired);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d putative pairs unrecoverable as still orphan partnered",PartnerUnpaired - PartnerPaired);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d under length, %d over length pairs not accepted",UnderLenPairs,OverLenPairs);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d aligned pairs filtered out by chromosome",NumFilteredByChrom);
-gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d putative pairs have neither end uniquely aligned",UnalignedPairs);
-if(PEproc == ePEuniqueSE || PEproc == ePEorphanSE)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"%d reads accepted as SE aligned",AcceptedNumSE);
-
-if(gProcessingID > 0)
-	{
-	UINT32 NumPairsLoaded;
-	NumPairsLoaded = m_NumReadsLoaded/2;
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumPairsLoaded),"Loaded",&NumPairsLoaded);
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumPaired),"Accepted",&AcceptedNumPaired);
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(PartnerPaired),"RecoveredOrphans",&PartnerPaired);
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnderLenPairs),"UnderInsertSize",&UnderLenPairs);
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(OverLenPairs),"OverInsertSize",&OverLenPairs);
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(NumFilteredByChrom),"FilteredByChrom",&NumFilteredByChrom);
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(UnalignedPairs),"NonUniqueEnds",&UnalignedPairs);
-	gSQLiteSummaries.AddResult(gExperimentID, gProcessingID,(char *)"PEProcessing",ePTUint32,sizeof(AcceptedNumSE),"AcceptedNumSE",&AcceptedNumSE);
-	}
-
-if(m_hStatsFile != -1)
-	{
-	char szLineBuff[cMaxReadLen*2];
-	int BuffIdx = 0;
-	for(PairReadIdx = 0; PairReadIdx <= (UINT32)LongestSeqFragLen; PairReadIdx++)
-		{
-		BuffIdx += sprintf(&szLineBuff[BuffIdx],"%d,%d\n",PairReadIdx,m_pLenDist[PairReadIdx]);
-		if(BuffIdx + 100 > sizeof(szLineBuff))
-			{
-			CUtility::SafeWrite(m_hStatsFile,szLineBuff,BuffIdx);
-			BuffIdx = 0;
-			}
-		}
-	if(BuffIdx)
-		{
-		CUtility::SafeWrite(m_hStatsFile,szLineBuff,BuffIdx);
-		BuffIdx = 0;
+			pRevReadHit->NAR = eNARAccepted;
+			AcceptedNumSE += 1;
 		}
 	}
-if((Rslt=SortReadHits(eRSMHitMatch,false,true)) < eBSFSuccess)
-	{
-	Reset(false);
-	return(Rslt);
-	}
-return(eBSFSuccess);
+pPars->UnalignedPairs = UnalignedPairs;
+pPars->AcceptedNumPaired = AcceptedNumPaired;
+pPars->AcceptedNumSE = AcceptedNumSE;
+pPars->PartnerPaired = PartnerPaired;
+pPars->PartnerUnpaired = PartnerUnpaired;
+pPars->NumFilteredByChrom = NumFilteredByChrom;
+pPars->UnderLenPairs = UnderLenPairs;
+pPars->OverLenPairs = OverLenPairs;
+pPars->Rslt = 0;
+return(0);
 }
 
 
@@ -4711,6 +4905,7 @@ for(ThreadIdx = 0; ThreadIdx < NumThreads; ThreadIdx++)
 #ifdef _WIN32
 	while(WAIT_TIMEOUT == WaitForSingleObject( ClusterThreads[ThreadIdx].threadHandle, 60000))
 		{
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Progress: Still clustering ...");
 		}
 	CloseHandle( ClusterThreads[ThreadIdx].threadHandle);
 #else
@@ -4720,6 +4915,7 @@ for(ThreadIdx = 0; ThreadIdx < NumThreads; ThreadIdx++)
 	ts.tv_sec += 60;
 	while((JoinRlt = pthread_timedjoin_np(ClusterThreads[ThreadIdx].threadID, NULL, &ts)) != 0)
 		{
+		gDiagnostics.DiagOut(eDLInfo, gszProcName, "Progress: Still clustering ...");
 		ts.tv_sec += 60;
 		}
 #endif
@@ -8528,37 +8724,41 @@ gDiagnostics.DiagOut(eDLInfo,gszProcName,"Genome assembly suffix array loaded");
 	// large genomes require larger cores, more sensitive alignments require smaller cores
 m_BlockTotSeqLen = m_pSfxArray->GetTotSeqsLen();
 
-if(m_BlockTotSeqLen < 20000000)				    // covers yeast
+if (m_BlockTotSeqLen <= 500000)							// covers mitochrondria and plastids
 	m_MinCoreLen = cMinCoreLen;
 else
-	if(m_BlockTotSeqLen < 250000000)		    // covers arabidopsis and fly
-		m_MinCoreLen = cMinCoreLen+4; 
+	if (m_BlockTotSeqLen <= 20000000)				    // covers yeast
+		m_MinCoreLen = cMinCoreLen + 3;
 	else
-		m_MinCoreLen = cMinCoreLen+6; 			// covers the big guys...
+		if (m_BlockTotSeqLen <= 250000000)		    // covers arabidopsis and fly
+			m_MinCoreLen = cMinCoreLen + 7;
+		else
+			if (m_BlockTotSeqLen <= 3500000000)		    // covers human
+				m_MinCoreLen = cMinCoreLen + 8;
+			else
+				m_MinCoreLen = cMinCoreLen + 11; 		// covers the big plant guys...
+
 
 // MaxNumSlides is per 100bp of read length
 // more slides enables higher sensitivity but negatively impacts on alignment throughput
 switch(m_PMode) {
 	case ePMUltraSens:				// ultra sensitive - much slower
-		MaxNumSlides = 7;			// leave m_MinCoreLen at it's minimum
+		MaxNumSlides = 9;			// leave m_MinCoreLen at it's minimum
 		break;
 	case ePMMoreSens:				// more sensitive - slower
 		m_MinCoreLen += 1;
-		MaxNumSlides = 6;
+		MaxNumSlides = 8;
 		break;
 	case ePMdefault:				// default processing mode
-		m_MinCoreLen += 3;
-		MaxNumSlides = 5;
+		m_MinCoreLen += 2;
+		MaxNumSlides = 8;
 		break;
-	case ePMLessSens:				// less sensitive but quicker
-		m_MinCoreLen += 5;
-		MaxNumSlides = 4;
-		break;
-	default:
-		MaxNumSlides = 4;			// few slides, low sensitivity and much quicker
+	default:				// less sensitive but quicker
+		m_MinCoreLen += 4;
+		MaxNumSlides = 6;
 		break;
 	}
-
+m_MaxNumSlides = MaxNumSlides;
 
 gDiagnostics.DiagOut(eDLInfo,gszProcName,"Now aligning with minimum core size of %dbp...\n",m_MinCoreLen);
 m_ThreadCoredApproxRslt = 0;
@@ -8880,7 +9080,10 @@ while(ThreadedIterReads(&ReadsHitBlock))
 			MatchLen = ProbeLen;
 			}
 
-		MaxTotMM = pPars->MaxSubs == 0 ? 0 : max(1,(int)(0.5 + (MatchLen * pPars->MaxSubs)/100.0)); // any accepted alignment can have at most this many mismatches
+		// note: MaxSubs is specified by user as being per 100bp of read length, e.g. if user specified '-s5' and a read is 200bp then 
+		// 10 mismatches will be allowed for that specific read
+		MaxTotMM = pPars->MaxSubs == 0 ? 0 : max(1,(int)(0.5 + (MatchLen * pPars->MaxSubs)/100.0)); 
+
 		if(MaxTotMM > cMaxTotAllowedSubs)		// irrespective of length allow at most this many subs
 			MaxTotMM = cMaxTotAllowedSubs;
 
@@ -8888,7 +9091,7 @@ while(ThreadedIterReads(&ReadsHitBlock))
 		// to be read length / (subs+2) for minimum Hamming difference of 2
 		// The window core length is clamped to be at least m_MinCoreLen
 		CoreLen = max(m_MinCoreLen,MatchLen/(pPars->MinEditDist == 1 ? MaxTotMM+1 : MaxTotMM+2));
-		MaxNumSlides = pPars->MaxNumSlides * ProbeLen / 100;
+		MaxNumSlides = max(1,((pPars->MaxNumSlides * ProbeLen) + 99) / 100);
 		CoreDelta = max(ProbeLen/MaxNumSlides-1,CoreLen);
 
 		LowHitInstances = pReadHit->LowHitInstances;
