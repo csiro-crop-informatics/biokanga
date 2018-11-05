@@ -27,14 +27,14 @@
 
 // when required to static compile
 #ifdef _LINKSTATIC_
-const char *cpszProgVer = "4.3.11S";		// increment with each release
+const char *cpszProgVer = "4.4.0S";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset - Static Linked";
 #else
-const char *cpszProgVer = "4.3.11";		// increment with each release
+const char *cpszProgVer = "4.4.0";		// increment with each release
 const char *cpszProcOverview = "BioKanga NGS Processing Toolset";
 #endif
 
-// Subprocesses 
+// Subprocesses
 extern int Blitz(int argc, char* argv[]);
 extern int LocateROI(int argc, char* argv[]);
 extern int RemapLoci(int argc, char* argv[]);
