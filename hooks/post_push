@@ -8,9 +8,9 @@ repoName=${IMAGE_NAME:0:tagStart-1}
 
 # Tag and push image for each additional tag
 for tag in \
-  $(git log -1 --pretty=%h) \
-  $(git branch | grep \* | cut -d ' ' -f2)\
-  $(git tag -l --points-at HEAD); do
+  $(git log -1 --pretty=%h || echo "") \
+  $(git branch | grep \* | cut -d ' ' -f2 || echo "")\
+  $(git tag -l --points-at HEAD || echo ""); do
     docker tag $IMAGE_NAME ${repoName}:${tag}
     docker push ${repoName}:${tag}
 done
