@@ -1652,7 +1652,7 @@ while(Rslt == eBSFSuccess && (CurFeatureID = m_pBEDFile->GetNextFeatureID(CurFea
 		{
 		strcpy(szPrevChrom,szChrom);
 		ChromID = m_pBEDFile->LocateChromIDbyName(szChrom);
-		if(m_pExclBEDFile != '\0')
+		if(m_pExclBEDFile != NULL)
 			ExclChromID = m_pExclBEDFile->LocateChromIDbyName(szChrom);
 		IntergenicStart = 0;
 		}

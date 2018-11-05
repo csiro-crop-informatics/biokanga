@@ -819,7 +819,7 @@ int RefBlock;
 int TestBlock;
 int Idx;
 
-char szExecFileCmd[_MAX_PATH];
+char szExecFileCmd[_MAX_PATH*10]; // may need to contain multiple file paths!
 CCSVFile QScore;
 
 // score external aligners vs UCSC and against themselves
