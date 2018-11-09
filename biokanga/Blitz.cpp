@@ -119,7 +119,7 @@ struct arg_int *exactmatchscore = arg_int0("J","exactmatchscore","<int>",	"score
 struct arg_int *gapopenscore = arg_int0("g","gapopenscore","<int>",	"penalise score for gap openings (default is 5, range 1..50)");
 
 struct arg_int *coredelta = arg_int0("c","coredelta","<int>",	"core (seed) delta (default is 0 for auto, range 1..50)");
-struct arg_int *corelen = arg_int0("C","corelen","<int>",		"core (seed) length (default is 0 for auto, range 5..50)");
+struct arg_int *corelen = arg_int0("C","corelen","<int>",		"core (seed) length (default is 0 for auto, range 4..50)");
 
 struct arg_int *minpathscore = arg_int0("p","minpathscore","<int>",		"minimum alignment path score (default is 0 for auto, range 50..50000)");
 struct arg_int *querylendpct = arg_int0("a","querylendpct","<int>",		"minimum required percentage of query sequence aligned (default is 25, range 1 to 100)");
@@ -976,10 +976,11 @@ if(CoreLen == 0)
 		}
 	if(CoreLen > cMaxCoreLen)
 		CoreLen = cMaxCoreLen;
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Using core length : %d",CoreLen);
 	m_CoreLen = CoreLen;
 	}
-m_MinExtdCoreLen = max(30,m_CoreLen * 3);
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Using core length : %d", m_CoreLen);
+m_MinExtdCoreLen = min(30,m_CoreLen * 2);
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Using minimum extended core length : %d", m_MinExtdCoreLen);
 
 if(CoreDelta == 0)
 	{
@@ -999,19 +1000,18 @@ if(CoreDelta == 0)
 		}
 	if(CoreDelta == 0)
 		CoreDelta = 1;
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Using core delta : %d",CoreDelta);
 	m_CoreDelta = CoreDelta;
 	}
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Using core delta : %d", m_CoreDelta);
 
 if(MinPathScore == 0)
 	{
 	MinPathScore = max(10 * CoreLen,cMinPathScore);
 	if(MinPathScore > cMaxPathScore)
 		MinPathScore = cMaxPathScore;	
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Using minimum path score : %d",MinPathScore);
 	m_MinPathScore = MinPathScore;
 	}
-
+gDiagnostics.DiagOut(eDLInfo, gszProcName, "Using minimum path score : %d", m_MinPathScore);
 m_MaxIter = MaxOccKMerDepth;
 
 // restrict the max core iterations and substitutions thresholding according to the requested sensitivity
@@ -1043,14 +1043,8 @@ switch(Sensitivity) {
 		break;
 	}
 
-if(MaxExtnScoreThres == -1)
-	{
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Using overlap extension threshold score : %d",m_ExtnScoreThres);
-	MaxExtnScoreThres = m_ExtnScoreThres;
-	}
-
-if(MaxOccKMerDepth == 0)
-	gDiagnostics.DiagOut(eDLInfo,gszProcName,"Using maximum depth to explore over-occurring seed K-mers : %d",m_MaxIter);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Using overlap extension threshold score : %d",m_ExtnScoreThres);
+gDiagnostics.DiagOut(eDLInfo,gszProcName,"Using maximum depth to explore over-occurring seed K-mers : %d",m_MaxIter);
 
 m_pSfxArray->SetMaxIter(m_MaxIter);
 
@@ -2067,7 +2061,7 @@ do {
 	m_pSfxArray->GetSeq(TargSeqID,pCurNode->TargStartOfs,pCurSeq,pCurNode->AlignLen);
 	m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"%s",CSeqTrans::MapSeq2Ascii(pCurSeq,pCurNode->AlignLen,(char *)pCurSeq));
 
-	m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"\ns\t%s\t%u\t%u\t%c\t%u\t",pszQuerySeqIdent,pCurNode->TargStartOfs,pCurNode->AlignLen,'+',qSize);
+	m_szLineBuffIdx += sprintf(&m_pszLineBuff[m_szLineBuffIdx],"\ns\t%s\t%u\t%u\t%c\t%u\t",pszQuerySeqIdent,pCurNode->TargStartOfs,pCurNode->AlignLen,Strand,qSize);
 	if(Strand == '-')
 		{
 		memcpy(pCurSeq,&pQuerySeq[qSize - (pCurNode->QueryStartOfs + pCurNode->AlignLen)],pCurNode->AlignLen);

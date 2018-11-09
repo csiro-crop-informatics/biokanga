@@ -25,7 +25,7 @@ Release 3.6.0  Bug fix for NGSQC segfault under Ubuntu 14.04 when compiled optim
 Release 3.7.6  Added chimeric read alignment capability and the ability to call di/tri-SNPs to the aligner.
 Release 4.3.2  PacBioKanga toolkit for processing PacBio reads forms part of this release
                Both PacBioKanga and BioKanga are licensed under the CSIRO Open Source Software License Agreement (GPLv3)
-               Copyright (c) 2017, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230. 
+               Copyright (c) 2017, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230.
                Conditions of this license are contained in the accompanying LICENSE file
 Release 4.3.6  LICENSE was updated. genbioseq functionality was added
 Release 4.3.9  A single SQLite database can now contain the results of
@@ -38,3 +38,6 @@ identifiers unique to the experiment from which each row was derived.
 		modules processing pre-generated SAM/BAM files.
 Release 4.3.10 Bug fix for SQLite localised haplotypes table saves
 		Enhanced to now transparently handle AGP 1.1 and AGP 2.0 formats
+Release 4.3.11 Bug fix for error code not being propagated up to exit() on realloc failure
+Release 4.4.0  Changes to Paired End  association processing enable significant improvements in throughput performance when aligning Paired End read sets.
+               Additionally, during Paired End association processing, orphan read recovery now includes chimeric end trimming of these orphans (if chimeric trimming is enabled) resulting in higher recovery rates of these orphans.

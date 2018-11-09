@@ -21,7 +21,7 @@ const int cMaxExcludeChroms = 20;		// max number of exclude chromosomes regular 
 const int cDfltAllowedSubs = 10;		// default max number of aligner induced substitutions per 100bp
 const int cMaxAllowedSubs = 15;			// allow at most this many aligner induced substitutions per 100bp
 const int cMaxTotAllowedSubs = 63;		// irrespective of length, limit total number of subs to 63
-const int cMinCoreLen = 8;				// absolute minimum core length supported
+const int cMinCoreLen = 4;				// absolute minimum core length supported, only if target size <= 500Kbp, this will be automatically increased with larger target sizes
 const int cMaxCoreLen = 100;			// absolute maximum core length supported
 
 const int cSNPBkgndRateWindow = 51;		// window size within which the substitution background rate is determined for SNP detection processing
@@ -413,6 +413,40 @@ typedef struct TAG_sReadsHitBlock {
 	int MaxReads;			// block can hold at most this number of reads
 	tsReadHit *pReadHits[cMaxReadsPerBlock]; // reads for processing
 } tsReadsHitBlock;
+
+typedef struct TAG_sPEThreadPars {
+	int ThreadIdx;					// uniquely identifies this thread
+	void *pThis;					// will be initialised to pt to CAligner instance
+
+#ifdef _WIN32
+	HANDLE threadHandle;			// handle as returned by _beginthreadex()
+	unsigned int threadID;			// identifier as set by _beginthreadex()
+#else
+	int threadRslt;					// result as returned by pthread_create ()
+	pthread_t threadID;				// identifier as set by pthread_create ()
+#endif
+
+	// input parameters
+	etPEproc PEproc; // paired reads alignment processing mode
+	UINT32 StartPairIdx;	// start pair processing from this pair in m_ppReadHitsIdx
+	UINT32 NumPairsToProcess;	// process this number of pairs
+	int MinEditDist; // accepted alignments must be at least this Hamming away from other putative alignments
+	int PairMinLen;  // only accept paired reads with a combined sequence length of at least this
+	int PairMaxLen;  // only accept paired reads with a combined sequence length of no more than this
+	bool bPairStrand;	// accept paired ends if on same strand
+	int MaxSubs;	   // aligned reads can have at most this many subs per 100bp
+	// outputs
+	int UnalignedPairs;		// neither end was accepted as aligned
+	int AcceptedNumPaired;	// number accepted as paired PE
+	int AcceptedNumSE;		// number accepted as SE	
+	int PartnerPaired;		// number recovered as partner accepted paired PE
+	int PartnerUnpaired;	// number of PEs which were not both end paired
+	int NumFilteredByChrom;	// still filtered out by chromosome
+	int UnderLenPairs;
+	int OverLenPairs;
+
+	int Rslt;						// returned result code
+} tsPEThreadPars;
 #pragma pack()
 
 // SOLiDmap
@@ -514,6 +548,7 @@ class CAligner
 
 	UINT64 m_BlockTotSeqLen;		// total sequence length in currently loaded suffix block
 	int	m_MinCoreLen;				// minimum core length allowed
+	int m_MaxNumSlides;				// limit on number of times core window can be moved or slide to right over read per 100bp of read length
 
 	eALStrand m_AlignStrand;		// which strand to align to - both, watson '+' or crick '-'
 
@@ -627,7 +662,7 @@ class CAligner
 
 	int m_MaxSubs;					// accepted aligned reads must have at most this many subs per 100bp aligned sequence
 	int m_InitalAlignSubs;			// putatively accepted as aligned reads can have at most this many subs per 100bp aligned sequence
-
+	int m_MinEditDist;				// any matches must have at least this edit distance to the next best match
 	int m_MaxRptSAMSeqsThres;		// report all SAM chroms or sequences if number of reference chroms <= this limit (defaults to 10000)
 
 		// note that sub distributions are characterised into 4 bands: Phred 0..8, 9..19, 20..29, and 30+
@@ -1036,6 +1071,7 @@ public:
 		int ProcAssignMultiMatches(tsClusterThreadPars *pPars);
 		int ProcCoredApprox(tsThreadMatchPars *pPars);
 		int ProcLoadReadFiles(tsLoadReadsThreadPars *pPars);
+		int	ProcessPairedEnds(tsPEThreadPars *pPars);
 
 };
 

@@ -3116,7 +3116,7 @@ for(ReadsIdx = 0; ReadsIdx < AvailReads; ReadsIdx++, pRead++)
 					for(Idx = 0; Idx < Pair2ReadLen; Idx++)
 						*pQualChr++ = (char)(((pPairRead->StartLoci + Idx) % 20) + 65);
 					*pQualChr++ = '\n';
-					pQualChr = '\0';
+					*pQualChr = '\0';
 					pPEreads[1].LineLen += Pair2ReadLen + 2;
 					}
 				}

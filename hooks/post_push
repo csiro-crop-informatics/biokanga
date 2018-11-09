@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -e
+
+# Parse image name
+tagStart=$(expr index "${IMAGE_NAME}" :)
+#repoName=${IMAGE_NAME:0:tagStart-1}
+
+echo "Post-push processing image: ${IMAGE_NAME}. Tag: ${IMAGE_NAME:tagStart}" ## For some reason ${CACHE_TAG} is not available
+
+# Tag and push image for each additional tag if the original tag does not look like a version tag as these are triggered separately
+[[ "${IMAGE_NAME:tagStart}" =~ ^v?([0-9]+\.)?([0-9]+\.)?(\*|[0-9]+)$ ]] \
+  || for tag in ${SOURCE_COMMIT} ${SOURCE_BRANCH} $(git tag -l --points-at HEAD | sed 's/^v//' || echo ""); do
+      echo "Additional tag: ${tag}"
+      docker tag ${IMAGE_NAME} ${DOCKER_REPO}:${tag}
+      docker push ${DOCKER_REPO}:${tag} #|| echo "Additional tag: ${tag} not pushed" #this is designed to ignore post push if build is from version tag
+ done
