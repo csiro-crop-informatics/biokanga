@@ -1443,6 +1443,13 @@ for(NodeIdx = 1; NodeIdx <= NumNodes; NodeIdx++,pExploreNode++)
 	{
 	if(ExploreNodeIdx == NodeIdx)
 		continue;
+  
+  // BUG FIX - reported as Bug: Blitz alignment outside of target sequence length (#22)
+  // node being explored must be in same target sequence - paths can't span multiple target sequences!!!!
+  if(pExploreNode->TargSeqID != pCurNode->TargSeqID)
+    continue;
+  // BUG FIX #22 ENDS
+	
 	if(pExploreNode->Flg2Rpt || pExploreNode->FlgStrand != (bStrand ? 1 : 0))		// skip if already path to be reported, or if not requested strand
 		continue;
 
