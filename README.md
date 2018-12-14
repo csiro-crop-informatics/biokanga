@@ -1,5 +1,10 @@
 [![Travis Build Status](https://travis-ci.org/csiro-crop-informatics/biokanga.svg?branch=master)](https://travis-ci.org/csiro-crop-informatics/biokanga)
 [![Build status](https://ci.appveyor.com/api/projects/status/7087y5pwrb8va0uv/branch/master?svg=true)](https://ci.appveyor.com/project/alexwhan/biokanga/branch/master)
+[![Docker pulls](https://img.shields.io/docker/build/csirocropinformatics/biokanga.svg?logo=docker)](https://hub.docker.com/r/csirocropinformatics/biokanga)
+[![Docker pulls](https://img.shields.io/docker/automated/csirocropinformatics/biokanga.svg?logo=docker)](https://hub.docker.com/r/csirocropinformatics/biokanga)
+[![Docker pulls](https://img.shields.io/docker/pulls/csirocropinformatics/biokanga.svg?logo=docker)](https://hub.docker.com/r/csirocropinformatics/biokanga)
+
+
 
 # BioKanga 
 BioKanga is an integrated toolkit of high performance bioinformatics subprocesses targeting the challenges of next generation sequencing analytics. Kanga is an acronym standing for 'K-mer Adaptive Next Generation Aligner'.
