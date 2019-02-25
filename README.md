@@ -4,6 +4,7 @@
 [![Docker pulls](https://img.shields.io/docker/build/csirocropinformatics/biokanga.svg?logo=docker)](https://hub.docker.com/r/csirocropinformatics/biokanga)
 [![Docker pulls](https://img.shields.io/docker/automated/csirocropinformatics/biokanga.svg?logo=docker)](https://hub.docker.com/r/csirocropinformatics/biokanga)
 [![Docker pulls](https://img.shields.io/docker/pulls/csirocropinformatics/biokanga.svg?logo=docker)](https://hub.docker.com/r/csirocropinformatics/biokanga)
+[![DOI](https://zenodo.org/badge/86337406.svg)](https://zenodo.org/badge/latestdoi/86337406)
 
 
 
