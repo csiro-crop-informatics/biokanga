@@ -29,7 +29,7 @@ static etSeqBase *gpSeq = NULL;
 
 // Suffix array elements can be sized as either 4 or 5 bytes dependent on the total length of concatenated sequences
 // If total length is less than 4G then can use 4 byte elements, if longer then will use 5 byte elements
-inline 
+inline
 INT64 SfxOfsToLoci(int SfxElSize,			// size in bytes of suffix element - expected to be either 4 or 5
 				void *pSfx,					// pts to 1st element of suffix array
 				INT64 Ofs)					// offset to suffix element
@@ -260,7 +260,7 @@ m_MTqsort.SetMaxThreads(MaxThreads);
 int						// returns the previously utilised MaxBaseCmpLen
 CSfxArrayV3::SetMaxBaseCmpLen(int MaxBaseCmpLen)		// sets maximum number of bases which need to be compared for equality in multithreaded qsorts, will be clamped to be in range 10..(5*cMaxReadLen)
 {
-int PrevMaxBaseCmpLen = gMaxBaseCmpLen;    
+int PrevMaxBaseCmpLen = gMaxBaseCmpLen;
 if(MaxBaseCmpLen > (5 * cMaxReadLen))
 	MaxBaseCmpLen = (5 * cMaxReadLen);
 else
@@ -713,7 +713,7 @@ if(m_bV3File)
 	delete pSfxEntriesBlockV3;
 	}
 else
-	{ 
+	{
 
 #ifdef _WIN32
 	m_pEntriesBlock = (tsSfxEntriesBlock *) malloc(m_SfxHeader.EntriesSize);
@@ -833,7 +833,7 @@ if(m_pSfxBlock->ConcatSeqLen)
 	ReallocSize = (INT64)sizeof(tsSfxBlock) + m_pSfxBlock->ConcatSeqLen + (m_pSfxBlock->ConcatSeqLen * m_pSfxBlock->SfxElSize);
 
 		// m_pSfxBlock almost certainly needs to be extended
-	if(ReallocSize > (INT64)m_AllocSfxBlockMem) 
+	if(ReallocSize > (INT64)m_AllocSfxBlockMem)
 		{
 		tsSfxBlock *pRealloc;
 #ifdef _WIN32
@@ -1607,7 +1607,7 @@ else	// else already at least one entry
 	if((m_pSfxBlock->ConcatSeqLen + SeqLen + 16) > m_AllocSfxBlockMem) // 10 is to allow for appended eBaseEOS's and slight safety margin
 		{
 		tsSfxBlock *pRealloc;
-		INT64 ReallocSize = m_AllocSfxBlockMem + max(cReallocBlockEls,((INT64)SeqLen) + 10);	
+		INT64 ReallocSize = m_AllocSfxBlockMem + max(cReallocBlockEls,((INT64)SeqLen) + 10);
 
 #ifdef _WIN32
 		pRealloc = (tsSfxBlock *)realloc(m_pSfxBlock,(size_t)ReallocSize);
@@ -1905,7 +1905,7 @@ CSfxArrayV3::SetTargBlock(int BlockID)
 return(Disk2SfxBlock(BlockID));
 }
 
-int										// if non-zero then returned number of identifiers 
+int										// if non-zero then returned number of identifiers
 CSfxArrayV3::ChkDupEntries(int MaxIdents,		// maximum number of identifers to return in pIdents (caller allocates to hold returned identifiers)
 					  UINT32 *pIdents)		// checks if there are duplicate entry names and reports identifier
 {
@@ -1917,7 +1917,7 @@ tsSfxEntry *pPrevEntry;
 
 UINT32 Idx;
 
-if(m_pEntriesBlock == NULL || MaxIdents > 0 && pIdents == NULL) 
+if(m_pEntriesBlock == NULL || MaxIdents > 0 && pIdents == NULL)
 	return(eBSFerrEntry);
 if(m_pEntriesBlock->NumEntries < 2)
 	return(0);
@@ -2082,8 +2082,8 @@ return(TotLen);
 }
 
 // returns minimum length of any sequence in currently loaded entries block
-UINT32 
-CSfxArrayV3::GetMinSeqLen(void)							
+UINT32
+CSfxArrayV3::GetMinSeqLen(void)
 {
 UINT64 Idx;
 UINT32 MinLen;
@@ -2099,8 +2099,8 @@ return(MinLen);
 }
 
 // returns maximum length of any sequence in currently loaded entries block
-UINT32 
-CSfxArrayV3::GetMaxSeqLen(void)							
+UINT32
+CSfxArrayV3::GetMaxSeqLen(void)
 {
 UINT64 Idx;
 UINT32 MaxLen;
@@ -2154,7 +2154,7 @@ __sync_val_compare_and_swap(&m_CASSeqFlags,1,0);
 #endif
 }
 
-int 
+int
 CSfxArrayV3::GetBaseFlags(UINT32 EntryID,		// identifies sequence containing loci flags to be returned - flags returned are in bits 0..3
 				UINT32 Loci)				// offset within sequence of base flags to return
 {
@@ -2396,7 +2396,7 @@ return(RetLen);
 }
 
 // ExactMatchLen
-// Returns the exact match length, up to MaxMatchLen, 3' to pProbe and pTarg 
+// Returns the exact match length, up to MaxMatchLen, 3' to pProbe and pTarg
 // Extends  probe against target taking into account the eBaseEOS terminator
 int													// length of exact match
 CSfxArrayV3::ExactMatchLen(etSeqBase *pProbe,		// determine exactly matching length between probe
@@ -2650,8 +2650,8 @@ return(HitIdx);
 
 // GenKMerCultThreadRange
 // For each thread instance and given starting suffix index determine the ending suffix index that the thread should process
-// so as to spread the processing reasonably uniformally between the threads  
-int													// < 0 if errors, 0 if no processing required by thread, 1 if *pSfxIdxRange initilised to number of elements to process 
+// so as to spread the processing reasonably uniformally between the threads
+int													// < 0 if errors, 0 if no processing required by thread, 1 if *pSfxIdxRange initilised to number of elements to process
 CSfxArrayV3::GenKMerCultThreadRange(int KMerLen,	// processing K-Mers of this length
 					  int ThreadInst,				// starting and range required for this thread instance
 					  int NumThreads,				// total number of threads which will be used for generating cultivar K-Mers
@@ -2727,7 +2727,7 @@ CSfxArrayV3::GenKMerCultsCnts(bool bSenseOnly,			// true if sense strand only pr
 							INT64 StartSfxIdx,			// starting suffix index
 							INT64 EndSfxIdx,			// finish processing at this suffix index, inclusive - if 0 then process all remaining
 							int PrefixKMerLen,			// report on K-Mers having this prefix sequence length
-						    int SuffixKMerLen,			// and allow for the K-mers containing suffixes of this length (can be 0) 
+						    int SuffixKMerLen,			// and allow for the K-mers containing suffixes of this length (can be 0)
 							int MinCultivars,			// only report if K-Mers present in at least this many different cultivars (0 if must be present in all cultivars)
 							int MaxHomozygotic,			// only report prefixes if K-Mer suffixes are homozygotic between a maximum of this many cultivars, if 0 then no check for homozygotic suffixes
 							void *pThis,				// callers class instance
@@ -2808,7 +2808,7 @@ do {
 		{
 		TargPsn1 = SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,StartSfxIdx);
 		// potential starting sequence, check it's length, only containing ACGT is at least as long as the prefix+suffix required
-		if((TargPsn1 + TargSeqLen) >= ConcatSeqLen)	
+		if((TargPsn1 + TargSeqLen) >= ConcatSeqLen)
 			continue;				// keep looking..
 		pEl1 = &pTarg[TargPsn1];
 		for(Ofs=0; Ofs < TargSeqLen; Ofs++,pEl1++)
@@ -2853,22 +2853,22 @@ do {
 		for(HomoSfxIdx = StartSfxIdx+1;HomoSfxIdx <= EndSfxIdx;HomoSfxIdx++)
 			{
 			TargHomoPsn = SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,HomoSfxIdx);
-			if((TargHomoPsn + TargSeqLen) >= ConcatSeqLen)	
+			if((TargHomoPsn + TargSeqLen) >= ConcatSeqLen)
 				break;
 			pEl1 = pElPrefix;
 			pEl2 = &pTarg[TargHomoPsn];
 			for(Ofs=0; Ofs < TargSeqLen; Ofs++,pEl1++,pEl2++)
-				if((*pEl1 & 0x0f) != (*pEl2 & 0x0f))	
-					break;								
+				if((*pEl1 & 0x0f) != (*pEl2 & 0x0f))
+					break;
 			if(Ofs < PrefixKMerLen || (Ofs < TargSeqLen && ((*pEl2 & 0x0f) > eBaseT)))
 				break;												// onto a new prefix
 
 			// still on same prefix, what about the suffix?
-			if(Ofs < TargSeqLen)									
+			if(Ofs < TargSeqLen)
 				{
 				// check if remainder of suffix contains any no-cannonical bases
 				for(; Ofs < TargSeqLen; Ofs++,pEl2++)
-					if((*pEl2 & 0x0f) > eBaseT)	
+					if((*pEl2 & 0x0f) > eBaseT)
 						break;
 				if(Ofs < TargSeqLen)
 					continue;
@@ -2893,7 +2893,7 @@ do {
 				continue;
 				}
 
-			// prefix + suffix are homozygotic 
+			// prefix + suffix are homozygotic
 			pHomoEntry = MapChunkHit2Entry(TargHomoPsn);			// prefix + suffix still identical
 			if(CultivarsHomozygotic[pHomoEntry->EntryID-1] == 0)
 				{
@@ -2907,10 +2907,10 @@ do {
 			continue;
 			}
 		}
- 
+
 
 	// have an initial starting K-Mer, initialise cultivar counts and entry identifiers ...
-	memset(&KMerCultsCnts,0,sizeof(KMerCultsCnts));	
+	memset(&KMerCultsCnts,0,sizeof(KMerCultsCnts));
 	KMerCultsCnts.TotCultivars = m_pSfxBlock->NumEntries;
 	for(CultivarIdx = 0; CultivarIdx < (int)KMerCultsCnts.TotCultivars; CultivarIdx++)
 		KMerCultsCnts.CultCnts[CultivarIdx].EntryID = CultivarIdx + 1;
@@ -2933,7 +2933,7 @@ do {
 		if((TargPsn2 + TargSeqLen) >= ConcatSeqLen)			// putative would be too short?
 			break;
 		// not too short but may contain bases other than ACGT so check for these whilst comparing against the initial K_Mer sequence
-		pEl1 = KMerCultsCnts.KMerSeq;						
+		pEl1 = KMerCultsCnts.KMerSeq;
 		pEl2 = &pTarg[TargPsn2];
 		for(Ofs=0; Ofs < PrefixKMerLen; Ofs++,pEl1++,pEl2++)	// bases must be identical over prefix between initial and putative
 			if((*pEl1 & 0x0f) != (*pEl2 & 0X0f))				// if not identical then will need to start a new prefix
@@ -2968,7 +2968,7 @@ do {
 		if(!bSenseOnly)			// true if sense strand only processing, default is to process both sense and antisense
 			AntisenseKMerCultsCnts(PrefixKMerLen,SuffixKMerLen,&KMerCultsCnts);
 
-		// if number of cultivars in which K-Mers with identical sequences discovered is more than minimum required then report back to caller 
+		// if number of cultivars in which K-Mers with identical sequences discovered is more than minimum required then report back to caller
 		if(KMerCultsCnts.NumCultivars >= (UINT32)MinCultivars)
 			{
 			Rslt = (*pCallback)(pThis,&KMerCultsCnts);
@@ -2988,7 +2988,7 @@ if(KMerCultsCnts.NumCultivars)
 	if(!bSenseOnly)			// true if sense strand only processing, default is to process both sense and antisense
 		AntisenseKMerCultsCnts(PrefixKMerLen,SuffixKMerLen,&KMerCultsCnts);
 
-	// if number of cultivars in which K-Mers with identical sequences discovered is more than minimum required then report back to caller 
+	// if number of cultivars in which K-Mers with identical sequences discovered is more than minimum required then report back to caller
 	if(KMerCultsCnts.NumCultivars >= (UINT32)MinCultivars)
 		{
 		Rslt = (*pCallback)(pThis,&KMerCultsCnts);
@@ -3001,7 +3001,7 @@ return(NumKMersLocated);
 
 INT64																// returned number of antisense K-Mers identified
 CSfxArrayV3::AntisenseKMerCultsCnts(int PrefixKMerLen,				// report on K-Mers having this prefix sequence length
-						    int SuffixKMerLen,					// and allow for the K-mers containing suffixes of this length (can be 0) 
+						    int SuffixKMerLen,					// and allow for the K-mers containing suffixes of this length (can be 0)
 						   tsKMerCultsCnts *pKMerCultsCnts)		// update these cultivar counts
 {
 int Ofs;
@@ -3114,7 +3114,7 @@ for(SfxElsIdx1 = 0; SfxElsIdx1 < (NumSfxEls-1); SfxElsIdx1++)
 	{
 	TargPsn1 = SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,SfxElsIdx1);
 	// slough if remaining concatenated sequences too short, or current sequence is early terminated with a conctenation 'N'
-	if((TargPsn1 + TargSeqLen) >= ConcatSeqLen)	
+	if((TargPsn1 + TargSeqLen) >= ConcatSeqLen)
 		continue;
 	pEl1 = &pTarg[TargPsn1];
 	for(Ofs=0; Ofs < TargSeqLen; Ofs++,pEl1++)
@@ -3139,7 +3139,7 @@ for(SfxElsIdx1 = 0; SfxElsIdx1 < (NumSfxEls-1); SfxElsIdx1++)
 		TargPsn1 = NxtTargPsn;
 		TargPsn2 = SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,SfxElsIdx2);
 		// slough if remaining concatenated sequences too short, or current sequence is early terminated with a conctenation 'N'
-		if((TargPsn2 + TargSeqLen) >= ConcatSeqLen)				
+		if((TargPsn2 + TargSeqLen) >= ConcatSeqLen)
 			continue;
 		pEl2 = &pTarg[TargPsn2];
 		for(Ofs=0; Ofs < TargSeqLen; Ofs++,pEl2++)
@@ -3160,7 +3160,7 @@ for(SfxElsIdx1 = 0; SfxElsIdx1 < (NumSfxEls-1); SfxElsIdx1++)
 		// sharing same prefix
 		NxtTargPsn = TargPsn2;
 
-		// sharing same prefix, check now if also sharing same suffix 
+		// sharing same prefix, check now if also sharing same suffix
 		for(Ofs=0; Ofs < SuffixKMerLen; Ofs++,pEl1++,pEl2++)
 			if((*pEl1 & 0x0f) != (*pEl2 & 0x0f))
 				break;
@@ -3199,13 +3199,13 @@ for(SfxElsIdx1 = 0; SfxElsIdx1 < (NumSfxEls-1); SfxElsIdx1++)
 				{
 				pEntry1 = MapChunkHit2Entry(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,SfxElsIdx1));
 				NumCultivarsPrefixed += 1;
-				CultivarFlags[pEntry1->EntryID-1] |= 0x01;	
+				CultivarFlags[pEntry1->EntryID-1] |= 0x01;
 				}
 			pEntry2 = MapChunkHit2Entry(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,SfxElsIdx2));
 			if(!(CultivarFlags[pEntry2->EntryID - 1] & 0x01))	// if previously unmarked then can mark this cultivar as having a prefix match
 				{
 				NumCultivarsPrefixed += 1;
-				CultivarFlags[pEntry2->EntryID-1] |= 0x01;		
+				CultivarFlags[pEntry2->EntryID-1] |= 0x01;
 				}
 			}
 		}
@@ -3226,7 +3226,7 @@ return(0);		// no more hits
 }
 
 
-INT64 
+INT64
 CSfxArrayV3::IterateExacts(etSeqBase *pProbeSeq,	// probe
  						 UINT32 ProbeLen,			// probe length
 						 INT64 PrevHitIdx,			// 0 if starting new sequence, otherwise set to return value of previous successful iteration return
@@ -3344,7 +3344,7 @@ if(!PrevHitIdx)
 	pEntry = MapChunkHit2Entry(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,TargPsn));
 	*pTargEntryID = pEntry->EntryID;
 	*pHitLoci = (UINT32)(SfxOfsToLoci(m_pSfxBlock->SfxElSize,pSfxArray,TargPsn) - pEntry->StartOfs);
-	
+
 	if(pTargSeqLen != NULL)
 		*pTargSeqLen = pEntry->SeqLen;
 	if(ppTargSeq != NULL)
@@ -3551,7 +3551,7 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=DeltaCoreOfs, pCoreSeq+=Del
 			if((*pQAnchor & 0x07) != (*pTAnchor & 0x07))
 				break;
 			}
-		OverlapIdentity = (MatchBaseLen * 100) / TargScoreLen;  
+		OverlapIdentity = (MatchBaseLen * 100) / TargScoreLen;
 		if(OverlapIdentity < 60) // if able to get at least 60% of the TargScoreLen exactly matching then not worth the overhead of quickscore processing - just accept!
 			{
 			QuickScore = QuickScoreOverlap(TargScoreLen - MatchBaseLen,pQAnchor,pTAnchor);
@@ -3560,7 +3560,7 @@ for(ProbeOfs = 0; ProbeOfs < LastProbeOfs; ProbeOfs+=DeltaCoreOfs, pCoreSeq+=Del
 		else
 			QuickScore = 0;
 
-	   if(OverlapIdentity < 60) 
+	   if(OverlapIdentity < 60)
 			continue;
 
 		pQualTarg = pQualTargs;
@@ -3609,8 +3609,8 @@ const int cMinQuickScoreOverlapLen = 16;					// QuickScoreOverlap sequence lengt
 const int cMaxQuickScoreOverlapLen = 1000;                   // no longer than this maximal bp length
 
 int															// estimated identity (0..100) of overlap between pProbe and pTarg derived by dividing final score by the MatchScore and then normalising by length
-CSfxArrayV3::QuickScoreOverlap(int SeedCoreLen,				// initial seed core exact matching length between probe and target was this many bp 
-									int SeqLen,				// quick score over this many remaining bases in pProbe and pTarg following the exactly matching SeedCoreLen, must be in the range cMaxQuickScoreOverlapLen..cMaxQuickScoreOverlapLen  
+CSfxArrayV3::QuickScoreOverlap(int SeedCoreLen,				// initial seed core exact matching length between probe and target was this many bp
+									int SeqLen,				// quick score over this many remaining bases in pProbe and pTarg following the exactly matching SeedCoreLen, must be in the range cMaxQuickScoreOverlapLen..cMaxQuickScoreOverlapLen
 									etSeqBase *pProbe,		// probe sequence scoring onto
 									etSeqBase *pTarg,		// this target sequence
 								    int MatchScore,			// exact match score  ((in any Pacbio sequence then expecting ~85% of all base calls to be correct), note that between any 2 sequences then the relative error rate doubles!
@@ -3625,7 +3625,7 @@ etSeqBase TBase;
 int HiScore;
 int BandScores[cMaxQuickScoreOverlapLen + 1];
 int *pCurScore;
-int DiagScore; 
+int DiagScore;
 int PutativeMatchScore;
 int PutativeInsertScore;
 int PutativeDeleteScore;
@@ -3683,7 +3683,7 @@ for(IdxP1 = 0; IdxP1 < SeqLen; IdxP1 += 1, pP1 += 1)
 			PutativeMatchScore = DiagScore - SubstitutePenalty; // assume it was a mismatch
 		PutativeInsertScore = *pCurScore - InDelPenalty;			// score as if it was an insertion
 		PutativeDeleteScore = pCurScore[-1] - InDelPenalty;		// score as if it was a deletion
-		DiagScore = *pCurScore;		
+		DiagScore = *pCurScore;
 		if(PutativeMatchScore > 0 && PutativeMatchScore >= PutativeInsertScore && PutativeMatchScore >= PutativeDeleteScore)
 			*pCurScore = PutativeMatchScore;
 		else
@@ -3709,7 +3709,7 @@ if(HiScore > 0)
 return(HiScore);
 }
 
-// QuickScoreOverlap expected to return a count of less than 20 for random sequence overlaps, and >= 40 for real overlapping sequences even with the PacBio error profiles  
+// QuickScoreOverlap expected to return a count of less than 20 for random sequence overlaps, and >= 40 for real overlapping sequences even with the PacBio error profiles
 int                                         //  estimated identity (0..100) of overlap between pProbe and pTarg, much quicker but far less accurate, than the SW banded function as scoring only based on the number of 4-mers matching within a 16bp window along the two overlapping sequences
 CSfxArrayV3::QuickScoreOverlap(int SeqLen,	// both probe and target are of this minimum length (must be at least 16bp), will be clamped to 200bp max
 				  etSeqBase *pProbe,		// scoring overlap of probe sequence onto
@@ -3860,7 +3860,7 @@ if(SeedCoreLen >= AcceptExactExtdCoreLen)	// if looking with seed cores of at le
 			}
 
 		return(NxtHitIdx);
-		}	
+		}
 	*pTargEntryID = 0;
 	*pHitLoci = 0;
 	return(0);
@@ -3877,7 +3877,7 @@ bFirst = false;
 
 if(!PrevHitIdx)	// if locate first exact match using SeedCoreLen
 	{
-	// check if this core sequence over-occurs 
+	// check if this core sequence over-occurs
 	if(SeedCoreLen <= cMaxKmerLen && OverOccKMerClas(SeedCoreLen,pProbeSeq) != 1)
 		return(0);
 
@@ -3925,7 +3925,7 @@ while(1)
 			return(0);
 
 		pEl2 = &pTarg[TargLoci];
-		
+
 		if((Cmp = CmpProbeTarg(pProbeSeq,pEl2,SeedCoreLen)) != 0)	// only 0 if still matching on the seed core
 			return(0);
 
@@ -3973,11 +3973,11 @@ while(1)
 		}
 	if((UINT32)MatchBaseLen < AcceptExactExtdCoreLen)			// no need to try extending if exactly matching extended core is at least cMaxPacBioSeedExtn (currently 50bp)
 		{
-		QuickScore = QuickScoreOverlap(cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);  // QuickScore is a count of the number of bases covered by exactly matching, non-overlapping, 4-mers between probe and target in the extension 
+		QuickScore = QuickScoreOverlap(cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);  // QuickScore is a count of the number of bases covered by exactly matching, non-overlapping, 4-mers between probe and target in the extension
 	//		QuickScore = QuickScoreOverlap(min(10,MatchBaseLen),cPacBioSeedCoreExtn - MatchBaseLen,pQAnchor,pTAnchor);
 		OverlapIdentity = ((MatchBaseLen + ((cPacBioSeedCoreExtn - MatchBaseLen) * QuickScore)/100)*100)/cPacBioSeedCoreExtn; // OverlapIdentity is accounting for the exactly matching prefix extended core
 
-		if(OverlapIdentity < (int)AcceptExactExtdCoreLen)  
+		if(OverlapIdentity < (int)AcceptExactExtdCoreLen)
 			{
 			if(!bFirst)
 				PrevHitIdx += 1;
@@ -3995,7 +3995,7 @@ return(0);		// no more hits
 }
 
 
-int										// number (upto Lim) of non-canonical bases in pSeq 
+int										// number (upto Lim) of non-canonical bases in pSeq
 CSfxArrayV3::NumNonCanonicals(int Lim, // process for at most this many non-canonical bases
 					UINT32 SeqLen,		// pSeq is of this max length
 					etSeqBase *pSeq)	// pSeq to process for count of non-canonical
@@ -4069,8 +4069,8 @@ if(SampleNth <= 0)
 Rslt = 0;
 for(Ofs = 0; Ofs <= (SrcSeqLen - KMerLen); Ofs += SampleNth,EntryLoci+=SampleNth,pSrcSeq += SampleNth)
 	{
-	// check on number of indeterminate bases in current K-mer, if between 1 and 4 then will iteratively substitute these with cannonical bases 
-	// if more than 4 then will treat the current K-mer as if it is Hamming 0 away from any other K-mer in the target 
+	// check on number of indeterminate bases in current K-mer, if between 1 and 4 then will iteratively substitute these with cannonical bases
+	// if more than 4 then will treat the current K-mer as if it is Hamming 0 away from any other K-mer in the target
 	NumNs = 0;
 	NIters = 0;
 	pN = pSrcSeq;
@@ -4182,8 +4182,8 @@ if(SampleNth <= 0)
 Rslt = 0;
 for(Ofs = 0; Ofs <= (SrcSeqLen - KMerLen); Ofs+=SampleNth,pSrcSeq+=SampleNth)
 	{
-	// check on number of indeterminate bases in current K-mer, if between 1 and 4 then will iteratively substitute these with cannonical bases 
-	// if more than 4 then will treat the current K-mer as if it is Hamming 0 away from any other K-mer in the target 
+	// check on number of indeterminate bases in current K-mer, if between 1 and 4 then will iteratively substitute these with cannonical bases
+	// if more than 4 then will treat the current K-mer as if it is Hamming 0 away from any other K-mer in the target
 	NumNs = 0;
 	NIters = 0;
 	pN = pSrcSeq;
@@ -4364,7 +4364,7 @@ if(RHammMin == 0)
 					(IntraInterBoth == 2 && ProbeEntry == TargEntryID))
 					continue;
 				}
-	
+
 			if(pRevCplSeq != NULL && (ProbeLen >= sizeof(RevCplSeq1Kbp)))
 				free(pRevCplSeq);
 			return(0);
@@ -5038,7 +5038,7 @@ SfxLen = m_pSfxBlock->ConcatSeqLen;
 CoreLen = ProbeLen / (1+MaxTotMM);
 
 if(CoreLen < 8)				// have to have a minimum core otherwise may as well do a linear search!
-	CoreLen = 8;				
+	CoreLen = 8;
 
 for(CurCoreSegOfs = 0; CurCoreSegOfs < (ProbeLen - CoreLen); CurCoreSegOfs += CoreLen)
 	{
@@ -5110,7 +5110,7 @@ SfxLen = m_pSfxBlock->ConcatSeqLen;
 CoreLen = ProbeLen / (1+MaxTotMM);
 
 if(CoreLen < 8)				// have to have a minimum core otherwise may as well do a linear search!
-	CoreLen = 8;				
+	CoreLen = 8;
 
 for(CurCoreSegOfs = 0; CurCoreSegOfs < (ProbeLen - CoreLen); CurCoreSegOfs += CoreLen)
 	{
@@ -5517,7 +5517,7 @@ if(pTrimMMs != NULL)
 	*pTrimMMs = 0;
 
 // some simple parameter validation
-if(SeqLen < cMinATSeqLen || SeqLen > cMaxATSeqLen || 
+if(SeqLen < cMinATSeqLen || SeqLen > cMaxATSeqLen ||
 	pProbeSeq == NULL || pTargSeq == NULL ||
 	MinTrimLen < cMinATTrimmedLen || MinTrimLen > SeqLen ||
 	MaxMM > cMaxATMM || MinFlankMatches > cMaxATMaxFlankMatches)
@@ -5764,7 +5764,7 @@ INT64 SfxLen;				// number of suffixs in pSfxArray
 tsSfxEntry *pEntry;
 BisBase=eBaseN;
 
-// force MinChimericLen to be either 0, or in the range 50..99. if MinChimericLen is < 50 or > 99 then treat as if a normal full length match required 
+// force MinChimericLen to be either 0, or in the range 50..99. if MinChimericLen is < 50 or > 99 then treat as if a normal full length match required
 if(MinChimericLen >= 50 && MinChimericLen <= 99)
 	MinProbeChimericLen = (MinChimericLen * ProbeLen) / 100;
 else
@@ -5988,7 +5988,7 @@ do
 				UINT32 TrimmedRightFlankLen;
 				UINT32 TrimmedMM;
 				AdaptiveTrimRslt = AdaptiveTrim(TargMatchLen,pProbeSeq,&pTarg[TargSeqLeftIdx],MinProbeChimericLen,MaxTotMM,3,&TrimmedSeqLen,&TrimmedLeftFlankLen,&TrimmedRightFlankLen,&TrimmedMM);
-				MaxChimericLen = TrimmedSeqLen; 				
+				MaxChimericLen = TrimmedSeqLen;
 				MaxChimericMMs = TrimmedMM;
 				Trim5Flank = TrimmedLeftFlankLen;
 				Trim3Flank = TrimmedRightFlankLen;
@@ -6346,16 +6346,16 @@ NumCopies = NumExactKMers(m_MaxKMerOccs,KMerLen,pSeq);
 if(NumCopies == 0)
 	OccKMerClas = 1;
 else
-	if(NumCopies <= m_MaxKMerOccs)	 
+	if(NumCopies <= m_MaxKMerOccs)
 		OccKMerClas = 2;
 	else
-		OccKMerClas = 3;	
+		OccKMerClas = 3;
 
 // NOTE: no serialisation of access to m_pOccKMerClas required as access is at the byte level with overwriting 2 bits only
 // If another thread accesses the same byte then there may be a conflict but this may very occasionally result in two threads
 // independently regenerating the same classification if that Kmer not previously classified
 UINT8 Tmp = m_pOccKMerClas[PackedSeqIdx] & ~(0x03 << ClasShf);
-Tmp |= (OccKMerClas << ClasShf); 
+Tmp |= (OccKMerClas << ClasShf);
 m_pOccKMerClas[PackedSeqIdx] = Tmp;
 return(OccKMerClas - 1);
 }
@@ -6454,7 +6454,7 @@ do
 	CurCoreDelta = CoreDelta;
 	CurNumCoreSlides = 0;
 	for(CurCoreSegOfs = 0;
-		CurCoreSegOfs < (UINT32)(ProbeLen - CoreLen); 
+		CurCoreSegOfs < (UINT32)(ProbeLen - CoreLen);
 	    CurNumCoreSlides += 1,
 	    CurCoreSegOfs += CurCoreDelta)
 		{
@@ -6486,7 +6486,7 @@ do
 
 				pEl1= pProbeBase;
 				pEl2 = pTargBase;
-				
+
 				for(Ofs=0; Ofs < CoreLen; Ofs++)
 					{
 					El2 = *pEl2++ & 0x07;
@@ -6494,7 +6494,7 @@ do
 					if(El2 > eBaseT || El2 != El1)
 						break;
 					}
-				if(Ofs != CoreLen)			
+				if(Ofs != CoreLen)
 					break;					// try next core segment
 				TargIdx += 1;
 				}
@@ -6520,7 +6520,7 @@ do
 
 					// previously aligned to same target sequence, check if same core was being used excessively
 					if(pCurHit->CurCoreSegOfs == CurCoreSegOfs && ((NumCoreHits+=1) > 50))
-						break;	 
+						break;
 
 					// aligning to same sequence and strand, if not contained within the prev alignment extended query sequence then check next hit
 					if(CurCoreSegOfs < pCurHit->QueryStartOfs || ((CurCoreSegOfs +  CoreLen)  > (pCurHit->QueryStartOfs + pCurHit->AlignLen)))
@@ -6563,7 +6563,7 @@ do
 						}
 					continue;
 					}
-				MMScore += 2;	
+				MMScore += 2;
 				Flank5MMs++;
 				if(MMScore > (UINT32)MaxMMThres)
 					break;
@@ -6595,7 +6595,7 @@ do
 						RptFlank3Len = Flank3Len;
 						}
 					continue;
-					}	
+					}
 				MMScore += 2;
 				Flank3MMs += 1;
 				if(MMScore > MaxMMThres)
@@ -6649,7 +6649,7 @@ return(NumMatches);				// MMDelta requirement met and within the multiple hits l
 
 // LocateBestMatches
 // Locate, at most MaxHits, alignments having no more than MaxTotMM mismatches, additional matches are sloughed
-// 
+//
 int						// < 0 if errors, 0 if no matches, 1..MaxHits, or MaxHits+1 if additional matches have been sloughed
 CSfxArrayV3::LocateBestMatches(UINT32 ReadID,			// identifies this read
 						 int MaxTotMM,			        // return matches having at most this number of mismatches
@@ -6942,7 +6942,7 @@ do
 					tsHitLoci *pNxtHit;
 					if(LowHitInstances == MaxHits)	// if already at max allowed to be returned then at least one is going to be sloughed
 						bMatchesSloughed = true;
-					pNxtHit = &pHits[0]; 
+					pNxtHit = &pHits[0];
 					for(BestIdx = 0; BestIdx < LowHitInstances; BestIdx++,pNxtHit++)
 						{
 						if(pNxtHit->Seg[0].Mismatches > CurMMCnt)		// if this hit has more missmatches than current target sequence then insert
@@ -6979,7 +6979,7 @@ do
 						LowHitInstances += 1;
 					else
 						{
-						pCurHit = &pHits[LowHitInstances-1]; 
+						pCurHit = &pHits[LowHitInstances-1];
 						MaxTotMM = pCurHit->Seg[0].Mismatches;
 						}
 					}
@@ -7877,7 +7877,7 @@ return(0);	// unable to locate any instance of pProbe
 
 
 UINT32			// number of exactly matching KMers up to specified MaxToMatch inclusive, or 0 if no match, MaxToMatch+1 if more than MaxToMatch Kmers
-CSfxArrayV3::NumExactKMers(UINT32 MaxToMatch,		// if 0 then no limit on matches, otherwise match up to this number of instances and if more then return MaxToMatch+1 
+CSfxArrayV3::NumExactKMers(UINT32 MaxToMatch,		// if 0 then no limit on matches, otherwise match up to this number of instances and if more then return MaxToMatch+1
 					int KMerLen,				// KMer length to exactly match over
 					etSeqBase *pKMerSeq)		// pts to KMer sequence
 {
@@ -7895,7 +7895,7 @@ pTarg = (etSeqBase *)&m_pSfxBlock->SeqSuffix[0];
 pSfxArray = (void *)&m_pSfxBlock->SeqSuffix[m_pSfxBlock->ConcatSeqLen];
 SfxLen = m_pSfxBlock->ConcatSeqLen;
 FirstTargIdx = LocateFirstExact(pKMerSeq,KMerLen,pTarg,m_pSfxBlock->SfxElSize,pSfxArray,0,0,SfxLen-1);
-if(FirstTargIdx < 1)		// not even one match? 
+if(FirstTargIdx < 1)		// not even one match?
 	return(0);
 FirstTargIdx -= 1;
 if(MaxToMatch > 0)
@@ -8300,6 +8300,9 @@ else
 	if(TargLoci < MinDistance || (UINT32)TargLoci >= TargSeqLen)
 		return(0);
 	}
+
+if ((pPutChromSeq = GetPtrSeq(ChromID, 0)) == NULL)
+  return(0);
 
 if((pTarg = GetPtrSeq(ChromID,TargLoci))==NULL)
 	return(0);
@@ -9496,7 +9499,7 @@ int MaxCmpLen;
 pSeq1 = &gpSeq[*(UINT32 *)p1];
 pSeq2 = &gpSeq[*(UINT32 *)p2];
 
-// compare seqs for at most gMaxBaseCmpLen bases, defaulted to (5 * cMaxReadLen) 
+// compare seqs for at most gMaxBaseCmpLen bases, defaulted to (5 * cMaxReadLen)
 MaxCmpLen = gMaxBaseCmpLen;
 while(MaxCmpLen--)
 	{
@@ -9528,7 +9531,7 @@ Ofs2 |= ((INT64)pP[4] << 32);
 pSeq1 = &gpSeq[Ofs1];
 pSeq2 = &gpSeq[Ofs2];
 
-// compare seqs for at most gMaxBaseCmpLen bases, defaulted to (5 * cMaxReadLen) 
+// compare seqs for at most gMaxBaseCmpLen bases, defaulted to (5 * cMaxReadLen)
 MaxCmpLen = gMaxBaseCmpLen;
 while(MaxCmpLen--)
 	{

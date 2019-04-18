@@ -42,3 +42,4 @@ Release 4.3.11 Bug fix for error code not being propagated up to exit() on reall
 Release 4.4.0  Changes to Paired End  association processing enable significant improvements in throughput performance when aligning Paired End read sets.
                Additionally, during Paired End association processing, orphan read recovery now includes chimeric end trimming of these orphans (if chimeric trimming is enabled) resulting in higher recovery rates of these orphans.
 Release 4.4.1  Bug fix for: Blitz alignment outside of target sequence length (#22), node being explored must be in same target sequence - paths can't span multiple target sequences!
+Release 4.4.2  Bug fix for: #28 : sporadic segfaults due to a pointer not guaranteed to be initiated.
